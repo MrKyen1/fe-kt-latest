@@ -11,6 +11,8 @@ const Home = lazy(() => import("./pages/homePage/Home"));
 const Courses = lazy(() => import("./pages/coursePage/Courses"));
 const ExamList = lazy(() => import("./pages/coursePage/ExamList"));
 const ExamPage = lazy(() => import("./pages/coursePage/ExamDetail"));
+const PublishedCurriculums = lazy(() => import("./pages/coursePage/PublishedCurriculums"));
+const CurriculumExams = lazy(() => import("./pages/coursePage/CurriculumExams"));
 const Login = lazy(() => import("./pages/loginPage/Login"));
 const Register = lazy(() => import("./pages/loginPage/Register"));
 const ForgotPassword = lazy(() => import("./pages/loginPage/ForgotPassword"));
@@ -36,6 +38,22 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Courses />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="courses/published-curriculums"
+              element={
+                <ProtectedRoute>
+                  <PublishedCurriculums />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="courses/published-curriculums/:curriculumId"
+              element={
+                <ProtectedRoute>
+                  <CurriculumExams />
                 </ProtectedRoute>
               }
             />

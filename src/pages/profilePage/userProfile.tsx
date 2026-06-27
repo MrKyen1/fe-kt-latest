@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Avatar,
   Button,
+  Card,
   Col,
   Form,
   Input,
@@ -19,156 +20,199 @@ import {
 } from "@ant-design/icons";
 import { useAuth } from "../../contexts/AuthContext";
 import { authService } from "../../services/authService";
+import { resolveMediaUrl } from "../../services/apiClient";
+import { learningCmsService } from "../../services/learningCmsService";
 
 const { Title, Text } = Typography;
 
+interface ProfileFormValues {
+  fullName: string;
+  phone?: string;
+  email?: string;
+  dateOfBirth?: string;
+  address?: string;
+}
+
 export default function UserProfile() {
-  const [form] = Form.useForm();
-  const { user } = useAuth();
-  const [avatar, setAvatar] = useState(user?.avatar || "https://i.pravatar.cc/150?img=3");
+  const { user, updateUser } = useAuth();
+  const [form] = Form.useForm<ProfileFormValues>();
+  const [avatar, setAvatar] = useState(user?.avatar || "");
+  const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     form.setFieldsValue({
-      code: user?.code,
-      fullName: user?.fullName || user?.username,
-      email: user?.email,
-      phone: "",
-      address: "",
+      fullName: user?.fullName || "",
+      phone: user?.phone || "",
+      email: user?.email || "",
+      dateOfBirth: user?.dateOfBirth || "",
+      address: user?.address || "",
     });
-    setAvatar(user?.avatar || "https://i.pravatar.cc/150?img=3");
+    setAvatar(user?.avatar || "");
   }, [form, user]);
 
-  const handleUploadAvatar = (info: any) => {
-    const file = info.file.originFileObj;
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => setAvatar(event.target?.result as string);
-    reader.readAsDataURL(file);
-    message.success("Cap nhat avatar thanh cong");
+  const normalizeOptional = (value?: string) => {
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
   };
 
-  const handleSaveProfile = async (values: any) => {
+  const beforeUpload = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      message.error("Chi duoc upload anh");
+      return Upload.LIST_IGNORE;
+    }
+
+    return false;
+  };
+
+  const handlePreview = (info: { file: { originFileObj?: File } | File }) => {
+    const file = "originFileObj" in info.file ? info.file.originFileObj : info.file;
+    if (!file) return;
+
+    setAvatarFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => setPreviewAvatar(event.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async (values: ProfileFormValues) => {
     try {
       setIsSaving(true);
-      await authService.updateMe({
-        code: values.code,
-        fullName: values.fullName,
-        email: values.email || undefined,
-        phone: values.phone || undefined,
-        address: values.address || undefined,
-        avatar,
+      let finalAvatar = avatar;
+
+      if (avatarFile) {
+        const media = await learningCmsService.mediaAssets.upload(avatarFile, "User avatar");
+        finalAvatar = media.url;
+      }
+
+      const avatarForBackend = finalAvatar.startsWith("data:")
+        ? undefined
+        : normalizeOptional(finalAvatar);
+
+      const updatedUser = await authService.updateMe({
+        fullName: values.fullName.trim(),
+        phone: normalizeOptional(values.phone),
+        email: normalizeOptional(values.email),
+        dateOfBirth: normalizeOptional(values.dateOfBirth),
+        address: normalizeOptional(values.address),
+        avatar: avatarForBackend,
       });
-      message.success("Cap nhat thong tin thanh cong");
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : "Khong the cap nhat thong tin");
+
+      updateUser(updatedUser);
+
+      setAvatar(updatedUser.avatar || "");
+      setPreviewAvatar(null);
+      setAvatarFile(null);
+      message.success("Cập nhật thành công");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cap nhat that bai");
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-3xl overflow-hidden shadow-[0_10px_40px_rgba(0,0,0,0.08)] mb-8">
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-8">
-            <Title level={2} className="!text-white !mb-1">
-              User Profile
-            </Title>
-            <Text className="text-white/80">Manage your personal information</Text>
-          </div>
+    <div className="flex justify-center">
+      <Card
+        bordered={false}
+        className="w-full max-w-3xl rounded-xl"
+        style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}
+      >
+        <div className="text-center mb-6">
+          <Title level={4} className="!mb-1">
+            {user?.username || user?.code || "Profile"}
+          </Title>
+          <Text type="secondary">Update profile information</Text>
         </div>
 
-        <Row gutter={[24, 24]}>
-          <Col xs={24} lg={8}>
-            <div className="bg-white rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.08)] overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-5">
-                <div className="text-white text-xl font-bold">Avatar Profile</div>
-                <div className="text-white/80 text-sm mt-1">Upload and manage your avatar</div>
-              </div>
+        <Form form={form} layout="vertical" onFinish={handleSave}>
+          <div className="flex flex-col items-center mb-8">
+            <div className="relative">
+              <Avatar
+                size={120}
+                src={previewAvatar || resolveMediaUrl(avatar)}
+                icon={!avatar && <UserOutlined />}
+                imgProps={{ crossOrigin: "anonymous" }}
+              />
 
-              <div className="p-8 flex flex-col items-center">
-                <div className="relative">
-                  <Avatar
-                    size={150}
-                    src={avatar}
-                    icon={!avatar ? <UserOutlined /> : undefined}
-                    className="shadow-[0_10px_30px_rgba(0,0,0,0.15)] border-4 border-white"
-                  />
-                  <Upload showUploadList={false} beforeUpload={() => false} onChange={handleUploadAvatar}>
-                    <Button
-                      shape="circle"
-                      type="primary"
-                      size="large"
-                      icon={<CameraOutlined />}
-                      className="!absolute bottom-2 right-2 shadow-lg"
-                    />
-                  </Upload>
-                </div>
-              </div>
+              <Upload
+                showUploadList={false}
+                beforeUpload={beforeUpload}
+                onChange={handlePreview}
+                accept="image/*"
+              >
+                <Button
+                  shape="circle"
+                  icon={<CameraOutlined />}
+                  className="absolute bottom-0 right-0"
+                />
+              </Upload>
             </div>
-          </Col>
 
-          <Col xs={24} lg={16}>
-            <div className="bg-white rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.08)] overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-5">
-                <div className="text-white text-xl font-bold">Personal Information</div>
-                <div className="text-white/80 text-sm mt-1">Update your personal information here</div>
-              </div>
+            {previewAvatar && (
+              <Text className="mt-2 text-orange-500 text-sm">
+                Ảnh mới chưa được lưu
+              </Text>
+            )}
+          </div>
 
-              <div className="p-8">
-                <Form form={form} layout="vertical" onFinish={handleSaveProfile}>
-                  <Row gutter={[20, 20]}>
-                    <Col xs={24} md={12}>
-                      <Form.Item label="Code" name="code" rules={[{ required: true }]}>
-                        <Input size="large" prefix={<UserOutlined />} className="rounded-xl" />
-                      </Form.Item>
-                    </Col>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label="Username">
+                <Input
+                  prefix={<UserOutlined />}
+                  value={user?.code || user?.username || ""}
+                  disabled
+                />
+              </Form.Item>
+            </Col>
 
-                    <Col xs={24} md={12}>
-                      <Form.Item label="Full name" name="fullName" rules={[{ required: true }]}>
-                        <Input size="large" className="rounded-xl" />
-                      </Form.Item>
-                    </Col>
+            <Col span={12}>
+              <Form.Item label="Full Name" name="fullName" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+            </Col>
 
-                    <Col xs={24} md={12}>
-                      <Form.Item label="Email" name="email">
-                        <Input size="large" prefix={<MailOutlined />} className="rounded-xl" />
-                      </Form.Item>
-                    </Col>
+            <Col span={12}>
+              <Form.Item label="Phone" name="phone">
+                <Input prefix={<PhoneOutlined />} />
+              </Form.Item>
+            </Col>
 
-                    <Col xs={24} md={12}>
-                      <Form.Item label="Phone" name="phone">
-                        <Input size="large" prefix={<PhoneOutlined />} className="rounded-xl" />
-                      </Form.Item>
-                    </Col>
+            <Col span={12}>
+              <Form.Item label="Email" name="email">
+                <Input prefix={<MailOutlined />} />
+              </Form.Item>
+            </Col>
 
-                    <Col span={24}>
-                      <Form.Item label="Address" name="address">
-                        <Input.TextArea rows={4} className="rounded-xl" />
-                      </Form.Item>
-                    </Col>
+            <Col span={12}>
+              <Form.Item label="Ngày sinh" name="dateOfBirth">
+                <Input type="date" />
+              </Form.Item>
+            </Col>
 
-                    <Col span={24}>
-                      <Button
-                        htmlType="submit"
-                        type="primary"
-                        size="large"
-                        icon={<SaveOutlined />}
-                        loading={isSaving}
-                        className="rounded-xl h-12 px-8 shadow-lg"
-                      >
-                        Save changes
-                      </Button>
-                    </Col>
-                  </Row>
-                </Form>
-              </div>
-            </div>
-          </Col>
-        </Row>
-      </div>
+            <Col span={24}>
+              <Form.Item label="Địa chỉ" name="address">
+                <Input.TextArea rows={3} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <div className="flex justify-center">
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<SaveOutlined />}
+              size="middle"
+              loading={isSaving}
+              className="px-6 h-9 rounded-lg"
+            >
+              Lưu thay đổi
+            </Button>
+          </div>
+        </Form>
+      </Card>
     </div>
   );
 }

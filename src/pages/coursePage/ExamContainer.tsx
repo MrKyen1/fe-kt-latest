@@ -23,22 +23,51 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   type AnswerValue = string | string[] | Record<string, string>;
 
-  const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(
-    {},
-  );
+  const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
+    const initial: Record<string, AnswerValue> = {};
+    if (examData.status === "submitted") {
+      examData.questions.forEach((q) => {
+        if ((q as any).userAnswer !== undefined) {
+          initial[q.id] = (q as any).userAnswer;
+        }
+      });
+    }
+    return initial;
+  });
+
   const [questionResults, setQuestionResults] = useState<
     Record<string, "correct" | "wrong">
-  >({});
+  >(() => {
+    const initial: Record<string, "correct" | "wrong"> = {};
+    if (examData.status === "submitted") {
+      examData.questions.forEach((q) => {
+        if ((q as any).isCorrect !== undefined) {
+          initial[q.id] = (q as any).isCorrect ? "correct" : "wrong";
+        }
+      });
+    }
+    return initial;
+  });
+
   const [timeRemaining, setTimeRemaining] = useState(examData.timeLimit);
-  const [showFeedback, setShowFeedback] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(() => examData.status === "submitted");
   const [isCorrect, setIsCorrect] = useState(false);
   const [isExamComplete, setIsExamComplete] = useState(false);
-  const [isReviewMode, setIsReviewMode] = useState(false);
+  const [isReviewMode, setIsReviewMode] = useState(() => examData.status === "submitted");
   const [submitResult, setSubmitResult] = useState<{
     score?: string;
     maxScore?: string;
     percentage?: string;
-  } | null>(null);
+  } | null>(() => {
+    if (examData.status === "submitted") {
+      return {
+        score: examData.score,
+        maxScore: examData.maxScore,
+        percentage: examData.percentage,
+      };
+    }
+    return null;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentQuestion = examData.questions[currentIndex];
@@ -46,6 +75,10 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   const progressPercent = (currentIndex / totalQuestions) * 100;
 
   const handleBackClick = () => {
+    if (isReviewMode) {
+      navigate(-1);
+      return;
+    }
     Modal.confirm({
       title: "Quay lại khóa học",
       content:
@@ -64,6 +97,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   // Timer logic
   useEffect(() => {
+    if (isReviewMode) return;
     if (timeRemaining <= 0) {
       handleFinish();
       return;
@@ -72,7 +106,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       setTimeRemaining((prev) => prev - 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, [timeRemaining]);
+  }, [timeRemaining, isReviewMode]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -102,6 +136,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   };
 
   const handleNext = () => {
+    if (isReviewMode) {
+      if (currentIndex < totalQuestions - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        navigate(-1);
+      }
+      return;
+    }
     setShowFeedback(false);
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex((prev) => prev + 1);
@@ -373,19 +415,29 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               )}
             </button>
           )}
-          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700">
-            <ClockCircleOutlined className="text-emerald-600 dark:text-emerald-400" />
-            <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
-              {formatTime(timeRemaining)}
-            </span>
-          </div>
-          <button
-            onClick={handleFinish}
-            disabled={isSubmitting}
-            className="px-4 py-1.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-md text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
-          >
-            {isSubmitting ? "DANG NOP..." : "NOP BAI"}
-          </button>
+          {isReviewMode ? (
+            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-800">
+              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                Điểm: {examData.score} / {examData.maxScore} ({examData.percentage}%)
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700">
+                <ClockCircleOutlined className="text-emerald-600 dark:text-emerald-400" />
+                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
+                  {formatTime(timeRemaining)}
+                </span>
+              </div>
+              <button
+                onClick={handleFinish}
+                disabled={isSubmitting}
+                className="px-4 py-1.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-md text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+              >
+                {isSubmitting ? "DANG NOP..." : "NOP BAI"}
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -466,7 +518,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                   <div
                     key={q.id}
                     className={itemClass}
-                    onClick={() => !showFeedback && setCurrentIndex(idx)}
+                    onClick={() => (isReviewMode || !showFeedback) && setCurrentIndex(idx)}
                   >
                     {idx + 1}
                   </div>
@@ -526,6 +578,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     showFeedback={shouldShowFeedback}
                     onNext={handleNext}
                     isLastQuestion={currentIndex === totalQuestions - 1}
+                    isReviewMode={isReviewMode}
                   />
                 </motion.div>
               </AnimatePresence>

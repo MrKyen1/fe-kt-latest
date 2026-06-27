@@ -25,12 +25,12 @@ export default function AdminDashboard() {
     <div className="space-y-3">
       <div>
         <CenterManagement />
-        <StudentRanking
+        {/* <StudentRanking
           students={students}
           title="Bảng xếp hạng tháng hiện tại"
           showFilters={true}
           maxResults={5}
-        />
+        /> */}
       </div>
     </div>
   );

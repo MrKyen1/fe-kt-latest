@@ -12,14 +12,15 @@ const Login = () => {
   const handleFinish = async (values: { username: string; password: string }) => {
     const { username, password } = values;
     setIsSubmitting(true);
-    const success = await login(username, password);
-    setIsSubmitting(false);
-
-    if (success) {
+    try {
+      await login(username, password);
       message.success("Đăng nhập thành công!");
       navigate("/");
-    } else {
-      message.error("Tên đăng nhập hoặc mật khẩu không đúng.");
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      message.error(error?.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -93,7 +94,7 @@ const Login = () => {
                 className="text-blue-600 cursor-pointer hover:underline"
                 onClick={() => navigate("/forgot-password")}
               >
-                Quên mật khẩu?
+                Đổi mật khẩu tạm thời
               </span>
             </div>
 

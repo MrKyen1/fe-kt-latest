@@ -36,16 +36,12 @@ export interface ExamQuestion {
 
 
   
- // ✅ NEW
-  leftItems?: string[];
-  rightItems?: string[];
+  leftItems?: Array<string | { id: string; text: string }>;
+  rightItems?: Array<string | { id: string; text: string }>;
 
   correctAnswer?: string | string[] | Record<string, string>;
 
   explanation?: string;
-
-  // correctAnswer: string | string[]; // Can be an array of correct ordered words or a single string
-  // explanation: string;
   
 }
 
@@ -125,3 +121,8 @@ export interface AboutUs {
   studentsCount: number;
   coursesCount: number;
 }
+
+export * from "./api";
+export * from "./auth";
+export * from "./backend";
+export * from "./learning";

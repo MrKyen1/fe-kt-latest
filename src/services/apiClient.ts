@@ -7,10 +7,13 @@ import { ApiEnvelope, ApiError, ApiErrorBody, ApiListResult } from "../types/api
 import { tokenStorage } from "./tokenStorage";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+  import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 export const API_ORIGIN = (() => {
   try {
+    if (API_BASE_URL.startsWith("/")) {
+      return typeof window !== "undefined" ? window.location.origin : "";
+    }
     return new URL(API_BASE_URL).origin;
   } catch {
     return "";
@@ -39,6 +42,21 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Authentication failure event subscription to notify the UI context
+type AuthFailureListener = () => void;
+const authFailureListeners = new Set<AuthFailureListener>();
+
+export const subscribeToAuthFailure = (listener: AuthFailureListener) => {
+  authFailureListeners.add(listener);
+  return () => {
+    authFailureListeners.delete(listener);
+  };
+};
+
+const notifyAuthFailure = () => {
+  authFailureListeners.forEach((listener) => listener());
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiErrorBody>) => {
@@ -62,6 +80,7 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshError) {
         tokenStorage.clear();
+        notifyAuthFailure();
         return Promise.reject(normalizeApiError(refreshError));
       }
     }
@@ -82,6 +101,8 @@ interface BackendUser {
   fullName?: string;
   phone?: string;
   email?: string;
+  dateOfBirth?: string;
+  address?: string;
   avatar?: string;
   role: {
     id: string;
@@ -95,10 +116,10 @@ export function normalizeUser(user: BackendUser) {
   return {
     ...user,
     username: user.code,
-    role: {
+    role: user.role ? {
       ...user.role,
       permissions: user.role.permissions ?? [],
-    },
+    } : undefined as any,
   };
 }
 
@@ -106,7 +127,8 @@ export function normalizeApiError(error: unknown) {
   if (axios.isAxiosError<ApiErrorBody>(error)) {
     const body = error.response?.data;
     if (body?.message) {
-      return new ApiError(body.message, body);
+      const msg = Array.isArray(body.message) ? (body.message as string[]).join(", ") : String(body.message);
+      return new ApiError(msg, body);
     }
 
     if (error.response?.status) {
@@ -137,6 +159,7 @@ export function unwrapList<T>(response: AxiosResponse<ApiEnvelope<T[]>>): ApiLis
 
 export function resolveMediaUrl(url: string) {
   if (!url || url.startsWith("http") || url.startsWith("data:")) return url;
-  return `${API_ORIGIN}${url}`;
+  const origin = API_ORIGIN;
+  const separator = (origin.endsWith("/") || url.startsWith("/")) ? "" : "/";
+  return `${origin}${separator}${url}`;
 }
-

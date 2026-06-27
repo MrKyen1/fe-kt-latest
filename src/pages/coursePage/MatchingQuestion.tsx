@@ -57,10 +57,12 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
 
 const DropZone: React.FC<{
   id: string;
-  matchedValue?: string;
+  label: string;
+  matchedId?: string;
+  matchedLabel?: string;
   isCorrect?: boolean;
   showFeedback?: boolean;
-}> = ({ id, matchedValue, isCorrect, showFeedback }) => {
+}> = ({ id, label, matchedId, matchedLabel, isCorrect, showFeedback }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -70,19 +72,19 @@ const DropZone: React.FC<{
         showFeedback
           ? isCorrect
             ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
-            : matchedValue
+            : matchedId
               ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20"
               : "border-slate-200"
           : "border-slate-200 dark:border-slate-600"
       } ${isOver ? "ring-2 ring-emerald-500/60" : ""}`}
     >
       <span className="font-medium text-slate-700 dark:text-slate-200">
-        {id}
+        {label}
       </span>
 
       <div className="flex items-center gap-3 min-w-[120px] justify-end">
-        {matchedValue ? (
-          <DraggableItem id={matchedValue} label={matchedValue} />
+        {matchedId && matchedLabel ? (
+          <DraggableItem id={matchedId} label={matchedLabel} disabled={showFeedback} />
         ) : (
           <span className="text-slate-400 dark:text-slate-500 text-sm">
             Thả đáp án vào đây
@@ -100,16 +102,31 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
   showFeedback,
   correctAnswer = {},
 }) => {
-  const leftItems = question.leftItems || [];
-  const rightItems = question.rightItems || [];
+  const leftItemsList = useMemo(() => {
+    return (question.leftItems || []).map((item) => {
+      if (typeof item === "string") {
+        return { id: item, text: item };
+      }
+      return item as { id: string; text: string };
+    });
+  }, [question.leftItems]);
+
+  const rightItemsList = useMemo(() => {
+    return (question.rightItems || []).map((item) => {
+      if (typeof item === "string") {
+        return { id: item, text: item };
+      }
+      return item as { id: string; text: string };
+    });
+  }, [question.rightItems]);
 
   const { setNodeRef: setChoicesRef, isOver: isOverChoices } = useDroppable({
     id: UNASSIGNED_ZONE_ID,
   });
 
   const shuffledRight = useMemo(() => {
-    return [...rightItems].sort(() => Math.random() - 0.5);
-  }, [rightItems]);
+    return [...rightItemsList].sort(() => Math.random() - 0.5);
+  }, [rightItemsList]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     if (showFeedback) return;
@@ -128,7 +145,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
       return;
     }
 
-    if (!leftItems.includes(dropTargetId)) return;
+    if (!leftItemsList.some((item) => item.id === dropTargetId)) return;
 
     const updatedValue = Object.fromEntries(
       Object.entries(value).filter(([, answer]) => answer !== draggedValue),
@@ -151,15 +168,18 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
               Match
             </h3>
 
-            {leftItems.map((item) => {
-              const matched = value[item];
-              const isCorrect = correctAnswer[item] === matched;
+            {leftItemsList.map((item) => {
+              const matched = value[item.id];
+              const matchedItem = rightItemsList.find((r) => r.id === matched);
+              const isCorrect = correctAnswer && correctAnswer[item.text] === (matchedItem?.text || "");
 
               return (
                 <DropZone
-                  key={item}
-                  id={item}
-                  matchedValue={matched}
+                  key={item.id}
+                  id={item.id}
+                  label={item.text}
+                  matchedId={matched}
+                  matchedLabel={matchedItem?.text}
                   isCorrect={isCorrect}
                   showFeedback={showFeedback}
                 />
@@ -179,13 +199,13 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
               }`}
             >
               {shuffledRight.map((item) => {
-                if (usedValues.includes(item)) return null;
+                if (usedValues.includes(item.id)) return null;
 
                 return (
                   <DraggableItem
-                    key={item}
-                    id={item}
-                    label={item}
+                    key={item.id}
+                    id={item.id}
+                    label={item.text}
                     disabled={showFeedback}
                   />
                 );

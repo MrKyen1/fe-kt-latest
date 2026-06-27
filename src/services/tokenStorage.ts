@@ -5,6 +5,8 @@ export interface StoredUser {
   fullName?: string;
   phone?: string;
   email?: string;
+  dateOfBirth?: string;
+  address?: string;
   avatar?: string;
   role: {
     id: string;
@@ -69,4 +71,3 @@ export const tokenStorage = {
     localStorage.removeItem("user");
   },
 };
-

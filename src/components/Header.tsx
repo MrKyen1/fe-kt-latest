@@ -3,6 +3,7 @@ import { Layout, Menu, Button, Dropdown, MenuProps, Avatar } from "antd";
 import { UserOutlined, LogoutOutlined } from "@ant-design/icons";
 import { useEffect, useState, memo } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { resolveMediaUrl } from "../services/apiClient";
 
 const { Header: AntHeader } = Layout;
 
@@ -14,6 +15,7 @@ const Header = memo(function Header() {
 
   useEffect(() => {
     setCurrent(location.pathname);
+    console.log("user", user);
   }, [location]);
 
   const handleMenuClick = (e: any) => {
@@ -56,7 +58,7 @@ const Header = memo(function Header() {
   const userMenuItems: MenuProps["items"] = [
     {
       key: "profile",
-      label: `${user?.username}`,
+      label: `${user?.fullName}`,
       onClick: () => navigate("/profile"),
     },
     {
@@ -100,18 +102,20 @@ const Header = memo(function Header() {
             <span className="text-sm text-gray-600">
               Xin chào,{" "}
               <span className="font-semibold text-blue-600">
-                {user?.username}
+                {user?.fullName}
               </span>
               !
             </span>
 
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <Avatar
-                src={"https://i.pravatar.cc/150?img=3"}
+                src={user?.avatar ? resolveMediaUrl(user.avatar) : undefined}
+                icon={!user?.avatar && <UserOutlined />}
                 size="large"
-                className="cursor-pointer"
+                className="cursor-pointer bg-blue-500 text-white"
+                imgProps={{ crossOrigin: "anonymous" }}
               >
-                {user?.username?.charAt(0)?.toUpperCase()}
+                {user?.fullName?.charAt(0)?.toUpperCase()}
               </Avatar>
             </Dropdown>
           </div>

@@ -1,33 +1,20 @@
-import { ApiEnvelope, PaginationQuery } from "../types/api";
+import { ApiEnvelope } from "../types/api";
+import { AuditLog, LogQuery, RequestLog } from "../types/backend";
 import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
-export interface LogQuery extends PaginationQuery {
-  requestId?: string;
-  method?: string;
-  statusCode?: number;
-  path?: string;
-  userId?: string;
-  action?: string;
-  resource?: string;
-  resourceId?: string;
-  from?: string;
-  to?: string;
-}
-
-function logService(path: string) {
+function logService<TLog>(path: string) {
   return {
     async list(params?: LogQuery) {
-      return unwrapList(await apiClient.get<ApiEnvelope<unknown[]>>(path, { params }));
+      return unwrapList(await apiClient.get<ApiEnvelope<TLog[]>>(path, { params }));
     },
 
     async get(id: string) {
-      return unwrapData(await apiClient.get<ApiEnvelope<unknown>>(`${path}/${id}`));
+      return unwrapData(await apiClient.get<ApiEnvelope<TLog>>(`${path}/${id}`));
     },
   };
 }
 
 export const observabilityService = {
-  requestLogs: logService("/request-logs"),
-  auditLogs: logService("/audit-logs"),
+  requestLogs: logService<RequestLog>("/request-logs"),
+  auditLogs: logService<AuditLog>("/audit-logs"),
 };
-

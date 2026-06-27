@@ -75,6 +75,13 @@ export const authService = {
         payload,
       ),
     );
+    // If backend doesn't return role info, merge the existing role from tokenStorage
+    if (!user.role) {
+      const existingUser = tokenStorage.getUser();
+      if (existingUser && existingUser.role) {
+        user.role = existingUser.role;
+      }
+    }
     const normalized = normalizeUser(user);
     tokenStorage.setUser(normalized);
     return normalized;

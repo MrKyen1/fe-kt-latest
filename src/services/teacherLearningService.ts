@@ -1,5 +1,12 @@
 import { ApiEnvelope } from "../types/api";
 import {
+  Attempt,
+  CurriculumAssignment,
+  CurriculumAssignmentAnalytics,
+  ExamAssignment,
+  ExamAssignmentAnalytics,
+} from "../types/backend";
+import {
   CurriculumAssignmentRequest,
   ExamAssignmentRequest,
   TeacherAssignmentQuery,
@@ -20,7 +27,7 @@ export const teacherLearningService = {
   examAssignments: {
     async create(payload: ExamAssignmentRequest) {
       return unwrapData(
-        await apiClient.post<ApiEnvelope<unknown>>(
+        await apiClient.post<ApiEnvelope<ExamAssignment>>(
           "/learning/teacher/exam-assignments",
           payload,
         ),
@@ -29,7 +36,7 @@ export const teacherLearningService = {
 
     async list(params?: TeacherAssignmentQuery) {
       return unwrapList(
-        await apiClient.get<ApiEnvelope<unknown[]>>(
+        await apiClient.get<ApiEnvelope<ExamAssignment[]>>(
           "/learning/teacher/exam-assignments",
           { params: normalizeParams(params) },
         ),
@@ -38,7 +45,7 @@ export const teacherLearningService = {
 
     async get(assignmentId: string) {
       return unwrapData(
-        await apiClient.get<ApiEnvelope<unknown>>(
+        await apiClient.get<ApiEnvelope<ExamAssignment>>(
           `/learning/teacher/exam-assignments/${assignmentId}`,
         ),
       );
@@ -46,7 +53,7 @@ export const teacherLearningService = {
 
     async cancel(assignmentId: string) {
       return unwrapData(
-        await apiClient.delete<ApiEnvelope<unknown>>(
+        await apiClient.delete<ApiEnvelope<ExamAssignment>>(
           `/learning/teacher/exam-assignments/${assignmentId}`,
         ),
       );
@@ -57,7 +64,7 @@ export const teacherLearningService = {
       params?: { page?: number; limit?: number; studentId?: string; status?: string },
     ) {
       return unwrapList(
-        await apiClient.get<ApiEnvelope<unknown[]>>(
+        await apiClient.get<ApiEnvelope<Attempt[]>>(
           `/learning/teacher/exam-assignments/${assignmentId}/attempts`,
           { params },
         ),
@@ -66,7 +73,7 @@ export const teacherLearningService = {
 
     async analytics(assignmentId: string) {
       return unwrapData(
-        await apiClient.get<ApiEnvelope<unknown>>(
+        await apiClient.get<ApiEnvelope<ExamAssignmentAnalytics>>(
           `/learning/teacher/exam-assignments/${assignmentId}/analytics`,
         ),
       );
@@ -76,7 +83,7 @@ export const teacherLearningService = {
   curriculumAssignments: {
     async create(payload: CurriculumAssignmentRequest) {
       return unwrapData(
-        await apiClient.post<ApiEnvelope<unknown>>(
+        await apiClient.post<ApiEnvelope<CurriculumAssignment>>(
           "/learning/teacher/curriculum-assignments",
           payload,
         ),
@@ -85,7 +92,7 @@ export const teacherLearningService = {
 
     async list(params?: TeacherAssignmentQuery) {
       return unwrapList(
-        await apiClient.get<ApiEnvelope<unknown[]>>(
+        await apiClient.get<ApiEnvelope<CurriculumAssignment[]>>(
           "/learning/teacher/curriculum-assignments",
           { params: normalizeParams(params) },
         ),
@@ -94,7 +101,7 @@ export const teacherLearningService = {
 
     async get(assignmentId: string) {
       return unwrapData(
-        await apiClient.get<ApiEnvelope<unknown>>(
+        await apiClient.get<ApiEnvelope<CurriculumAssignment>>(
           `/learning/teacher/curriculum-assignments/${assignmentId}`,
         ),
       );
@@ -102,7 +109,7 @@ export const teacherLearningService = {
 
     async cancel(assignmentId: string) {
       return unwrapData(
-        await apiClient.delete<ApiEnvelope<unknown>>(
+        await apiClient.delete<ApiEnvelope<CurriculumAssignment>>(
           `/learning/teacher/curriculum-assignments/${assignmentId}`,
         ),
       );
@@ -110,11 +117,10 @@ export const teacherLearningService = {
 
     async analytics(assignmentId: string) {
       return unwrapData(
-        await apiClient.get<ApiEnvelope<unknown>>(
+        await apiClient.get<ApiEnvelope<CurriculumAssignmentAnalytics>>(
           `/learning/teacher/curriculum-assignments/${assignmentId}/analytics`,
         ),
       );
     },
   },
 };
-

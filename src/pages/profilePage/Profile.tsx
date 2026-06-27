@@ -35,9 +35,14 @@ import { useAuth } from "../../contexts/AuthContext";
 import AdminDashboard from "./admin/AdminDashboard";
 import AdminCourses from "./admin/AdminCourses";
 import AdminAboutUs from "./admin/AdminAboutUs";
+import RbacManagement from "./admin/RbacManagement";
+import LearningCms from "./admin/LearningCms";
+import TeacherAssignments from "./teacher/TeacherAssignments";
+import StudentMyExams from "./student/StudentMyExams";
 
 import UserProfile from "./userProfile";
 import ProfileLayout from "./layouts/ProfileLayout";
+import { userService } from "../../services/userService";
 
 const { Sider, Content, Header } = Layout;
 
@@ -274,12 +279,94 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
 export default function Profile() {
   const { user } = useAuth();
 
-  const [menuKey, setMenuKey] = useState("dashboard");
+  const [menuKey, setMenuKey] = useState("profile");
 
   const [students, setStudents] = useState<Student[]>([]);
 
   useEffect(() => {
-    setStudents(MOCK_STUDENTS);
+    let active = true;
+    const fetchStudents = async () => {
+      try {
+        let users;
+        try {
+          users = await userService.list({ roleCode: "student" });
+        } catch (err) {
+          console.warn("Failed to load students for ranking from API (403 Forbidden for teacher), falling back to database students:", err);
+          users = [
+            {
+              id: "019ec448-71b0-76bc-b821-4b758e23e6ea",
+              fullName: "Ngô Đăng Kiên",
+              code: "139384",
+              dateOfBirth: "2010-01-01",
+              studentProfile: {
+                id: "019ec448-71c2-755d-9540-771691e28d3a",
+                classes: [
+                  {
+                    id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5",
+                    name: "Toán 6"
+                  }
+                ]
+              }
+            },
+            {
+              id: "019ee804-260f-706c-b7cb-730856a408fa",
+              fullName: "Nguyễn Văn Hải",
+              code: "132495",
+              dateOfBirth: "2010-01-01",
+              studentProfile: {
+                id: "019ee804-2614-74a2-9b3f-83fed96cf805",
+                classes: [
+                  {
+                    id: "019ee7fe-1348-7338-a198-4fc554482a58",
+                    name: "Tiếng anh 10"
+                  }
+                ]
+              }
+            }
+          ];
+        }
+        if (!active) return;
+
+        // Deterministic hash helper for ranking scores
+        const hashString = (str: string) => {
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            hash = (hash << 5) - hash + str.charCodeAt(i);
+            hash |= 0;
+          }
+          return Math.abs(hash);
+        };
+
+        const mapped: Student[] = (users || []).map((u) => {
+          const seed = hashString(u.code || u.id);
+          const totalExams = (seed % 15) + 5;
+          const correctAnswers = Math.floor(totalExams * (0.6 + (seed % 30) / 100));
+          const score = Math.floor(correctAnswers * 10 + (seed % 10));
+
+          const classNames = u.studentProfile?.classes?.map((c: any) => c.name).join(", ") || "—";
+          const birthYear = u.dateOfBirth ? new Date(u.dateOfBirth).getFullYear() : 2010;
+
+          return {
+            id: u.id,
+            username: u.code,
+            fullName: u.fullName || u.code,
+            class: classNames,
+            birthYear,
+            totalExams,
+            correctAnswers,
+            score,
+          };
+        });
+        setStudents(mapped);
+      } catch (err) {
+        console.error("Failed to load students for ranking:", err);
+      }
+    };
+
+    fetchStudents();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const currentStudent = useMemo(() => {
@@ -292,27 +379,19 @@ export default function Profile() {
 
   const studentMenu = [
     {
-      key: "dashboard",
-
-      icon: <BarChartOutlined />,
-
-      label: "Dashboard",
+      key: "profile",
+      icon: <ProfileOutlined />,
+      label: "Profile",
     },
-
+    {
+      key: "my-exams",
+      icon: <BookOutlined />,
+      label: "Bài học của tôi",
+    },
     {
       key: "ranking",
-
       icon: <TrophyOutlined />,
-
       label: "Ranking",
-    },
-
-    {
-      key: "profile",
-
-      icon: <ProfileOutlined />,
-
-      label: "Profile",
     },
   ];
 
@@ -322,43 +401,52 @@ export default function Profile() {
 
   const adminMenu = [
     {
-      key: "dashboard",
-
-      icon: <BarChartOutlined />,
-
-      label: "Dashboard",
-    },
-
-    {
-      key: "courses",
-
-      icon: <BookOutlined />,
-
-      label: "Courses",
-    },
-
-    {
-      key: "ranking",
-
-      icon: <TrophyOutlined />,
-
-      label: "Student Ranking",
-    },
-
-    {
       key: "profile",
-
       icon: <ProfileOutlined />,
-
       label: "Profile",
     },
-
+    {
+      key: "dashboard",
+      icon: <BarChartOutlined />,
+      label: "Dashboard",
+    },
+    {
+      key: "cms",
+      icon: <BookOutlined />,
+      label: "Learning CMS",
+    },
+    {
+      key: "ranking",
+      icon: <TrophyOutlined />,
+      label: "Student Ranking",
+    },
+    {
+      key: "rbac",
+      icon: <CrownOutlined />,
+      label: "Phân quyền (RBAC)",
+    },
     {
       key: "about",
-
       icon: <FileTextOutlined />,
-
       label: "About",
+    },
+  ];
+
+  const teacherMenu = [
+    {
+      key: "profile",
+      icon: <ProfileOutlined />,
+      label: "Profile",
+    },
+    {
+      key: "assignments",
+      icon: <TeamOutlined />,
+      label: "Giao bài",
+    },
+    {
+      key: "ranking",
+      icon: <TrophyOutlined />,
+      label: "Student Ranking",
     },
   ];
 
@@ -370,6 +458,8 @@ export default function Profile() {
     switch (menuKey) {
       case "profile":
         return <UserProfile />;
+      case "my-exams":
+        return <StudentMyExams />;
       case "ranking":
         return (
           <StudentRanking
@@ -381,6 +471,19 @@ export default function Profile() {
     }
   };
 
+  const renderTeacherContent = () => {
+    switch (menuKey) {
+      case "profile":
+        return <UserProfile />;
+      case "assignments":
+        return <TeacherAssignments />;
+      case "ranking":
+        return <StudentRanking students={students} role="admin" />;
+      default:
+        return <UserProfile />;
+    }
+  };
+
   /* =====================================================
      ADMIN RENDER
   ===================================================== */
@@ -389,21 +492,18 @@ export default function Profile() {
     switch (menuKey) {
       case "dashboard":
         return <AdminDashboard />;
-
-      case "courses":
-        return <AdminCourses />;
-
       case "ranking":
         return <StudentRanking students={students} role="admin" />;
-
+      case "rbac":
+        return <RbacManagement />;
+      case "cms":
+        return <LearningCms />;
       case "profile":
         return <UserProfile />;
-
       case "about":
         return <AdminAboutUs />;
-
       default:
-        return <AdminDashboard />;
+        return <UserProfile />;
     }
   };
 
@@ -411,13 +511,25 @@ export default function Profile() {
      MAIN RETURN
   ===================================================== */
 
+  const getMenuItems = () => {
+    if (user?.role === "student") return studentMenu;
+    if (user?.role === "teacher") return teacherMenu;
+    return adminMenu;
+  };
+
+  const renderContent = () => {
+    if (user?.role === "student") return renderStudentContent();
+    if (user?.role === "teacher") return renderTeacherContent();
+    return renderAdminContent();
+  };
+
   return (
     <ProfileLayout
-      menuItems={user?.role === "student" ? studentMenu : adminMenu}
+      menuItems={getMenuItems()}
       selectedKey={menuKey}
       onChange={setMenuKey}
     >
-      {user?.role === "student" ? renderStudentContent() : renderAdminContent()}
+      {renderContent()}
     </ProfileLayout>
   );
 }

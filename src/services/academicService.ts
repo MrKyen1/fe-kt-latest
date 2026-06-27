@@ -1,33 +1,47 @@
 import { ApiEnvelope } from "../types/api";
+import {
+  Center,
+  ClassRoom,
+  CreateCenterRequest,
+  CreateClassRequest,
+  CreateSpecializationRequest,
+  Specialization,
+  UpdateCenterRequest,
+  UpdateClassRequest,
+  UpdateSpecializationRequest,
+} from "../types/backend";
 import { apiClient, unwrapData } from "./apiClient";
 
-function crudService(path: string) {
+function crudService<TItem, TCreate, TUpdate>(path: string) {
   return {
-    async create(payload: unknown) {
-      return unwrapData(await apiClient.post<ApiEnvelope<unknown>>(path, payload));
+    async create(payload: TCreate): Promise<TItem> {
+      return unwrapData(await apiClient.post<ApiEnvelope<TItem>>(path, payload));
     },
 
-    async list(params?: Record<string, unknown>) {
-      return unwrapData(await apiClient.get<ApiEnvelope<unknown[]>>(path, { params }));
+    async list(params?: Record<string, unknown>): Promise<TItem[]> {
+      return unwrapData(await apiClient.get<ApiEnvelope<TItem[]>>(path, { params }));
     },
 
-    async get(id: string) {
-      return unwrapData(await apiClient.get<ApiEnvelope<unknown>>(`${path}/${id}`));
+    async get(id: string): Promise<TItem> {
+      return unwrapData(await apiClient.get<ApiEnvelope<TItem>>(`${path}/${id}`));
     },
 
-    async update(id: string, payload: unknown) {
-      return unwrapData(await apiClient.patch<ApiEnvelope<unknown>>(`${path}/${id}`, payload));
+    async update(id: string, payload: TUpdate): Promise<TItem> {
+      return unwrapData(await apiClient.patch<ApiEnvelope<TItem>>(`${path}/${id}`, payload));
     },
 
-    async remove(id: string) {
-      return unwrapData(await apiClient.delete<ApiEnvelope<unknown>>(`${path}/${id}`));
+    async remove(id: string): Promise<TItem> {
+      return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`));
     },
   };
 }
 
 export const academicService = {
-  centers: crudService("/centers"),
-  classes: crudService("/classes"),
-  specializations: crudService("/specializations"),
+  centers: crudService<Center, CreateCenterRequest, UpdateCenterRequest>("/centers"),
+  classes: crudService<ClassRoom, CreateClassRequest, UpdateClassRequest>("/classes"),
+  specializations: crudService<
+    Specialization,
+    CreateSpecializationRequest,
+    UpdateSpecializationRequest
+  >("/specializations"),
 };
-

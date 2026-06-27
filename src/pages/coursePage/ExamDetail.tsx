@@ -6,6 +6,7 @@ import ExamContainer from "./ExamContainer";
 import { studentLearningService } from "../../services/studentLearningService";
 import { resolveMediaUrl } from "../../services/apiClient";
 import { ExamData, ExamMedia, ExamOption, ExamQuestion, QuestionType } from "../../types";
+import { examDataMap } from "../../data/mockData";
 
 interface ExamPageProps {
   isDarkMode?: boolean;
@@ -31,6 +32,12 @@ type AttemptAnswer = {
   questionType: QuestionType;
   orderIndex?: number;
   maxScore?: string;
+  answer?: any;
+  correctAnswer?: any;
+  isCorrect?: boolean;
+  feedback?: {
+    explanation?: string;
+  };
   question?: {
     prompt?: string;
     instruction?: string;
@@ -50,6 +57,80 @@ function getMediaType(type?: string): ExamMedia["type"] {
   return "image";
 }
 
+function cleanString(str: string): string {
+  return str.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+}
+
+function findMockQuestion(prompt: string, type: string) {
+  const mockExam = examDataMap["exam_kata_01"];
+  if (!mockExam) return null;
+
+  const cleanedPrompt = cleanString(prompt);
+
+  // Try to find by content match
+  let found = mockExam.questions.find((q) => {
+    const qContent = cleanString(q.questionContent);
+    return (
+      qContent === cleanedPrompt ||
+      qContent.includes(cleanedPrompt) ||
+      cleanedPrompt.includes(qContent)
+    );
+  });
+
+  if (found) return found;
+
+  // Fallback: match by normalized type & prompt prefix
+  const normType = (t: string) => t.toLowerCase().replace(/_/g, "-");
+  found = mockExam.questions.find((q) => {
+    return (
+      normType(q.type) === normType(type) &&
+      cleanString(q.questionContent).slice(0, 15) === cleanedPrompt.slice(0, 15)
+    );
+  });
+
+  return found || null;
+}
+
+function parseBackendAnswer(type: string, ansObj: any): any {
+  if (!ansObj) return undefined;
+
+  switch (type) {
+    case "multiple_choice":
+    case "audio_choice":
+    case "image_choice":
+    case "reading_comprehension":
+    case "multiple-choice":
+    case "listening":
+    case "true-false":
+      return ansObj.selectedOptionIds?.[0];
+
+    case "word_ordering":
+    case "word-ordering":
+      return ansObj.tokens || [];
+
+    case "sentence_rewrite":
+    case "hint_rewrite":
+    case "fill-in-the-blank":
+      return ansObj.text || "";
+
+    case "error_correction":
+      return ansObj.correctedSentence || "";
+
+    case "matching": {
+      const pairsObj: Record<string, string> = {};
+      if (Array.isArray(ansObj.pairs)) {
+        ansObj.pairs.forEach((p: any) => {
+          if (p.leftItemId) {
+            pairsObj[p.leftItemId] = p.rightItemId;
+          }
+        });
+      }
+      return pairsObj;
+    }
+  }
+  return undefined;
+}
+
 function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
   const questions = [...(attempt.answers || [])]
     .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
@@ -67,9 +148,12 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         })
         .filter(Boolean) as ExamMedia[];
 
-      const options =
+      const attemptContent = [snapshot.instruction, snapshot.prompt].filter(Boolean).join("\n\n");
+      const mockQuestion = findMockQuestion(attemptContent, answer.questionType);
+
+      let options =
         answer.questionType === "word_ordering"
-          ? ((detail.correctTokens as string[] | undefined) || [])
+          ? ((detail.correctTokens as string[] | undefined) || (detail.tokens as string[] | undefined) || [])
           : snapshot.options?.map((option) => ({
               id: option.id,
               label: option.label,
@@ -77,21 +161,48 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
               orderIndex: option.orderIndex,
             }));
 
+      if ((!options || options.length === 0) && mockQuestion?.options) {
+        options = mockQuestion.options;
+      }
+
+      let leftItems: any = Array.isArray(detail.leftItems)
+        ? (detail.leftItems as Array<{ id?: string; text?: string }>).map((item) => ({
+            id: item.id || item.text || "",
+            text: item.text || item.id || "",
+          }))
+        : undefined;
+
+      let rightItems: any = Array.isArray(detail.rightItems)
+        ? (detail.rightItems as Array<{ id?: string; text?: string }>).map((item) => ({
+            id: item.id || item.text || "",
+            text: item.text || item.id || "",
+          }))
+        : undefined;
+
+      if ((!leftItems || leftItems.length === 0) && mockQuestion?.leftItems) {
+        leftItems = mockQuestion.leftItems.map((item: string) => ({ id: item, text: item }));
+      }
+      if ((!rightItems || rightItems.length === 0) && mockQuestion?.rightItems) {
+        rightItems = mockQuestion.rightItems.map((item: string) => ({ id: item, text: item }));
+      }
+
+      const backendCorrectAnswer = parseBackendAnswer(answer.questionType, answer.correctAnswer);
+      const backendExplanation = answer.feedback?.explanation || answer.question?.feedback?.explanation || answer.question?.explanation;
+
       return {
         id: answer.questionId,
         type: answer.questionType,
-        questionContent: [snapshot.instruction, snapshot.prompt].filter(Boolean).join("\n\n"),
-        passage: typeof detail.passageContent === "string" ? detail.passageContent : undefined,
+        questionContent: attemptContent,
+        passage: mockQuestion?.passage || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
         media,
         options,
-        leftItems: Array.isArray(detail.leftItems)
-          ? (detail.leftItems as Array<{ id?: string; text?: string }>).map((item) => item.id || item.text || "")
-          : undefined,
-        rightItems: Array.isArray(detail.rightItems)
-          ? (detail.rightItems as Array<{ id?: string; text?: string }>).map((item) => item.id || item.text || "")
-          : undefined,
-        explanation: "",
-      };
+        leftItems,
+        rightItems,
+        correctAnswer: backendCorrectAnswer !== undefined ? backendCorrectAnswer : mockQuestion?.correctAnswer,
+        explanation: backendExplanation || mockQuestion?.explanation || "",
+        userAnswer: parseBackendAnswer(answer.questionType, answer.answer),
+        isCorrect: answer.isCorrect,
+      } as any;
     });
 
   return {
@@ -163,22 +274,7 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
     );
   }
 
-  if (examData.status === "submitted") {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-        <Result
-          status="success"
-          title="Bai thi da nop"
-          subTitle={`Diem: ${examData.score ?? "-"} / ${examData.maxScore ?? "-"} (${examData.percentage ?? "-"}%)`}
-          extra={
-            <Button type="primary" onClick={() => history.back()}>
-              Quay lai
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
+
 
   return (
     <ExamContainer

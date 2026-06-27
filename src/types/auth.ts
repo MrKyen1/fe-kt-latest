@@ -15,9 +15,9 @@ export interface UpdateMeRequest {
   fullName?: string;
   phone?: string;
   email?: string;
+  dateOfBirth?: string;
   address?: string;
   avatar?: string;
-  code?: string;
 }
 
 export interface ChangePasswordRequest {
@@ -32,4 +32,3 @@ export interface ResetPasswordRequest {
 export interface ResetPasswordResponse {
   password: string;
 }
-

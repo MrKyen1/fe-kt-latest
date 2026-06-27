@@ -12,6 +12,7 @@ interface QuestionCardProps {
   showFeedback: boolean;
   onNext?: () => void;
   isLastQuestion?: boolean;
+  isReviewMode?: boolean;
 }
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
@@ -23,6 +24,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   showFeedback,
   onNext,
   isLastQuestion,
+  isReviewMode,
 }) => {
   const orderedWords = useMemo(() => {
     return Array.isArray(currentAnswer) ? currentAnswer : [];
@@ -472,7 +474,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             onClick={onNext}
             className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 flex items-center gap-2 transition-all group"
           >
-            {isLastQuestion ? "Hoàn thành bài thi" : "Câu tiếp theo"}
+            {isLastQuestion ? (isReviewMode ? "Thoát xem đáp án" : "Hoàn thành bài thi") : "Câu tiếp theo"}
 
             <svg
               xmlns="http://www.w3.org/2000/svg"
