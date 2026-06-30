@@ -125,14 +125,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    try {
-      await authService.logout();
-    } catch (error) {
-      console.error("Logout failed:", error);
-    } finally {
-      tokenStorage.clear();
-      setUser(null);
+    const refreshToken = tokenStorage.getRefreshToken();
+    if (refreshToken) {
+      authService.logout(refreshToken).catch((error) => {
+        console.error("Background logout failed:", error);
+      });
     }
+    tokenStorage.clear();
+    setUser(null);
   };
 
   const hasRole = (roles: string | string[]) => {

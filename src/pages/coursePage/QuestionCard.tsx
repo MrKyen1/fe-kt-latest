@@ -332,6 +332,25 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         {question.questionContent}
       </h2>
 
+      {question.incorrectSentence && (
+        <div className="mt-3 p-4 bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/50 rounded-xl text-[15px] text-slate-700 dark:text-slate-300 font-medium">
+          <span className="text-rose-600 dark:text-rose-400 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần sửa lỗi:</span>
+          {question.incorrectSentence}
+        </div>
+      )}
+
+      {question.sourceSentence && (
+        <div className="mt-3 p-4 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl text-[15px] text-slate-700 dark:text-slate-300 font-medium">
+          <span className="text-indigo-600 dark:text-indigo-400 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần viết lại:</span>
+          {question.sourceSentence}
+          {question.hintWord && (
+            <span className="block mt-2 pt-2 border-t border-indigo-100/50 dark:border-indigo-900/50 text-xs text-slate-500 dark:text-slate-400">
+              Gợi ý sử dụng từ: <strong className="text-indigo-600 dark:text-indigo-400 bg-indigo-100/50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded font-mono">{question.hintWord}</strong>
+            </span>
+          )}
+        </div>
+      )}
+
       {renderInlineMedia()}
     </div>
   );
@@ -461,7 +480,30 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className="mt-auto px-6 py-4 md:px-8 md:py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0 z-10 w-full">
         <div />
 
-        {!showFeedback ? (
+        {!isReviewMode ? (
+          <button
+            onClick={onNext}
+            disabled={isAnswerEmpty()}
+            className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 flex items-center gap-2 transition-all group disabled:opacity-50 disabled:shadow-none"
+          >
+            {isLastQuestion ? "Hoàn thành bài thi" : "Câu tiếp theo"}
+
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 transform group-hover:translate-x-1 transition-transform"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M14 5l7 7m0 0l-7 7m7-7H3"
+              />
+            </svg>
+          </button>
+        ) : !showFeedback ? (
           <button
             onClick={onSubmit}
             disabled={isAnswerEmpty()}
@@ -474,7 +516,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             onClick={onNext}
             className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 flex items-center gap-2 transition-all group"
           >
-            {isLastQuestion ? (isReviewMode ? "Thoát xem đáp án" : "Hoàn thành bài thi") : "Câu tiếp theo"}
+            {isLastQuestion ? "Thoát xem đáp án" : "Câu tiếp theo"}
 
             <svg
               xmlns="http://www.w3.org/2000/svg"

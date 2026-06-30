@@ -42,7 +42,9 @@ export interface ExamQuestion {
   correctAnswer?: string | string[] | Record<string, string>;
 
   explanation?: string;
-  
+  sourceSentence?: string;
+  incorrectSentence?: string;
+  hintWord?: string;
 }
 
 export interface ExamData {

@@ -171,7 +171,14 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
             {leftItemsList.map((item) => {
               const matched = value[item.id];
               const matchedItem = rightItemsList.find((r) => r.id === matched);
-              const isCorrect = correctAnswer && correctAnswer[item.text] === (matchedItem?.text || "");
+              let isCorrect = false;
+              if (correctAnswer) {
+                if (correctAnswer[item.id] !== undefined) {
+                  isCorrect = correctAnswer[item.id] === matched;
+                } else if (correctAnswer[item.text] !== undefined) {
+                  isCorrect = correctAnswer[item.text] === (matchedItem?.text || "");
+                }
+              }
 
               return (
                 <DropZone

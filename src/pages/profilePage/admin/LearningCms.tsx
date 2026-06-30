@@ -146,6 +146,8 @@ export default function LearningCms() {
   const [examForm] = Form.useForm();
   const [curriculumForm] = Form.useForm();
 
+  const watchedMediaIds = Form.useWatch("mediaIds", questionForm);
+
   // Media file state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [mediaAlt, setMediaAlt] = useState("");
@@ -172,7 +174,7 @@ export default function LearningCms() {
         sortOrder: "ASC",
       });
       const data = res.data || [];
-      
+
       switch (tab) {
         case "levels":
           setFilteredLevels(data);
@@ -243,7 +245,7 @@ export default function LearningCms() {
         if (taxTab !== "skills") setFilteredSkills(skillsData);
         if (taxTab !== "topics") setFilteredTopics(topicsData);
         if (taxTab !== "tags") setFilteredTags(tagsData);
-        
+
         loadTaxonomyData(taxTab, taxSearch);
       }
 
@@ -352,8 +354,9 @@ export default function LearningCms() {
       }
       loadAllData();
       setTaxModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || "Thao tác thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -445,8 +448,9 @@ export default function LearningCms() {
       }
       loadAllData();
       setPassageModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || "Thao tác thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -464,41 +468,56 @@ export default function LearningCms() {
         { label: "C", content: "", isCorrect: false, orderIndex: 2 },
         { label: "D", content: "", isCorrect: false, orderIndex: 3 },
       ],
+      mediaIds: [],
     });
     setQuestionModalOpen(true);
   };
 
-  const handleQuestionEdit = (record: any) => {
-    setEditingItem(record);
-    setCurrentQuestionType(record.type);
+  const handleQuestionEdit = async (record: any) => {
+    try {
+      const fullRecord = await learningCmsService.questions.get(record.id);
+      setEditingItem(fullRecord);
+      setCurrentQuestionType(fullRecord.type);
 
-    // Flatten detail fields to the Form root level
-    const detailFields: any = {};
-    if (record.detail) {
-      Object.assign(detailFields, record.detail);
-      
-      // Convert arrays back to space/newline-separated strings for inputs
-      if (record.type === "word_ordering" && Array.isArray(record.detail.correctTokens)) {
-        detailFields.correctTokens = record.detail.correctTokens.join(" ");
+      // Flatten detail fields to the Form root level
+      const detailFields: any = {};
+      if (fullRecord.detail) {
+        Object.assign(detailFields, fullRecord.detail);
+
+        // Convert arrays back to space/newline-separated strings for inputs
+        if (fullRecord.type === "word_ordering" && Array.isArray(fullRecord.detail.correctTokens)) {
+          detailFields.correctTokens = fullRecord.detail.correctTokens.join(" ");
+        }
+        if ((fullRecord.type === "sentence_rewrite" || fullRecord.type === "hint_rewrite") && Array.isArray(fullRecord.detail.acceptedAnswers)) {
+          detailFields.acceptedAnswers = fullRecord.detail.acceptedAnswers.join("\n");
+        }
       }
-      if ((record.type === "sentence_rewrite" || record.type === "hint_rewrite") && Array.isArray(record.detail.acceptedAnswers)) {
-        detailFields.acceptedAnswers = record.detail.acceptedAnswers.join("\n");
-      }
+
+      const mediaIds = (fullRecord.media || []).map((m: any) => ({
+        mediaId: m.mediaId || m.media?.id,
+        role: m.role,
+        orderIndex: m.orderIndex,
+      }));
+
+      questionForm.setFieldsValue({
+        type: fullRecord.type,
+        prompt: fullRecord.type === "error_correction" && fullRecord.detail?.incorrectSentence
+          ? fullRecord.detail.incorrectSentence
+          : fullRecord.prompt,
+        instruction: fullRecord.instruction,
+        explanation: fullRecord.explanation,
+        difficultyLevelId: fullRecord.difficultyLevelId,
+        skillId: fullRecord.skillId,
+        topicId: fullRecord.topicId,
+        tagIds: (fullRecord.tags || []).map((t: any) => t.id) || [],
+        options: fullRecord.options || [],
+        mediaIds,
+        ...detailFields,
+      });
+      setQuestionModalOpen(true);
+    } catch {
+      message.error("Không thể tải chi tiết câu hỏi");
     }
-
-    questionForm.setFieldsValue({
-      type: record.type,
-      prompt: record.prompt,
-      instruction: record.instruction,
-      explanation: record.explanation,
-      difficultyLevelId: record.difficultyLevelId,
-      skillId: record.skillId,
-      topicId: record.topicId,
-      tagIds: record.tagIds || [],
-      options: record.options || [],
-      ...detailFields,
-    });
-    setQuestionModalOpen(true);
   };
 
   const handleQuestionDelete = (record: any) => {
@@ -523,17 +542,34 @@ export default function LearningCms() {
   const handleQuestionSubmit = async (values: any) => {
     try {
       const qType = values.type;
+
+      // Validate choice-based questions (need at least one correct option)
+      if (CHOICE_TYPES.includes(qType)) {
+        const hasCorrect = (values.options || []).some((o: any) => o.isCorrect);
+        if (!hasCorrect) {
+          message.error("Vui lòng chọn ít nhất một đáp án đúng cho câu hỏi.");
+          return;
+        }
+      }
+
       // Build payload based on question type
       const payload: any = {
         type: qType,
         prompt: values.prompt,
-        instruction: values.instruction,
-        explanation: values.explanation,
+        instruction: values.instruction !== undefined ? values.instruction : editingItem?.instruction,
+        explanation: values.explanation !== undefined ? values.explanation : editingItem?.explanation,
         difficultyLevelId: values.difficultyLevelId,
         skillId: values.skillId,
         topicId: values.topicId,
         tagIds: values.tagIds || [],
         status: editingItem?.status || "draft",
+        mediaIds: (values.mediaIds || [])
+          .filter((m: any) => m && m.mediaId && m.role)
+          .map((m: any, idx: number) => ({
+            mediaId: m.mediaId,
+            role: m.role,
+            orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
+          })),
       };
 
       if (CHOICE_TYPES.includes(qType)) {
@@ -574,7 +610,7 @@ export default function LearningCms() {
       } else if (qType === "error_correction") {
         payload.options = [];
         payload.detail = {
-          incorrectSentence: values.incorrectSentence,
+          incorrectSentence: values.prompt,
           correctSentence: values.correctSentence,
           errorSpans: [],
         };
@@ -592,7 +628,8 @@ export default function LearningCms() {
       }
 
       if (editingItem) {
-        await learningCmsService.questions.update(editingItem.id, payload);
+        const { type, status, ...updatePayload } = payload;
+        await learningCmsService.questions.update(editingItem.id, updatePayload);
         message.success("Cập nhật câu hỏi thành công");
       } else {
         await learningCmsService.questions.create(payload);
@@ -600,8 +637,9 @@ export default function LearningCms() {
       }
       loadAllData();
       setQuestionModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || "Thao tác thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -674,8 +712,9 @@ export default function LearningCms() {
       }
       loadAllData();
       setExamModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || "Thao tác thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -749,8 +788,9 @@ export default function LearningCms() {
       }
       loadAllData();
       setCurriculumModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || "Thao tác thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -969,6 +1009,34 @@ export default function LearningCms() {
     },
   ].filter(Boolean) as any[];
 
+  // Helpers for filtering media based on question type
+  const getFilteredMedia = () => {
+    if (currentQuestionType === "image_choice") {
+      return media.filter(
+        (m) => m.type === "image" || m.mimeType?.startsWith("image")
+      );
+    }
+    if (currentQuestionType === "audio_choice") {
+      return media.filter(
+        (m) => m.type === "audio" || m.mimeType?.startsWith("audio")
+      );
+    }
+    return media;
+  };
+
+  const getAvailableRoles = () => {
+    if (currentQuestionType === "image_choice") {
+      return [{ value: "prompt_image", label: "🖼️ Hình ảnh đề bài" }];
+    }
+    if (currentQuestionType === "audio_choice") {
+      return [{ value: "prompt_audio", label: "🔊 Âm thanh đề bài" }];
+    }
+    return [
+      { value: "prompt_audio", label: "🔊 Âm thanh đề bài" },
+      { value: "prompt_image", label: "🖼️ Hình ảnh đề bài" },
+    ];
+  };
+
   // ==================== QUESTION TYPE-SPECIFIC FORM FIELDS ====================
   const renderQuestionDetailFields = () => {
     const type = currentQuestionType;
@@ -1115,10 +1183,7 @@ export default function LearningCms() {
       return (
         <div className="bg-slate-50 p-4 rounded-xl space-y-3">
           <Text className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sửa lỗi</Text>
-          <Form.Item name="incorrectSentence" label="Câu sai" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="Câu có lỗi ngữ pháp..." rows={2} className="rounded-xl" />
-          </Form.Item>
-          <Form.Item name="correctSentence" label="Câu đúng" rules={[{ required: true }]}>
+          <Form.Item name="correctSentence" label="Đáp án" rules={[{ required: true }]}>
             <Input.TextArea placeholder="Câu đã sửa đúng..." rows={2} className="rounded-xl" />
           </Form.Item>
         </div>
@@ -1916,6 +1981,7 @@ export default function LearningCms() {
                     <Form.Item name="type" label="Loại câu hỏi" rules={[{ required: true }]}>
                       <Select
                         className="rounded-xl"
+                        disabled={!!editingItem}
                         onChange={(val) => {
                           setCurrentQuestionType(val);
                           // Reset type-specific fields
@@ -1978,27 +2044,126 @@ export default function LearningCms() {
 
                 <Divider className="my-3" />
 
-                <Form.Item name="prompt" label="Nội dung câu hỏi (Đề bài)" rules={[{ required: true }]}>
-                  <Input.TextArea placeholder="Câu hỏi hiển thị cho học sinh..." rows={3} className="rounded-xl" />
+                <Form.Item
+                  name="prompt"
+                  label={currentQuestionType === "error_correction" ? "Đề bài" : "Nội dung câu hỏi (Đề bài)"}
+                  rules={[{ required: true }]}
+                >
+                  <Input.TextArea
+                    placeholder={currentQuestionType === "error_correction" ? "Ví dụ: She go to school by bus every day." : "Câu hỏi hiển thị cho học sinh..."}
+                    rows={3}
+                    className="rounded-xl"
+                  />
                 </Form.Item>
 
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="instruction" label="Hướng dẫn làm bài">
-                      <Input placeholder="Ví dụ: Chọn câu trả lời đúng nhất" className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="explanation" label="Giải thích đáp án">
-                      <Input placeholder="Lý do đáp án đúng..." className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                </Row>
+                <Divider className="my-3" />
+
+                {/* Media Assets Section */}
+                <div className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <Text className="text-sm font-semibold text-slate-700">Tệp tin đa phương tiện (Media)</Text>
+                  </div>
+                  <Form.List name="mediaIds">
+                    {(mediaFields, { add, remove }) => (
+                      <div className="space-y-2">
+                        {mediaFields.map(({ key, name, ...restField }) => {
+                          const currentMediaId = questionForm.getFieldValue(["mediaIds", name, "mediaId"]);
+                          const selectedAsset = media.find((m) => m.id === currentMediaId);
+
+                          return (
+                            <div key={key} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl">
+                              <Form.Item
+                                {...restField}
+                                name={[name, "mediaId"]}
+                                rules={[{ required: true, message: "Chọn tệp media!" }]}
+                                className="mb-0 flex-1"
+                              >
+                                <Select
+                                  placeholder="Chọn tệp tin (ảnh, âm thanh, video)"
+                                  className="rounded-lg w-full"
+                                  allowClear
+                                  onChange={() => {
+                                    const roles = getAvailableRoles();
+                                    if (roles.length === 1) {
+                                      questionForm.setFieldValue(["mediaIds", name, "role"], roles[0].value);
+                                    }
+                                  }}
+                                >
+                                  {getFilteredMedia().map((asset) => (
+                                    <Select.Option key={asset.id} value={asset.id}>
+                                      [{asset.type.toUpperCase()}] {asset.altText || asset.url.split("/").pop()}
+                                    </Select.Option>
+                                  ))}
+                                </Select>
+                              </Form.Item>
+
+                              <Form.Item
+                                {...restField}
+                                name={[name, "role"]}
+                                rules={[{ required: true, message: "Chọn vai trò!" }]}
+                                className="mb-0 w-44"
+                              >
+                                <Select placeholder="Vai trò" className="rounded-lg">
+                                  {getAvailableRoles().map((r) => (
+                                    <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
+                                  ))}
+                                </Select>
+                              </Form.Item>
+
+                              {/* Preview thumbnail */}
+                              {selectedAsset && (
+                                <div className="w-10 h-10 flex items-center justify-center bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                                  {selectedAsset.type === "image" || selectedAsset.mimeType?.startsWith("image") ? (
+                                    <img
+                                      src={resolveMediaUrl(selectedAsset.url)}
+                                      alt="Preview"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : selectedAsset.type === "audio" || selectedAsset.mimeType?.startsWith("audio") ? (
+                                    <SoundOutlined className="text-lg text-indigo-600" />
+                                  ) : (
+                                    <span className="text-lg">📹</span>
+                                  )}
+                                </div>
+                              )}
+
+                              <Button
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={() => remove(name)}
+                                className="shrink-0"
+                              />
+                            </div>
+                          );
+                        })}
+                        <Button
+                          type="dashed"
+                          icon={<PlusOutlined />}
+                          onClick={() => {
+                            const roles = getAvailableRoles();
+                            const defaultRole = roles.length === 1 ? roles[0].value : "prompt_image";
+                            add({ mediaId: undefined, role: defaultRole });
+                          }}
+                          className="w-full rounded-xl"
+                        >
+                          Thêm liên kết Media
+                        </Button>
+                      </div>
+                    )}
+                  </Form.List>
+                </div>
 
                 <Divider className="my-3" />
 
                 {/* Type-specific fields */}
                 {renderQuestionDetailFields()}
+
+                <Divider className="my-3" />
+
+                <Form.Item name="explanation" label="Giải thích đáp án (Giải thích chi tiết)">
+                  <Input.TextArea placeholder="Nhập phần giải thích đáp án hiển thị sau khi học sinh nộp bài..." rows={3} className="rounded-xl" />
+                </Form.Item>
               </Form>
             </Modal>
 

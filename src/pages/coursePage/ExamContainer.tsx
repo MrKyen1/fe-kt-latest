@@ -13,6 +13,98 @@ interface ExamContainerProps {
   toggleDarkMode?: () => void;
 }
 
+type AnswerValue = string | string[] | Record<string, string>;
+
+const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean => {
+  if (answer === undefined || answer === null) return false;
+  const correct = question.correctAnswer;
+  if (correct === undefined || correct === null) return false;
+
+  const normalizeText = (text: any): string => {
+    if (typeof text !== "string") return "";
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "")
+      .replace(/\s+/g, " ");
+  };
+
+  switch (question.type) {
+    case "multiple_choice":
+    case "audio_choice":
+    case "image_choice":
+    case "reading_comprehension":
+    case "multiple-choice":
+    case "listening":
+    case "true-false": {
+      return normalizeText(answer) === normalizeText(correct);
+    }
+
+    case "word_ordering":
+    case "word-ordering": {
+      const ansArr = Array.isArray(answer) ? answer : [];
+      if (Array.isArray(correct)) {
+        if (ansArr.length !== correct.length) return false;
+        return ansArr.every((val, idx) => normalizeText(val) === normalizeText(correct[idx]));
+      } else if (typeof correct === "string") {
+        const correctArr = correct.split(" ").filter(Boolean);
+        if (ansArr.length !== correctArr.length) return false;
+        return ansArr.every((val, idx) => normalizeText(val) === normalizeText(correctArr[idx]));
+      }
+      return false;
+    }
+
+    case "sentence_rewrite":
+    case "hint_rewrite":
+    case "fill-in-the-blank": {
+      const userText = normalizeText(answer);
+      if (typeof correct === "string") {
+        const accepted = correct.split("\n").map(normalizeText).filter(Boolean);
+        if (accepted.length > 0) {
+          return accepted.some(ans => ans === userText);
+        }
+        return userText === normalizeText(correct);
+      } else if (Array.isArray(correct)) {
+        return correct.map(normalizeText).some(ans => ans === userText);
+      }
+      return false;
+    }
+
+    case "error_correction": {
+      return normalizeText(answer) === normalizeText(correct);
+    }
+
+    case "matching": {
+      if (typeof answer !== "object" || typeof correct !== "object" || answer === null || correct === null) return false;
+
+      const leftItems = question.leftItems || [];
+      return leftItems.every((item: any) => {
+        const leftId = typeof item === "string" ? item : item.id;
+        const leftText = typeof item === "string" ? item : item.text;
+
+        const userMatchedId = (answer as any)[leftId];
+        const rightItems = question.rightItems || [];
+        const userMatchedItem = rightItems.find((r: any) => (typeof r === "string" ? r : r.id) === userMatchedId);
+        const userMatchedText = userMatchedItem ? (typeof userMatchedItem === "string" ? userMatchedItem : userMatchedItem.text) : "";
+
+        let correctMatchedText = "";
+        if ((correct as any)[leftId] !== undefined) {
+          const correctMatchedId = (correct as any)[leftId];
+          const correctMatchedItem = rightItems.find((r: any) => (typeof r === "string" ? r : r.id) === correctMatchedId);
+          correctMatchedText = correctMatchedItem ? (typeof correctMatchedItem === "string" ? correctMatchedItem : correctMatchedItem.text) : "";
+        } else if ((correct as any)[leftText] !== undefined) {
+          correctMatchedText = (correct as any)[leftText];
+        }
+
+        return normalizeText(userMatchedText) === normalizeText(correctMatchedText);
+      });
+    }
+
+    default:
+      return false;
+  }
+};
+
 const ExamContainer: React.FC<ExamContainerProps> = ({
   examData,
   isDarkMode,
@@ -132,7 +224,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   };
 
   const handleSubmit = () => {
-    handleNext();
+    const evaluatedIsCorrect = checkIsCorrect(currentQuestion, userAnswers[currentQuestion.id]);
+    const status = evaluatedIsCorrect ? "correct" : "wrong";
+    setQuestionResults((prev) => ({
+      ...prev,
+      [currentQuestion.id]: status,
+    }));
   };
 
   const handleNext = () => {
@@ -185,9 +282,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           pairs:
             answer && typeof answer === "object" && !Array.isArray(answer)
               ? Object.entries(answer).map(([leftItemId, rightItemId]) => ({
-                  leftItemId,
-                  rightItemId,
-                }))
+                leftItemId,
+                rightItemId,
+              }))
               : [],
         };
       default:
@@ -213,8 +310,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       setShowFeedback(false);
     } catch (error) {
       Modal.error({
-        title: "Khong the nop bai",
-        content: error instanceof Error ? error.message : "Vui long thu lai sau.",
+        title: "Không thể nộp bài",
+        content: error instanceof Error ? error.message : "Vui lòng thử lại sau.",
       });
     } finally {
       setIsSubmitting(false);
@@ -293,11 +390,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               Kết quả bài thi
             </h1>
             <p className="text-lg text-slate-600 dark:text-slate-300 mb-6">
-              Backend da cham diem{" "}
+              Backend đã chấm điểm{" "}
               <span className="font-black text-emerald-600 dark:text-emerald-400">
                 {submitResult?.score ?? "-"}
               </span>{" "}
-              tren tong diem{" "}
+              trên tổng điểm{" "}
               <span className="font-black text-slate-900 dark:text-slate-100">
                 {submitResult?.maxScore ?? "-"}
               </span>{" "}
@@ -306,7 +403,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             <div className="grid grid-cols-2 gap-4 text-left mb-8">
               <div className="rounded-3xl bg-emerald-50 dark:bg-emerald-900/20 p-5 border border-emerald-100 dark:border-emerald-700">
                 <p className="text-sm uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                  Diem
+                  Điểm
                 </p>
                 <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
                   {submitResult?.score ?? "-"}
@@ -314,7 +411,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               </div>
               <div className="rounded-3xl bg-rose-50 dark:bg-rose-900/20 p-5 border border-rose-100 dark:border-rose-700">
                 <p className="text-sm uppercase tracking-widest text-rose-700 dark:text-rose-300">
-                  Tong diem
+                  Tổng điểm
                 </p>
                 <p className="text-3xl font-bold text-rose-700 dark:text-rose-300">
                   {submitResult?.maxScore ?? "-"}
@@ -322,7 +419,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               </div>
               <div className="rounded-3xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700">
                 <p className="text-sm uppercase tracking-widest text-slate-600 dark:text-slate-400">
-                  Chua lam
+                  Chưa làm
                 </p>
                 <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
                   {totalUnanswered}
@@ -330,7 +427,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               </div>
               <div className="rounded-3xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700">
                 <p className="text-sm uppercase tracking-widest text-slate-600 dark:text-slate-400">
-                  Tong cau
+                  Tổng câu
                 </p>
                 <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
                   {totalQuestions}
@@ -342,13 +439,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 onClick={() => navigate(-1)}
                 className="px-6 py-4 rounded-3xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 font-semibold hover:bg-slate-200 transition"
               >
-                Quay lai
+                Quay lại
               </button>
               <button
                 onClick={handleResetExam}
                 className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
               >
-                Lam lai attempt moi
+                Làm lại attempt mới
               </button>
             </div>
           </div>
@@ -434,7 +531,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 disabled={isSubmitting}
                 className="px-4 py-1.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-md text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
               >
-                {isSubmitting ? "DANG NOP..." : "NOP BAI"}
+                {isSubmitting ? "ĐANG NỘP..." : "NỘP BÀI"}
               </button>
             </>
           )}

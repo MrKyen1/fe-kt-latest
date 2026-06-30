@@ -4,6 +4,7 @@ import { Button, Result, Spin } from "antd";
 import { BugOutlined } from "@ant-design/icons";
 import ExamContainer from "./ExamContainer";
 import { studentLearningService } from "../../services/studentLearningService";
+import { learningCmsService } from "../../services/learningCmsService";
 import { resolveMediaUrl } from "../../services/apiClient";
 import { ExamData, ExamMedia, ExamOption, ExamQuestion, QuestionType } from "../../types";
 import { examDataMap } from "../../data/mockData";
@@ -15,6 +16,7 @@ interface ExamPageProps {
 
 type AttemptPayload = {
   id: string;
+  examId?: string;
   status?: "in_progress" | "submitted";
   score?: string;
   maxScore?: string;
@@ -193,7 +195,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         id: answer.questionId,
         type: answer.questionType,
         questionContent: attemptContent,
-        passage: mockQuestion?.passage || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
+        passage: mockQuestion?.passage || detail.passage?.content || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
         media,
         options,
         leftItems,
@@ -202,6 +204,9 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         explanation: backendExplanation || mockQuestion?.explanation || "",
         userAnswer: parseBackendAnswer(answer.questionType, answer.answer),
         isCorrect: answer.isCorrect,
+        sourceSentence: detail.sourceSentence || mockQuestion?.sourceSentence,
+        incorrectSentence: detail.incorrectSentence || mockQuestion?.incorrectSentence,
+        hintWord: detail.hintWord || mockQuestion?.hintWord,
       } as any;
     });
 
@@ -236,6 +241,47 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
       try {
         setIsLoading(true);
         const attempt = (await studentLearningService.attempts.get(attemptId)) as AttemptPayload;
+
+        // Fetch exam detail to retrieve its actual title
+        if (attempt && attempt.examId) {
+          try {
+            const examDetail = await learningCmsService.exams.get(attempt.examId);
+            if (examDetail) {
+              attempt.exam = examDetail as any;
+            }
+          } catch (eErr) {
+            console.error("Failed to fetch exam detail:", eErr);
+          }
+        }
+
+        // Fetch detailed question content for reading_comprehension questions to retrieve the passage
+        if (attempt?.answers) {
+          await Promise.allSettled(
+            attempt.answers.map(async (answer) => {
+              if (
+                (answer.questionType === "reading_comprehension" ||
+                 answer.questionType === "reading-comprehension") &&
+                answer.questionId
+              ) {
+                try {
+                  const fullQuestion = await learningCmsService.questions.get(answer.questionId);
+                  if (fullQuestion && fullQuestion.detail) {
+                    if (!answer.question) {
+                      answer.question = {} as any;
+                    }
+                    answer.question.detail = {
+                      ...answer.question.detail,
+                      ...fullQuestion.detail,
+                    };
+                  }
+                } catch (qErr) {
+                  console.error("Failed to fetch detailed reading comprehension question:", qErr);
+                }
+              }
+            })
+          );
+        }
+
         if (active) {
           setExamData(mapAttemptToExamData(attempt));
           setError(null);
