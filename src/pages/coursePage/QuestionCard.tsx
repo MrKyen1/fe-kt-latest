@@ -394,7 +394,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               </span>
             )}
 
-            {question.explanation}
+            {question.explanation || (isCorrect ? "" : "Chưa có giải thích chi tiết cho câu hỏi này.")}
           </p>
         </div>
       </div>
@@ -480,34 +480,11 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className="mt-auto px-6 py-4 md:px-8 md:py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0 z-10 w-full">
         <div />
 
-        {!isReviewMode ? (
-          <button
-            onClick={onNext}
-            disabled={isAnswerEmpty()}
-            className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 flex items-center gap-2 transition-all group disabled:opacity-50 disabled:shadow-none"
-          >
-            {isLastQuestion ? "Hoàn thành bài thi" : "Câu tiếp theo"}
-
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 transform group-hover:translate-x-1 transition-transform"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M14 5l7 7m0 0l-7 7m7-7H3"
-              />
-            </svg>
-          </button>
-        ) : !showFeedback ? (
+        {!showFeedback ? (
           <button
             onClick={onSubmit}
             disabled={isAnswerEmpty()}
-            className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:shadow-none"
+            className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:shadow-none"
           >
             Nộp câu trả lời
           </button>
@@ -516,7 +493,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             onClick={onNext}
             className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 flex items-center gap-2 transition-all group"
           >
-            {isLastQuestion ? "Thoát xem đáp án" : "Câu tiếp theo"}
+            {isLastQuestion ? (isReviewMode ? "Thoát xem đáp án" : "Hoàn thành bài thi") : "Câu tiếp theo"}
 
             <svg
               xmlns="http://www.w3.org/2000/svg"

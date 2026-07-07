@@ -38,28 +38,24 @@ export default function FacilitiesActivities() {
           <Col xs={24} md={12}>
             <div className="grid grid-cols-2 gap-4">
               <img
-                src="https://picsum.photos/seed/fac1/400/400"
+                src="https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=400&h=400&fit=crop&q=80"
                 alt="Facility 1"
                 className="rounded-2xl w-full h-48 object-cover shadow-lg"
-                referrerPolicy="no-referrer"
               />
               <img
-                src="https://picsum.photos/seed/fac2/400/400"
+                src="https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=400&h=400&fit=crop&q=80"
                 alt="Facility 2"
                 className="rounded-2xl w-full h-48 object-cover shadow-lg mt-8"
-                referrerPolicy="no-referrer"
               />
               <img
-                src="https://picsum.photos/seed/fac3/400/400"
+                src="https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=400&h=400&fit=crop&q=80"
                 alt="Facility 3"
                 className="rounded-2xl w-full h-48 object-cover shadow-lg"
-                referrerPolicy="no-referrer"
               />
               <img
-                src="https://picsum.photos/seed/fac4/400/400"
+                src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400&h=400&fit=crop&q=80"
                 alt="Facility 4"
                 className="rounded-2xl w-full h-48 object-cover shadow-lg mt-8"
-                referrerPolicy="no-referrer"
               />
             </div>
           </Col>

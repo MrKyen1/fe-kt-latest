@@ -827,7 +827,6 @@ export default function LearningCms() {
       const orderIndex = currentQuestions.length;
       await learningCmsService.exams.attachQuestion(selectedExam.id, {
         questionId,
-        score: 1,
         orderIndex,
       });
       message.success("Thêm câu hỏi thành công");

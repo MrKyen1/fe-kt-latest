@@ -32,8 +32,9 @@ export interface StatusUpdateRequest {
 
 export interface ExamQuestionMappingRequest {
   questionId: string;
-  orderIndex: number;
-  score: number;
+  orderIndex?: number;
+  // NOTE: `score` bị bỏ — backend v2 chấm cộng dồn (mỗi câu = 1 điểm).
+  // Gửi `score` sẽ bị backend từ chối với 400.
 }
 
 export interface ReorderExamQuestionsRequest {
@@ -58,19 +59,46 @@ export interface ReorderCurriculumExamsRequest {
   }>;
 }
 
-export interface TeacherAssignmentRequest {
-  classId: string;
+// ==================== TEACHER ASSIGNMENT TYPES ====================
+
+/** Giao bài thi cho 1 hoặc nhiều học sinh / lớp - nhiều exam 1 lúc */
+export interface ExamAssignmentRequest {
+  /** Danh sách exam ID (tối thiểu 1) */
+  examIds: string[];
+  /** ID lớp học (tùy chọn nếu đã có studentIds) */
+  classId?: string;
+  /** ID học sinh cụ thể (tùy chọn – bỏ trống = toàn bộ lớp) */
   studentIds?: string[];
+  /** Số lần làm tối đa (bỏ trống = vĩnh viễn) */
+  maxAttempts?: number;
   title?: string;
   instructions?: string;
 }
 
-export interface ExamAssignmentRequest extends TeacherAssignmentRequest {
-  examId: string;
+/** Giao giáo trình trực tiếp cho học sinh (không nhất thiết qua lớp) */
+export interface CurriculumAssignmentRequest {
+  curriculumId: string;
+  /** Bắt buộc phải có ít nhất 1 học sinh */
+  studentIds: string[];
+  /** ID lớp học (tùy chọn) */
+  classId?: string;
+  /** Số lần làm tối đa (bỏ trống = vĩnh viễn) */
+  maxAttempts?: number;
+  title?: string;
+  instructions?: string;
 }
 
-export interface CurriculumAssignmentRequest extends TeacherAssignmentRequest {
+/** Gắn giáo trình vào lớp học (class-curriculum mapping) */
+export interface ClassCurriculumRequest {
+  classId: string;
   curriculumId: string;
+  /** Số lần làm tối đa (bỏ trống = vĩnh viễn) */
+  maxAttempts?: number;
+}
+
+export interface ClassCurriculumQuery extends PaginationQuery {
+  classId?: string;
+  curriculumId?: string;
 }
 
 export interface TeacherAssignmentQuery extends PaginationQuery {
@@ -82,9 +110,38 @@ export interface TeacherAssignmentQuery extends PaginationQuery {
 }
 
 export interface SubmitAttemptRequest {
-  answers: Array<{
+  answers?: Array<{
     questionId: string;
     answer: unknown;
   }>;
 }
 
+// ==================== RANDOM QUESTIONS / BULK ATTACH ====================
+
+/** Một nhóm tiêu chí để random câu hỏi */
+export interface RandomQuestionCriteria {
+  count: number;
+  levelId?: string;
+  skillId?: string;
+  topicId?: string;
+  type?: QuestionType;
+}
+
+export interface RandomQuestionsRequest {
+  criteria: RandomQuestionCriteria[];
+}
+
+export interface BulkAttachItem {
+  questionId: string;
+  orderIndex?: number;
+}
+
+export interface BulkAttachQuestionsRequest {
+  items: BulkAttachItem[];
+}
+
+// ==================== SUBMIT SINGLE ANSWER ====================
+
+export interface SubmitAnswerRequest {
+  answer: unknown;
+}

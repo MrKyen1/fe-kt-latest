@@ -303,10 +303,11 @@ export interface TeacherAssignment {
   id: string;
   title?: string;
   instructions?: string;
-  classId: string;
+  classId?: string;
   class?: ClassRoom;
   teacherId?: string;
   studentIds?: string[];
+  maxAttempts?: number | null;
   status: AssignmentStatus;
   isActive?: boolean;
   createdAt?: string;
@@ -316,7 +317,18 @@ export interface TeacherAssignment {
 }
 
 export interface ExamAssignment extends TeacherAssignment {
-  examId: string;
+  /**
+   * Multiple exams per assignment (v2 API).
+   * List/Detail trả `exams: [{ examId, orderIndex, isRequired, exam }]`.
+   */
+  exams?: Array<{
+    examId: string;
+    orderIndex?: number;
+    isRequired?: boolean;
+    exam?: Exam;
+  }>;
+  /** Legacy single-exam fallback (có thể vẫn được trả trong một số context) */
+  examId?: string;
   exam?: Exam;
 }
 
@@ -326,11 +338,28 @@ export interface CurriculumAssignment extends TeacherAssignment {
 }
 
 export interface StudentExamAssignment {
+  /** assignmentStudentId (dùng để start attempt) */
   id: string;
   assignmentId?: string;
   assignment?: ExamAssignment;
-  exam?: Exam;
   class?: ClassRoom;
+  /** Mỗi exam trong assignment có progress riêng */
+  exams?: Array<{
+    examId: string;
+    exam?: Exam;
+    attemptsCount?: number;
+    bestScore?: string | null;
+    bestPercentage?: string | null;
+    status?: string;
+    maxAttempts?: number | null;
+  }>;
+  /** Điểm tiến tổng assignment */
+  progressPercentage?: string;
+  completedExamsCount?: number;
+  totalExamsCount?: number;
+  maxAttempts?: number | null;
+  /** Legacy single-exam summary */
+  exam?: Exam;
   summary?: {
     attemptsCount?: number;
     bestScore?: string;
@@ -338,14 +367,41 @@ export interface StudentExamAssignment {
   };
 }
 
+/**
+ * Student curriculum access record.
+ * Returned by GET /learning/student/curriculums and /student/curriculums/:curriculumId
+ * Both class-grant and direct-enrollment cases are merged by backend.
+ */
 export interface StudentCurriculumAssignment {
-  id: string;
-  assignmentStudentId?: string;
-  assignment?: CurriculumAssignment;
+  /** The curriculum ID (use for startAttempt API) */
+  curriculumId: string;
+  /** 'class' | 'direct' */
+  accessType?: string;
+  /** null if accessed via class grant (lazy enrollment) */
+  enrollmentId?: string | null;
+  status?: string;
+  assignedAt?: string | null;
+  progressPercentage?: string;
+  completedExamsCount?: number;
+  totalRequiredExamsCount?: number;
+  maxAttempts?: number | null;
+  isActive?: boolean;
   curriculum?: Curriculum;
-  class?: ClassRoom;
-  progress?: Record<string, unknown>;
-  examProgress?: unknown[];
+  /** Exam progress list (populated on detail endpoint) */
+  exams?: Array<{
+    examId: string;
+    curriculumExamId?: string;
+    orderIndex?: number;
+    isRequired?: boolean;
+    status?: string;
+    attemptsCount?: number;
+    bestScore?: string | null;
+    bestPercentage?: string | null;
+    lastAttemptId?: string | null;
+    completedAt?: string | null;
+    exam?: Exam;
+    curriculumExam?: { id: string; orderIndex: number; isRequired: boolean };
+  }>;
 }
 
 export interface AttemptAnswer {
@@ -365,6 +421,8 @@ export interface AttemptAnswer {
   score?: string;
   maxScore?: string;
   isCorrect?: boolean;
+  /** Thời điểm student đã submit câu này. Khác null = câu đã bị khóa, không submit lại được. */
+  answeredAt?: string | null;
   feedback?: Record<string, unknown>;
 }
 
@@ -384,6 +442,20 @@ export interface Attempt {
   score?: string;
   maxScore?: string;
   percentage?: string;
+  /** Ví dụ: "8/10" — dùng để hiển thị kết quả sau nộp bài */
+  displayResult?: string;
+  /** Tổng số câu của exam */
+  totalQuestions?: number;
+  /** Số câu xuất hiện trong attempt này */
+  attemptQuestionCount?: number;
+  /** Số câu đúng trong attempt này */
+  attemptCorrectCount?: number;
+  /** Số câu sai trong attempt này */
+  attemptWrongCount?: number;
+  /** Số câu chưa làm trong attempt này */
+  attemptUnansweredCount?: number;
+  /** Tổng câu đúng cộng dồn từ tất cả submitted attempts cùng scope */
+  cumulativeCorrectCount?: number;
   gradingStatus?: string;
   answers?: AttemptAnswer[];
 }
@@ -445,6 +517,9 @@ export interface UserListQuery {
   classId?: string;
   centerId?: string;
   specializationId?: string;
+  /** Phân trang */
+  page?: number;
+  limit?: number;
 }
 
 export interface LogQuery extends PaginationQuery {

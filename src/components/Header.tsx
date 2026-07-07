@@ -4,6 +4,7 @@ import { UserOutlined, LogoutOutlined } from "@ant-design/icons";
 import { useEffect, useState, memo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { resolveMediaUrl } from "../services/apiClient";
+import logoImg from "../assets/logo/logo.png";
 
 const { Header: AntHeader } = Layout;
 
@@ -82,7 +83,7 @@ const Header = memo(function Header() {
         }}
       >
         <img
-          src="/src/assets/logo/logo.png"
+          src={logoImg}
           alt="Logo"
           className="h-14 object-contain m-0"
         />

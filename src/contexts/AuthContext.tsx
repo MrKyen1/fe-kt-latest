@@ -44,29 +44,37 @@ function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>
   let teacherProfile = (user as any).teacherProfile;
 
   if (code === "139384") {
-    studentProfile = {
-      id: "019ec448-71c2-755d-9540-771691e28d3a",
-      classIds: ["019ec447-b15f-712d-a0ef-d35c1ebddaf5"],
-      classes: [{ id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5", name: "Toán 6" }]
-    };
+    if (!studentProfile || !studentProfile.classes || studentProfile.classes.length === 0) {
+      studentProfile = {
+        id: "019ec448-71c2-755d-9540-771691e28d3a",
+        classIds: ["019ec447-b15f-712d-a0ef-d35c1ebddaf5"],
+        classes: [{ id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5", name: "Toán 6" }]
+      };
+    }
   } else if (code === "132495") {
-    studentProfile = {
-      id: "019ee804-2614-74a2-9b3f-83fed96cf805",
-      classIds: ["019ee7fe-1348-7338-a198-4fc554482a58"],
-      classes: [{ id: "019ee7fe-1348-7338-a198-4fc554482a58", name: "Tiếng anh 10" }]
-    };
+    if (!studentProfile || !studentProfile.classes || studentProfile.classes.length === 0) {
+      studentProfile = {
+        id: "019ee804-2614-74a2-9b3f-83fed96cf805",
+        classIds: ["019ee7fe-1348-7338-a198-4fc554482a58"],
+        classes: [{ id: "019ee7fe-1348-7338-a198-4fc554482a58", name: "Tiếng anh 10" }]
+      };
+    }
   } else if (code === "106798") {
-    teacherProfile = {
-      id: "019eef5a-2709-7149-a9ec-9e06648b3a23",
-      classIds: ["019ec447-b15f-712d-a0ef-d35c1ebddaf5"],
-      classes: [{ id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5", name: "Toán 6" }]
-    };
+    if (!teacherProfile || !teacherProfile.classes || teacherProfile.classes.length === 0) {
+      teacherProfile = {
+        id: "019eef5a-2709-7149-a9ec-9e06648b3a23",
+        classIds: ["019ec447-b15f-712d-a0ef-d35c1ebddaf5"],
+        classes: [{ id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5", name: "Toán 6" }]
+      };
+    }
   } else if (code === "128307") {
-    teacherProfile = {
-      id: "019eea6c-8ea7-774d-abfd-7861c1edbec4",
-      classIds: ["019ee7fe-1348-7338-a198-4fc554482a58"],
-      classes: [{ id: "019ee7fe-1348-7338-a198-4fc554482a58", name: "Tiếng anh 10" }]
-    };
+    if (!teacherProfile || !teacherProfile.classes || teacherProfile.classes.length === 0) {
+      teacherProfile = {
+        id: "019eea6c-8ea7-774d-abfd-7861c1edbec4",
+        classIds: ["019ee7fe-1348-7338-a198-4fc554482a58"],
+        classes: [{ id: "019ee7fe-1348-7338-a198-4fc554482a58", name: "Tiếng anh 10" }]
+      };
+    }
   }
 
   return {

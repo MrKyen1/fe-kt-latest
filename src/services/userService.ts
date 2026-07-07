@@ -5,7 +5,7 @@ import {
   User,
   UserListQuery,
 } from "../types/backend";
-import { apiClient, unwrapData } from "./apiClient";
+import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
 function mapUserResponse(user: any): User {
   if (!user) return user;
@@ -55,8 +55,10 @@ export const userService = {
   },
 
   async list(params?: UserListQuery): Promise<User[]> {
-    const data = unwrapData(await apiClient.get<ApiEnvelope<User[]>>("/users", { params }));
-    return (data || []).map(mapUserResponse);
+    // BE trả về paginated response { data: [...], meta: {...} }
+    // unwrapList lấy cả data và meta, ta chỉ cần data array
+    const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params }));
+    return (result.data || []).map(mapUserResponse);
   },
 
   async get(id: string): Promise<User> {

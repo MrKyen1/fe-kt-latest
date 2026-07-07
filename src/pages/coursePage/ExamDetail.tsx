@@ -93,7 +93,7 @@ function findMockQuestion(prompt: string, type: string) {
   return found || null;
 }
 
-function parseBackendAnswer(type: string, ansObj: any): any {
+export function parseBackendAnswer(type: string, ansObj: any): any {
   if (!ansObj) return undefined;
 
   switch (type) {
@@ -219,7 +219,12 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     maxScore: attempt.maxScore,
     percentage: attempt.percentage,
     questions,
-  };
+    examId: attempt.examId,
+    assignmentStudentId: attempt.assignmentStudentId,
+    curriculumAssignmentStudentId: attempt.curriculumAssignmentStudentId,
+    source: attempt.source,
+    curriculumId: (attempt as any).curriculumId,
+  } as any;
 }
 
 const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
@@ -251,6 +256,19 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
             }
           } catch (eErr) {
             console.error("Failed to fetch exam detail:", eErr);
+          }
+        }
+
+        // If it's a curriculum exam (self_study), resolve curriculumId from the student's curriculum list
+        if (attempt && (attempt as any).source === "self_study" && (attempt as any).curriculumAssignmentStudentId) {
+          try {
+            const currList = await studentLearningService.curriculums.list({ limit: 100 });
+            const matched = currList.data?.find((c: any) => c.enrollmentId === (attempt as any).curriculumAssignmentStudentId);
+            if (matched) {
+              (attempt as any).curriculumId = matched.curriculumId;
+            }
+          } catch (cErr) {
+            console.error("Failed to load curriculums to resolve curriculumId:", cErr);
           }
         }
 

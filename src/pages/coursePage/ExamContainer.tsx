@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QuestionCard } from "./QuestionCard";
 import { ExamData } from "../../types";
 import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
+import logoImg from "../../assets/logo/logo.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { Modal } from "antd";
 import { studentLearningService } from "../../services/studentLearningService";
+import { parseBackendAnswer } from "./ExamDetail";
 
 interface ExamContainerProps {
   examData: ExamData;
@@ -15,6 +17,8 @@ interface ExamContainerProps {
 
 type AnswerValue = string | string[] | Record<string, string>;
 
+// checkIsCorrect được giữ lại chỉ dùng để hiển thị optimistic UI trước khi BE trả kết quả.
+// Kết quả thực tế luôn lấy từ response của submitAnswer API.
 const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean => {
   if (answer === undefined || answer === null) return false;
   const correct = question.correctAnswer;
@@ -141,6 +145,23 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return initial;
   });
 
+  // Track which questions have been answered (answeredAt != null) — these are locked on BE.
+  const [lockedQuestions, setLockedQuestions] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    if (examData.status === "submitted") {
+      examData.questions.forEach((q) => {
+        if ((q as any).answeredAt) initial[q.id] = true;
+      });
+    } else {
+      // Restore locked state from attempt answers (in_progress resume)
+      examData.questions.forEach((q) => {
+        if ((q as any).answeredAt) initial[q.id] = true;
+      });
+    }
+    return initial;
+  });
+
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(examData.timeLimit);
   const [showFeedback, setShowFeedback] = useState(() => examData.status === "submitted");
   const [isCorrect, setIsCorrect] = useState(false);
@@ -150,6 +171,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     score?: string;
     maxScore?: string;
     percentage?: string;
+    displayResult?: string;
   } | null>(() => {
     if (examData.status === "submitted") {
       return {
@@ -162,7 +184,35 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentQuestion = examData.questions[currentIndex];
+  const [correctAnswers, setCorrectAnswers] = useState<Record<string, any>>(() => {
+    const initial: Record<string, any> = {};
+    examData.questions.forEach((q) => {
+      if (q.correctAnswer !== undefined) {
+        initial[q.id] = q.correctAnswer;
+      }
+    });
+    return initial;
+  });
+
+  const [explanations, setExplanations] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    examData.questions.forEach((q) => {
+      if (q.explanation) {
+        initial[q.id] = q.explanation;
+      }
+    });
+    return initial;
+  });
+
+  const rawQuestion = examData.questions[currentIndex];
+  const currentQuestion = useMemo(() => {
+    if (!rawQuestion) return rawQuestion;
+    return {
+      ...rawQuestion,
+      correctAnswer: correctAnswers[rawQuestion.id] !== undefined ? correctAnswers[rawQuestion.id] : rawQuestion.correctAnswer,
+      explanation: explanations[rawQuestion.id] !== undefined ? explanations[rawQuestion.id] : rawQuestion.explanation,
+    };
+  }, [rawQuestion, correctAnswers, explanations]);
   const totalQuestions = examData.questions.length;
   const progressPercent = (currentIndex / totalQuestions) * 100;
 
@@ -217,20 +267,84 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }, [currentQuestion.id, questionResults]);
 
   const handleAnswerChange = (answer: AnswerValue) => {
+    // Không cho sửa câu đã bị khóa (answeredAt != null)
+    if (lockedQuestions[currentQuestion.id]) return;
     setUserAnswers((prev) => ({
       ...prev,
       [currentQuestion.id]: answer,
     }));
   };
 
-  const handleSubmit = () => {
-    const evaluatedIsCorrect = checkIsCorrect(currentQuestion, userAnswers[currentQuestion.id]);
-    const status = evaluatedIsCorrect ? "correct" : "wrong";
-    setQuestionResults((prev) => ({
-      ...prev,
-      [currentQuestion.id]: status,
-    }));
-  };
+  /**
+   * handleSubmit: Gọi API submit từng câu lên backend.
+   * BE chấm ngị và trả isCorrect, correctAnswer, feedback.
+   * Sau đó lock câu (đã có answeredAt).
+   */
+  const handleSubmit = useCallback(async () => {
+    if (isSubmittingAnswer) return;
+    if (lockedQuestions[currentQuestion.id]) {
+      // Câu đã bị khóa trước đó (resume), chỉ show feedback đã có sẵn
+      const existingResult = questionResults[currentQuestion.id];
+      if (existingResult) {
+        setIsCorrect(existingResult === "correct");
+        setShowFeedback(true);
+      }
+      return;
+    }
+
+    const answer = userAnswers[currentQuestion.id];
+    if (!isAnswerProvided(answer)) return;
+
+    const backendPayload = toBackendAnswer(currentQuestion, answer);
+
+    try {
+      setIsSubmittingAnswer(true);
+      const result = await studentLearningService.attempts.submitAnswer(
+        examData.id,
+        currentQuestion.id,
+        { answer: backendPayload },
+      );
+
+      const beIsCorrect = result.isCorrect ?? false;
+      const status = beIsCorrect ? "correct" : "wrong";
+
+      const parsedCorrectAnswer = parseBackendAnswer(currentQuestion.type, result.correctAnswer);
+      const backendExplanation =
+        (result.feedback as any)?.explanation ||
+        (result.question as any)?.feedback?.explanation ||
+        (result.question as any)?.explanation;
+
+      if (parsedCorrectAnswer !== undefined) {
+        setCorrectAnswers((prev) => ({ ...prev, [currentQuestion.id]: parsedCorrectAnswer }));
+      }
+      if (backendExplanation) {
+        setExplanations((prev) => ({ ...prev, [currentQuestion.id]: backendExplanation }));
+      }
+
+      setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
+      setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
+      setIsCorrect(beIsCorrect);
+      setShowFeedback(true);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        // Câu đã được submit trước, lock lại
+        setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
+        const existingResult = questionResults[currentQuestion.id];
+        if (existingResult) {
+          setIsCorrect(existingResult === "correct");
+          setShowFeedback(true);
+        }
+      } else {
+        Modal.error({
+          title: "Không thể submit câu trả lời",
+          content: err instanceof Error ? err.message : "Vui lòng thử lại sau.",
+        });
+      }
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
+  }, [currentQuestion, userAnswers, isSubmittingAnswer, lockedQuestions, questionResults, examData.id]);
+
 
   const handleNext = () => {
     if (isReviewMode) {
@@ -297,12 +411,10 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
     try {
       setIsSubmitting(true);
+      // Body có thể rỗng — BE tự finish attempt, tính điểm cộng dồn.
       const result = (await studentLearningService.attempts.submit(examData.id, {
-        answers: examData.questions.map((question) => ({
-          questionId: question.id,
-          answer: toBackendAnswer(question, userAnswers[question.id]),
-        })),
-      })) as { score?: string; maxScore?: string; percentage?: string };
+        answers: [],
+      })) as { score?: string; maxScore?: string; percentage?: string; displayResult?: string };
 
       setSubmitResult(result);
       setIsExamComplete(true);
@@ -370,6 +482,51 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     }
   };
 
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleRetryNewAttempt = async () => {
+    if (isRetrying) return;
+    try {
+      setIsRetrying(true);
+      let attemptResult: any = null;
+      if (examData.source === "teacher_assigned") {
+        if (!examData.assignmentStudentId || !examData.examId) {
+          throw new Error("Thông tin lượt giao bài thi không hợp lệ.");
+        }
+        attemptResult = await studentLearningService.examAssignments.startAttempt(
+          examData.assignmentStudentId,
+          examData.examId
+        );
+      } else if (examData.source === "self_study") {
+        const curriculumId = (examData as any).curriculumId;
+        if (!curriculumId || !examData.examId) {
+          throw new Error("Thông tin lộ trình học không hợp lệ.");
+        }
+        attemptResult = await studentLearningService.curriculums.startAttempt(
+          curriculumId,
+          examData.examId
+        );
+      } else {
+        throw new Error("Nguồn bài thi không hỗ trợ làm lại.");
+      }
+
+      const attemptId = attemptResult?.id;
+      if (!attemptId) {
+        throw new Error("Không thể tạo lượt làm bài mới.");
+      }
+      
+      navigate(`/exam/${attemptId}`, { replace: true });
+      window.location.reload();
+    } catch (err: any) {
+      Modal.error({
+        title: "Không thể bắt đầu làm lại",
+        content: err instanceof Error ? err.message : "Vui lòng thử lại sau.",
+      });
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const handleResetExam = () => {
     setUserAnswers({});
     setQuestionResults({});
@@ -391,14 +548,22 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             </h1>
             <p className="text-lg text-slate-600 dark:text-slate-300 mb-6">
               Backend đã chấm điểm{" "}
-              <span className="font-black text-emerald-600 dark:text-emerald-400">
-                {submitResult?.score ?? "-"}
-              </span>{" "}
-              trên tổng điểm{" "}
-              <span className="font-black text-slate-900 dark:text-slate-100">
-                {submitResult?.maxScore ?? "-"}
-              </span>{" "}
-              ({submitResult?.percentage ?? "-"}%).
+              {submitResult?.displayResult ? (
+                <span className="font-black text-emerald-600 dark:text-emerald-400">
+                  {submitResult.displayResult}
+                </span>
+              ) : (
+                <>
+                  <span className="font-black text-emerald-600 dark:text-emerald-400">
+                    {submitResult?.score ?? "-"}
+                  </span>{" "}
+                  trên tổng điểm{" "}
+                  <span className="font-black text-slate-900 dark:text-slate-100">
+                    {submitResult?.maxScore ?? "-"}
+                  </span>{" "}
+                  ({submitResult?.percentage ?? "-"}%).
+                </>
+              )}
             </p>
             <div className="grid grid-cols-2 gap-4 text-left mb-8">
               <div className="rounded-3xl bg-emerald-50 dark:bg-emerald-900/20 p-5 border border-emerald-100 dark:border-emerald-700">
@@ -442,10 +607,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 Quay lại
               </button>
               <button
-                onClick={handleResetExam}
-                className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
+                onClick={handleRetryNewAttempt}
+                disabled={isRetrying}
+                className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                Làm lại attempt mới
+                {isRetrying ? "Đang tạo lượt làm mới..." : "Làm lại attempt mới"}
               </button>
             </div>
           </div>
@@ -466,7 +632,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             <ArrowLeftOutlined className="text-lg" />
           </button>
           <img
-            src="/src/assets/logo/logo.png"
+            src={logoImg}
             alt="Logo"
             className="h-14 object-contain"
           />

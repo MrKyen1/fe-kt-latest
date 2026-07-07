@@ -102,11 +102,6 @@ export default function Courses() {
       title: `Lộ trình học tập (${stats.curriculums})`,
       image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
     },
-    {
-      id: "published-curriculums",
-      title: `Giáo trình phát hành (${stats.publishedCurriculums})`,
-      image: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=900&q=80",
-    },
   ];
 
   return (
@@ -143,7 +138,16 @@ export default function Courses() {
               <Row gutter={[32, 32]}>
                 {cards.map((course) => (
                   <Col xs={24} sm={12} lg={8} key={course.id}>
-                    <CourseCard course={course} onSelect={(courseId) => navigate(`/courses/${courseId}`)} />
+                    <CourseCard
+                      course={course}
+                      onSelect={(courseId) => {
+                        if (courseId === "exam-assignments") {
+                          navigate("/profile?tab=my-exams");
+                        } else {
+                          navigate(`/courses/${courseId}`);
+                        }
+                      }}
+                    />
                   </Col>
                 ))}
                 <Col xs={24} sm={12} lg={8}>
@@ -154,35 +158,6 @@ export default function Courses() {
                   </div>
                 </Col>
               </Row>
-            </div>
-
-            {/* Published Curriculums Banner */}
-            <div
-              className="rounded-3xl overflow-hidden cursor-pointer group relative"
-              style={{
-                background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #a855f7 100%)",
-                boxShadow: "0 8px 32px rgba(99,102,241,0.25)",
-              }}
-              onClick={() => navigate("/courses/published-curriculums")}
-            >
-              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle at 80% 20%, white 0%, transparent 60%)" }} />
-              <div className="relative px-10 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="bg-white/20 p-4 rounded-2xl">
-                    <GraduationCap size={36} className="text-white" />
-                  </div>
-                  <div>
-                    <div className="text-white/70 text-sm font-medium mb-1 uppercase tracking-widest">Đang phát hành</div>
-                    <h3 className="text-white text-2xl md:text-3xl font-bold">
-                      Giáo trình phát hành ({stats.publishedCurriculums})
-                    </h3>
-                    <p className="text-white/75 mt-1 text-sm">Xem các giáo trình admin đã công bố và bắt đầu làm bài thi ngay.</p>
-                  </div>
-                </div>
-                <div className="bg-white text-indigo-700 font-bold px-8 py-4 rounded-2xl text-lg group-hover:bg-indigo-50 transition-colors shrink-0 shadow-lg">
-                  Khám phá →
-                </div>
-              </div>
             </div>
           </>
         )}

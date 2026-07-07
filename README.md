@@ -2,6 +2,24 @@
 
 Tài liệu này là contract cho frontend tích hợp API backend. Nội dung đã được đối chiếu với code trong `be/src/modules`.
 
+## Mục lục
+
+- [1. Base Info](#1-base-info)
+- [Changelog — thay đổi so với version trước](#changelog--thay-đổi-so-với-version-trước)
+- [2. Setup Local](#2-setup-local)
+- [3. Auth](#3-auth)
+- [4. Permission Thực Tế](#4-permission-thực-tế)
+- [5. Admin/User/Academic APIs](#5-adminuseracademic-apis)
+- [6. RBAC APIs](#6-rbac-apis)
+- [7. Admin Learning CMS](#7-admin-learning-cms)
+- [8. Teacher Assignment Flow](#8-teacher-assignment-flow)
+- [9. Student Attempt Flow](#9-student-attempt-flow)
+- [10. Auto Grading Rules](#10-auto-grading-rules)
+- [11. Observability](#11-observability)
+- [12. FE Integration Notes](#12-fe-integration-notes)
+- [13. Flow Khởi Tạo Dữ Liệu Cơ Bản](#13-flow-khởi-tạo-dữ-liệu-cơ-bản)
+- [14. Backend Change Policy](#14-backend-change-policy)
+
 ## 1. Base Info
 
 - Base URL local: `http://localhost:3000/api/v1`
@@ -53,6 +71,55 @@ Pagination meta:
   "totalPages": 5
 }
 ```
+
+## Changelog — thay đổi so với version trước
+
+Phần này để team BE/FE theo dõi các thay đổi của đợt cập nhật learning (giao bài + làm bài + tạo exam). Chi tiết contract ở các section tương ứng.
+
+**Migrations cần chạy:** `npm run migration:run`
+
+- `1780000014000` — multi-exam assignment + standing class↔curriculum + cột `exam_attempts.source` + `maxAttempts`.
+- `1780000015000` — **DROP `exam_questions.score`** (breaking).
+
+### 1. Exam assignment đa-exam (giao cả lớp hoặc từng HS)
+
+- `ExamAssignment` chứa **nhiều exam** (`exam_assignment_exams`); giao cho cả lớp (`classId`) hoặc danh sách HS (`studentIds`, không cần lớp).
+- `POST /learning/teacher/exam-assignments` — body đổi: `examIds: string[]`, `classId?`, `studentIds?`, `maxAttempts?`, `title?`, `instructions?`. Detail/list trả `exams: [...]` thay cho 1 `exam`. Xem [8.1](#81-exam-assignment).
+
+### 2. Chọn exam theo curriculum khi giao
+
+- `GET /learning/exams?curriculumId=<id>&status=published` — lọc exam thuộc 1 curriculum (không bắt buộc cùng curriculum của lớp). Xem [7.5](#75-exam).
+
+### 3. Standing class ↔ curriculum (self-study)
+
+- `POST/GET/DELETE /learning/teacher/class-curriculums` — gắn curriculum vào lớp; mọi HS trong lớp (kể cả vào sau) tự thấy & tự làm; enrollment + progress tạo **lazy** khi làm lần đầu.
+- Student curriculum đổi sang khóa theo `curriculumId`: `GET /learning/student/curriculums/:curriculumId`, `POST /learning/student/curriculums/:curriculumId/exams/:examId/attempts`. Xem [8.3](#83-class--curriculum-standing-link) + [9.1](#91-assigned-curriculums-keyed-by-curriculumid).
+
+### 4. Giao curriculum/exam trực tiếp cho HS (không cần lớp)
+
+- `POST /learning/teacher/curriculum-assignments` — `studentIds` bắt buộc, `classId` optional. Xem [8.2](#82-curriculum-assignment-giao-trực-tiếp-cho-student).
+
+### 5. Giới hạn số lần làm (`maxAttempts`)
+
+- Đặt khi giao (exam-assignment / curriculum-assignment / class-curriculum); `null` = vĩnh viễn. Đếm theo số lần **đã nộp** mỗi exam; hết lượt → `409 Đã hết số lần làm bài cho phép`.
+
+### 6. Phân loại nguồn attempt (`source`)
+
+- `exam_attempts.source`: `teacher_assigned` (exam-assignment) | `self_study` (curriculum). Dùng cho phân tích.
+
+### 7. Resume attempt khi reload (start idempotent)
+
+- Route start exam-assignment đổi: `POST /learning/student/exam-assignments/:assignmentStudentId/exams/:examId/attempts`.
+- Gọi lại start khi đang có attempt `in_progress` (cùng scope+exam) sẽ **trả lại attempt đó** (không tạo mới, không tốn lượt). Xem [9.2.2](#922-start-attempt).
+
+### 8. Random câu hỏi theo nhóm tiêu chí + bulk attach (tạo exam nhanh)
+
+- `POST /learning/exams/random-questions` — preview, **không ghi DB**. Body `{ criteria: [{ count, levelId?, type?, topicId?, skillId? }] }`. Trả `data.items` (đúng shape bulk-attach) + `data.groups[].questions` (full detail). Giữ thứ tự theo nhóm, không trùng giữa các nhóm; nhóm thiếu câu → `409`.
+- `POST /learning/exams/:id/questions/bulk` — body `{ items: [{ questionId, orderIndex? }] }`. FE truyền thẳng `data.items` từ random. Xem [7.5](#75-exam).
+
+### 9. Bỏ `exam_questions.score` (breaking)
+
+- Không còn điểm trọng số per-question (chấm theo mô hình cộng dồn: mỗi câu = 1 điểm). `POST/PATCH /learning/exams/:id/questions[...]` **không nhận `score`** nữa (gửi `score` → `400`).
 
 ## 2. Setup Local
 
@@ -242,7 +309,8 @@ Create admin user:
   "email": "admin2@example.com",
   "address": "HCM",
   "roleId": "admin-role-id",
-  "avatar": "https://cdn.example.com/avatar.png"
+  "avatar": "https://cdn.example.com/avatar.png",
+  "startDate": "2026-06-01"
 }
 ```
 
@@ -256,6 +324,7 @@ Create teacher user:
   "dateOfBirth": "1990-01-01",
   "phone": "0900000001",
   "roleId": "teacher-role-id",
+  "startDate": "2026-06-01",
   "teacherProfile": {
     "yearsOfExperience": 3,
     "description": "IELTS teacher",
@@ -275,6 +344,7 @@ Create student user:
   "dateOfBirth": "2012-01-01",
   "phone": "0900000002",
   "roleId": "student-role-id",
+  "startDate": "2026-06-01",
   "studentProfile": {
     "classIds": ["class-id"]
   }
@@ -288,7 +358,57 @@ Rules:
 - Role `admin` không được gửi teacher/student profile.
 - `code` là unique.
 - `password` tối thiểu 8 ký tự.
+- `startDate` là bắt buộc khi tạo user và phải dùng format date-only `YYYY-MM-DD`.
+- Không gửi `endDate` khi tạo user. Nếu gửi `endDate` trong `POST /users`, BE sẽ reject 400 vì field không nằm trong DTO.
+- `startDate`/`endDate` không nhận ISO datetime như `2026-06-17T00:00:00.000Z`; FE phải gửi date-only như `2026-06-17`.
+- BE không tự convert datetime về date để tránh lệch ngày do timezone.
+- Muốn inactive user thì admin dùng `PATCH /users/:id` để set `endDate`.
+- Nếu `endDate <= CURRENT_DATE` theo ngày server, user sẽ inactive ngay trong request PATCH.
+- Nếu `endDate > CURRENT_DATE`, user sẽ active và cron sẽ inactive khi đến hạn.
+- Nếu `endDate = null`, user sẽ active và không có lịch inactive.
+- `PATCH /users/:id` không nhận field `isActive`; nếu gửi `isActive`, BE sẽ reject 400 vì field không nằm trong DTO.
+- Nếu có `endDate`, `endDate` phải lớn hơn hoặc bằng `startDate`.
+- Hằng ngày lúc 00:00 theo timezone server, BE tự chuyển user active có `endDate <= CURRENT_DATE` sang inactive.
+- Admin active lại user bằng cách clear `endDate` hoặc gia hạn `endDate` sang một ngày tương lai.
 - Response user đã bỏ `hashedPassword`.
+
+Update user end date:
+
+```http
+PATCH /users/:id
+```
+
+Inactive ngay nếu hôm nay là `2026-06-17`:
+
+```json
+{
+  "endDate": "2026-06-17"
+}
+```
+
+Schedule inactive:
+
+```json
+{
+  "endDate": "2026-06-30"
+}
+```
+
+Clear end date and active user:
+
+```json
+{
+  "endDate": null
+}
+```
+
+Active user by extending end date:
+
+```json
+{
+  "endDate": "2026-06-30"
+}
+```
 
 `GET /users` filters:
 
@@ -302,6 +422,8 @@ Rules:
 - `classId`
 - `centerId`
 - `specializationId`
+
+Mặc định `GET /users` trả user active (`isActive=true`). Gửi `GET /users?isActive=false` để xem user inactive.
 
 ### 5.2 Academic
 
@@ -822,12 +944,77 @@ POST /learning/exams
 APIs:
 
 - `GET /learning/exams?page=1&limit=20&status=published`
+- `GET /learning/exams?curriculumId=<id>&status=published` — lọc exam thuộc một curriculum (dùng khi teacher chọn bài để giao).
 - `GET /learning/exams/:id`
 - `PATCH /learning/exams/:id`
 - `PATCH /learning/exams/:id/status`
 - `DELETE /learning/exams/:id`
 
-Attach question:
+Random câu hỏi theo nhóm tiêu chí (preview — KHÔNG ghi DB):
+
+```http
+POST /learning/exams/random-questions
+```
+
+```json
+{
+  "criteria": [
+    { "count": 5, "levelId": "level-id", "type": "multiple_choice" },
+    { "count": 3, "topicId": "topic-id" }
+  ]
+}
+```
+
+- Mỗi nhóm random `count` câu khớp TẤT CẢ filter (`levelId`/`type`/`topicId`/`skillId`, đều optional) trong các câu `published` + active.
+- Không trùng câu giữa các nhóm; kết quả giữ đúng thứ tự nhóm; `orderIndex` tuần tự `0..n-1`.
+- Nhóm không đủ câu khả dụng → `409` (mô tả nhóm thiếu).
+- Response: `data.items` đúng shape body của bulk-attach (FE truyền thẳng); `data.groups[].questions` mang full detail để hiển thị.
+
+```json
+{
+  "data": {
+    "totalCount": 8,
+    "items": [{ "questionId": "...", "orderIndex": 0 }],
+    "groups": [
+      {
+        "index": 0,
+        "filters": {
+          "levelId": "...",
+          "type": "multiple_choice",
+          "topicId": null,
+          "skillId": null
+        },
+        "requested": 5,
+        "returned": 5,
+        "questions": [
+          {
+            "orderIndex": 0,
+            "id": "...",
+            "prompt": "...",
+            "type": "multiple_choice",
+            "options": []
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Bulk attach (lưu bộ câu vào exam — dùng với kết quả random):
+
+```http
+POST /learning/exams/:examId/questions/bulk
+```
+
+```json
+{ "items": [{ "questionId": "...", "orderIndex": 0 }] }
+```
+
+- FE truyền thẳng `data.items` từ response random.
+- `orderIndex` optional; thiếu → gán tiếp từ `max(orderIndex hiện có) + 1`. Trùng câu trong request, hoặc câu đã có trong exam, hoặc trùng `orderIndex` → `409`.
+
+Attach question (đơn lẻ):
 
 ```http
 POST /learning/exams/:examId/questions
@@ -836,8 +1023,7 @@ POST /learning/exams/:examId/questions
 ```json
 {
   "questionId": "question-id",
-  "orderIndex": 0,
-  "score": 1
+  "orderIndex": 0
 }
 ```
 
@@ -849,8 +1035,7 @@ PATCH /learning/exams/:examId/questions/:questionId
 
 ```json
 {
-  "orderIndex": 1,
-  "score": 2
+  "orderIndex": 1
 }
 ```
 
@@ -886,7 +1071,7 @@ Rules:
 - Không update `status` qua `PATCH /learning/exams/:id`; phải dùng `/status`.
 - Publish exam chỉ được nếu có ít nhất một active published question.
 - Attach question yêu cầu question active và published.
-- `score` min `0.01`.
+- Không còn `score` per-question (đã bỏ): chấm theo mô hình cộng dồn, mỗi câu = 1 điểm. Gửi `score` trong body attach/update sẽ bị `400`.
 
 ### 7.6 Curriculum
 
@@ -985,7 +1170,9 @@ Teacher endpoints cần Bearer token. Permission `learning.assign` đang comment
 
 ### 8.1 Exam Assignment
 
-Giao exam cho cả lớp:
+Một exam assignment giờ chứa **nhiều exam** (`examIds`) và có thể giao cho **cả lớp** (`classId`) hoặc **danh sách student bất kỳ** (`studentIds`, không cần lớp). Exam có thể lấy từ **bất kỳ curriculum nào**, không bắt buộc thuộc curriculum của lớp.
+
+Giao nhiều exam cho cả lớp:
 
 ```http
 POST /learning/teacher/exam-assignments
@@ -993,20 +1180,21 @@ POST /learning/teacher/exam-assignments
 
 ```json
 {
-  "examId": "exam-id",
+  "examIds": ["exam-id-1", "exam-id-2"],
   "classId": "class-id",
+  "maxAttempts": 3,
   "title": "Unit 1 Test",
-  "instructions": "Complete this test"
+  "instructions": "Complete these exams"
 }
 ```
 
-Giao exam cho một số student trong lớp:
+Giao trực tiếp cho một số student (không cần lớp):
 
 ```json
 {
-  "examId": "exam-id",
-  "classId": "class-id",
+  "examIds": ["exam-id-1"],
   "studentIds": ["student-id-1", "student-id-2"],
+  "maxAttempts": null,
   "title": "Extra practice",
   "instructions": "For selected students only"
 }
@@ -1014,12 +1202,13 @@ Giao exam cho một số student trong lớp:
 
 Rules:
 
-- `classId` luôn bắt buộc.
-- Nếu không gửi `studentIds`, BE assign cho toàn bộ active student trong class.
-- Teacher phải phụ trách active class qua `teacher_classes`.
-- Exam phải active và `published`.
-- `studentIds` không được trùng và phải thuộc active class.
-- Một assignment không chọn student từ nhiều lớp.
+- `examIds` bắt buộc, tối thiểu 1, không trùng, mỗi exam phải active và `published`.
+- Phải có `classId` HOẶC `studentIds` (ít nhất một). Có thể bỏ `classId` để giao trực tiếp cho student.
+- Có `classId`, không có `studentIds` → giao cho toàn bộ active student trong class. Teacher phải phụ trách active class qua `teacher_classes`.
+- Có `classId` và `studentIds` → `studentIds` phải thuộc active class đó.
+- Không có `classId` → `studentIds` bắt buộc; mỗi id phải là student hợp lệ.
+- `maxAttempts`: số lần làm tối đa cho mỗi exam. Bỏ trống / `null` = **vĩnh viễn** (không giới hạn). Giá trị được snapshot xuống từng `exam_assignment_students.max_attempts`.
+- Lấy danh sách exam theo curriculum để chọn: `GET /learning/exams?curriculumId=<id>&status=published` (xem 7.5).
 
 APIs:
 
@@ -1028,6 +1217,8 @@ APIs:
 - `DELETE /learning/teacher/exam-assignments/:assignmentId`
 - `GET /learning/teacher/exam-assignments/:assignmentId/attempts?page=1&limit=20&studentId=<id>&status=submitted`
 - `GET /learning/teacher/exam-assignments/:assignmentId/analytics`
+
+Detail/list trả `exams: [{ examId, orderIndex, isRequired, exam }]` thay cho một `exam` đơn. Mỗi `exam_assignment_students` trả `progressPercentage`, `completedExamsCount`, `totalExamsCount`, `maxAttempts`.
 
 Status enum: `active`, `cancelled`.
 Attempt status enum: `in_progress`, `submitted`.
@@ -1066,9 +1257,9 @@ Analytics response chính:
 }
 ```
 
-### 8.2 Curriculum Assignment
+### 8.2 Curriculum Assignment (giao trực tiếp cho student)
 
-Giao curriculum cho cả lớp:
+Endpoint này dùng để giao curriculum **trực tiếp cho một số student** (kể cả ngoài lớp). Để cho cả lớp thấy curriculum, dùng **8.3 Class ↔ Curriculum** (standing link) thay cho endpoint này.
 
 ```http
 POST /learning/teacher/curriculum-assignments
@@ -1077,19 +1268,9 @@ POST /learning/teacher/curriculum-assignments
 ```json
 {
   "curriculumId": "curriculum-id",
-  "classId": "class-id",
-  "title": "A1 Learning Path",
-  "instructions": "Complete all required exams"
-}
-```
-
-Giao curriculum cho một số student:
-
-```json
-{
-  "curriculumId": "curriculum-id",
-  "classId": "class-id",
   "studentIds": ["student-id-1", "student-id-2"],
+  "classId": "class-id",
+  "maxAttempts": 5,
   "title": "Extra A1 path",
   "instructions": "For selected students only"
 }
@@ -1097,12 +1278,11 @@ Giao curriculum cho một số student:
 
 Rules:
 
-- Nếu không gửi `studentIds`, BE assign cho toàn bộ active student trong class.
-- Teacher phải phụ trách active class.
-- Curriculum phải active và `published`.
-- Curriculum phải có ít nhất một active published exam.
-- Student không được có active assignment trùng cùng `curriculumId`.
-- V1 không có deadline/maxAttempts/passingScore cho curriculum assignment.
+- `studentIds` bắt buộc, tối thiểu 1, không trùng, mỗi id phải là student hợp lệ.
+- `classId` optional (chỉ là context); nếu gửi thì teacher phải phụ trách active class đó.
+- Curriculum phải active và `published`, có ít nhất một active published exam.
+- Student không được có active assignment/enrollment trùng cùng `curriculumId`.
+- `maxAttempts`: số lần làm tối đa cho mỗi exam trong curriculum; bỏ trống / `null` = vĩnh viễn. Snapshot xuống `curriculum_assignment_students.max_attempts`.
 - Khi assign thành công, BE tạo `curriculum_assignments`, `curriculum_assignment_students`, `student_curriculum_exam_progress`.
 
 APIs:
@@ -1129,102 +1309,190 @@ Analytics response chính:
 }
 ```
 
+### 8.3 Class ↔ Curriculum (standing link)
+
+Liên kết một curriculum vào một lớp. **Mọi student trong lớp** (kể cả vào lớp sau) tự động thấy curriculum này và có thể tự làm các exam của nó (self-study). Enrollment + progress của student được tạo **lazy** khi student bắt đầu làm exam lần đầu.
+
+```http
+POST /learning/teacher/class-curriculums
+```
+
+```json
+{
+  "classId": "class-id",
+  "curriculumId": "curriculum-id",
+  "maxAttempts": 3
+}
+```
+
+Rules:
+
+- Teacher phải phụ trách active class (hoặc user có `learning.manage`).
+- Curriculum phải active và `published`.
+- Không tạo trùng cặp `(classId, curriculumId)` đang active.
+- `maxAttempts`: bỏ trống / `null` = vĩnh viễn. Khi student làm bài lần đầu, giá trị này được snapshot vào enrollment lazy của student.
+
+APIs:
+
+- `GET /learning/teacher/class-curriculums?page=1&limit=20&classId=<id>&curriculumId=<id>`
+- `DELETE /learning/teacher/class-curriculums/:id` (soft delete, `isActive=false`)
+
 ## 9. Student Attempt Flow
 
 Student endpoints cần Bearer token. Permission `learning.attempt` đang comment, nhưng service yêu cầu user có hồ sơ student.
 
-### 9.1 Assigned Curriculums
+### 9.1 Assigned Curriculums (keyed by curriculumId)
+
+Student thấy curriculum qua 2 nguồn, gộp chung (dedup theo `curriculumId`):
+
+- **class** (standing): curriculum được link vào lớp của student (8.3). Student vào lớp bất kỳ lúc nào đều thấy.
+- **direct**: curriculum được giao trực tiếp cho student (8.2).
 
 ```http
 GET /learning/student/curriculums?page=1&limit=20
 ```
 
-Response gồm row `curriculum_assignment_students`, assignment, curriculum, class và progress của chính student.
+Mỗi item có `curriculumId`, `accessType` (`class` | `direct`), `enrollmentId` (null nếu chưa enroll), `status`, `progressPercentage`, `completedExamsCount`, `totalRequiredExamsCount`, `maxAttempts`, `curriculum`.
 
 ```http
-GET /learning/student/curriculums/:assignmentStudentId
+GET /learning/student/curriculums/:curriculumId
 ```
 
-Response gồm assignment info, curriculum info, class info, progress tổng và `examProgress`.
+Response gồm thông tin curriculum, tiến độ tổng và danh sách `exams` (mỗi exam có progress riêng; nếu chưa enroll thì status `available`).
 
-Start attempt từ curriculum:
+Start attempt từ curriculum (self-study):
 
 ```http
-POST /learning/student/curriculums/:assignmentStudentId/exams/:examId/attempts
+POST /learning/student/curriculums/:curriculumId/exams/:examId/attempts
 ```
 
 Không cần body.
 
 Rules:
 
-- `assignmentStudentId` là id của row `curriculum_assignment_students`.
-- `examId` phải thuộc curriculum assignment đó.
-- Exam phải active và `published`.
-- Exam trong curriculum mở hết ngay sau khi assign; `orderIndex` chỉ dùng hiển thị.
-- Exam completed khi student có ít nhất một submitted attempt.
-- Curriculum completed khi tất cả exam `isRequired=true` completed.
-- Optional exam có thể làm nhưng không chặn completion.
+- Đường dẫn dùng `curriculumId` (không còn `assignmentStudentId`).
+- Lần đầu student làm bài của một curriculum truy cập qua lớp, BE tạo **lazy** `curriculum_assignment_students` (với `classCurriculumId`, `maxAttempts` lấy từ class link) và `student_curriculum_exam_progress`.
+- Student không có quyền truy cập curriculum → `403`.
+- `examId` phải thuộc curriculum và exam phải active + `published`.
+- Attempt curriculum có `source = self_study`.
+- Exam trong curriculum mở hết; `orderIndex` chỉ dùng hiển thị.
+- Exam completed khi best percentage đạt 100; curriculum completed khi tất cả exam `isRequired=true` completed.
 
-### 9.2 Assigned Exams
+### 9.2 Student Attempt Flow
+
+Phần này là flow FE nên bám theo khi student làm exam. Cùng một logic được dùng cho:
+
+- Direct exam assignment: student nhận bài qua `exam_assignment_students`.
+- Curriculum exam: student làm exam bên trong một assigned curriculum.
+
+Các điểm chính:
+
+- `score` là số câu đúng cộng dồn trên toàn bộ exam.
+- `maxScore` là tổng số câu của exam.
+- `percentage = score / maxScore * 100`.
+- Lần đầu hiển thị toàn bộ câu hỏi.
+- Lần sau chỉ hiển thị các câu chưa từng làm đúng trong những attempt đã submit trước đó.
+- Sau khi submit từng câu, BE trả review của câu đó ngay để FE hiển thị đáp án đúng/sai.
+- Một câu đã submit trong cùng attempt sẽ bị khóa, không submit lại được.
+- Câu sai hoặc chưa làm sẽ xuất hiện lại ở attempt sau; câu đúng không xuất hiện lại.
+
+#### 9.2.1 Assigned Exam List/Detail
+
+List teacher-assigned exam assignments (mỗi assignment có thể nhiều exam):
 
 ```http
 GET /learning/student/exam-assignments?page=1&limit=20
 ```
 
-Response gồm row `exam_assignment_students`, assignment, exam, class và summary của chính student.
+Response gồm row `exam_assignment_students` (id = `assignmentStudentId`), assignment kèm `exams[]`, class và tiến độ tổng của student.
+
+Detail một assignment của student:
 
 ```http
-GET /learning/student/exam-assignments/:assignmentId
+GET /learning/student/exam-assignments/:assignmentStudentId
 ```
 
-Response gồm assignment info, exam info và attempts của chính student.
+Response gồm assignment info, `exams[]` (mỗi exam có progress riêng: `attemptsCount`, `bestPercentage`, `status`, `maxAttempts`) và attempt history.
 
-Start attempt:
+Nếu là exam trong curriculum, FE lấy curriculum detail trước:
 
 ```http
-POST /learning/student/exam-assignments/:assignmentId/attempts
+GET /learning/student/curriculums/:curriculumId
+```
+
+Trong response, mỗi exam item có trạng thái progress riêng. FE dùng `curriculumId` và `examId` để start attempt curriculum.
+
+#### 9.2.2 Start Attempt
+
+Teacher-assigned exam (chọn 1 exam trong assignment qua `assignmentStudentId` + `examId`):
+
+```http
+POST /learning/student/exam-assignments/:assignmentStudentId/exams/:examId/attempts
+```
+
+Curriculum exam (self-study):
+
+```http
+POST /learning/student/curriculums/:curriculumId/exams/:examId/attempts
 ```
 
 Không cần body.
 
-Rules:
+BE tạo `attemptNumber` mới và snapshot câu hỏi tại thời điểm start. Snapshot giúp attempt không bị thay đổi nếu teacher sửa đề sau đó. Attempt có trường `source`: `teacher_assigned` (exam-assignment) hoặc `self_study` (curriculum) — dùng để phân tích sau này.
 
-- Unlimited attempts.
-- Mỗi lần start tạo `attemptNumber` mới.
-- BE snapshot câu hỏi tại thời điểm start.
-- Pre-submit response không trả đáp án đúng, score từng câu, feedback, explanation.
+Resume khi reload (start là idempotent):
 
-Pre-submit response chính:
+- Nếu đã có attempt `in_progress` cho cùng `(scope, examId)`, start **trả về chính attempt đang dở đó** thay vì tạo mới — không tốn lượt, không reshuffle, `attemptNumber` không đổi.
+- Câu đã trả lời trong attempt đó vẫn còn (review kèm đáp án); câu chưa làm trả về trống.
+- Vì vậy FE có thể an toàn gọi lại start sau reload (hoặc gọi `GET /learning/student/attempts/:attemptId` nếu còn nhớ `attemptId`).
+- Mỗi `(scope, examId)` chỉ tồn tại tối đa một attempt `in_progress`.
+
+Quy tắc chọn câu hỏi:
+
+- Attempt 1: trả toàn bộ câu hỏi của exam.
+- Attempt retry: chỉ trả các câu chưa từng đúng trong các submitted attempts trước đó của cùng scope.
+- Scope teacher-assigned là `assignmentStudentId + examId`.
+- Scope curriculum exam là `curriculumAssignmentStudentId + examId`.
+- Nếu student đã đúng hết, BE vẫn tạo attempt mới nhưng `answers` rỗng và điểm cộng dồn là tối đa.
+
+Giới hạn số lần (`maxAttempts`):
+
+- `maxAttempts` đếm theo số lần **đã nộp** (`submitted`) cho mỗi exam (giá trị snapshot trên enrollment của student). Lượt `in_progress` đang dở không bị tính.
+- Khi số lần đã nộp ≥ `maxAttempts` và còn câu chưa đúng → start attempt mới trả `409` với message `Đã hết số lần làm bài cho phép` (vẫn resume được attempt in-progress nếu đang có).
+- `maxAttempts = null` (vĩnh viễn) → làm lại không giới hạn.
+
+Ví dụ lần 1 student chưa làm câu nào:
 
 ```json
 {
-  "id": "attempt-id",
-  "assignmentId": "assignment-id",
-  "curriculumAssignmentStudentId": null,
-  "examId": "exam-id",
-  "studentId": "student-id",
+  "id": "attempt-1",
   "attemptNumber": 1,
   "status": "in_progress",
-  "startedAt": "2026-05-30T00:00:00.000Z",
-  "submittedAt": null,
-  "durationSeconds": null,
-  "timeLimitSecondsSnapshot": 1800,
-  "score": "0",
+  "score": "0.00",
   "maxScore": "10.00",
-  "percentage": "0",
-  "gradingStatus": "auto_graded",
+  "percentage": "0.00",
+  "displayResult": "0/10",
+  "totalQuestions": 10,
+  "attemptQuestionCount": 10,
+  "attemptCorrectCount": 0,
+  "attemptWrongCount": 0,
+  "attemptUnansweredCount": 10,
+  "cumulativeCorrectCount": 0,
   "answers": [
     {
-      "id": "attempt-answer-id",
-      "questionId": "question-id",
+      "id": "attempt-answer-1",
+      "questionId": "question-1",
       "questionType": "multiple_choice",
       "orderIndex": 0,
+      "answer": null,
+      "answeredAt": null,
+      "maxScore": "1.00",
       "question": {
         "prompt": "Choose the correct answer",
         "instruction": "Select one",
         "options": [
           {
-            "id": "option-id",
+            "id": "option-a",
             "label": "A",
             "content": "Answer A",
             "orderIndex": 0
@@ -1232,44 +1500,128 @@ Pre-submit response chính:
         ],
         "media": [],
         "detail": {}
-      },
-      "maxScore": "1.00"
+      }
     }
   ]
 }
 ```
 
-Get attempt:
-
-```http
-GET /learning/student/attempts/:attemptId
-```
-
-- Nếu `in_progress`: trả payload làm bài.
-- Nếu `submitted`: trả review đầy đủ.
-
-Submit attempt:
-
-```http
-POST /learning/student/attempts/:attemptId/submit
-```
+Ví dụ sau attempt 1 đạt `8/10`, start attempt 2 chỉ còn 2 câu sai/chưa làm:
 
 ```json
 {
+  "id": "attempt-2",
+  "attemptNumber": 2,
+  "status": "in_progress",
+  "score": "8.00",
+  "maxScore": "10.00",
+  "percentage": "80.00",
+  "displayResult": "8/10",
+  "totalQuestions": 10,
+  "attemptQuestionCount": 2,
+  "attemptCorrectCount": 0,
+  "attemptWrongCount": 0,
+  "attemptUnansweredCount": 2,
+  "cumulativeCorrectCount": 8,
   "answers": [
     {
-      "questionId": "question-id",
-      "answer": {}
+      "questionId": "question-3",
+      "answer": null,
+      "answeredAt": null,
+      "question": {}
+    },
+    {
+      "questionId": "question-7",
+      "answer": null,
+      "answeredAt": null,
+      "question": {}
     }
   ]
 }
 ```
+
+Nếu đã đúng hết:
+
+```json
+{
+  "id": "attempt-4",
+  "attemptNumber": 4,
+  "status": "in_progress",
+  "score": "10.00",
+  "maxScore": "10.00",
+  "percentage": "100.00",
+  "displayResult": "10/10",
+  "totalQuestions": 10,
+  "attemptQuestionCount": 0,
+  "attemptCorrectCount": 0,
+  "attemptWrongCount": 0,
+  "attemptUnansweredCount": 0,
+  "cumulativeCorrectCount": 10,
+  "answers": []
+}
+```
+
+FE nên xử lý `answers.length === 0` như trạng thái đã hoàn thành toàn bộ câu hỏi, không cần render màn làm bài.
+
+#### 9.2.3 Submit One Answer
+
+FE nên submit ngay sau khi student chọn/điền đáp án cho một câu:
+
+```http
+POST /learning/student/attempts/:attemptId/answers/:questionId/submit
+```
+
+Body chung:
+
+```json
+{
+  "answer": {}
+}
+```
+
+BE sẽ:
+
+- Chấm câu đó ngay.
+- Lưu đáp án student đã điền vào `answer`.
+- Set `answeredAt`.
+- Trả `isCorrect`, `correctAnswer`, `score`, `feedback` để FE hiển thị kết quả câu đó.
+- Khóa câu đó trong attempt hiện tại. Nếu submit lại cùng câu, BE trả `409`.
+- Nếu câu sai, FE nên chuyển sang câu tiếp theo; câu sai sẽ được làm lại ở attempt sau.
+
+Response review một câu:
+
+```json
+{
+  "id": "attempt-answer-1",
+  "questionId": "question-1",
+  "questionType": "multiple_choice",
+  "orderIndex": 0,
+  "answer": {
+    "selectedOptionIds": ["option-a"]
+  },
+  "correctAnswer": {
+    "selectedOptionIds": ["option-b"]
+  },
+  "answeredAt": "2026-05-30T00:04:00.000Z",
+  "score": "0.00",
+  "maxScore": "1.00",
+  "isCorrect": false,
+  "feedback": {
+    "explanation": "Because..."
+  },
+  "question": {
+    "prompt": "Choose the correct answer",
+    "options": []
+  }
+}
+```
+
+Answer body theo question type.
 
 Choice/audio/image/reading:
 
 ```json
 {
-  "questionId": "question-id",
   "answer": {
     "selectedOptionIds": ["option-id"]
   }
@@ -1280,7 +1632,6 @@ Word ordering:
 
 ```json
 {
-  "questionId": "question-id",
   "answer": {
     "tokens": ["I", "am", "a", "student"]
   }
@@ -1291,7 +1642,6 @@ Sentence rewrite/hint rewrite:
 
 ```json
 {
-  "questionId": "question-id",
   "answer": {
     "text": "She has learned English since 2020."
   }
@@ -1302,7 +1652,6 @@ Error correction:
 
 ```json
 {
-  "questionId": "question-id",
   "answer": {
     "correctedSentence": "He goes to school."
   }
@@ -1313,7 +1662,6 @@ Matching:
 
 ```json
 {
-  "questionId": "question-id",
   "answer": {
     "pairs": [
       {
@@ -1327,40 +1675,181 @@ Matching:
 
 Quan trọng: matching item ids được BE sinh trong snapshot lúc start attempt. FE phải dùng `question.detail.leftItems[].id` và `question.detail.rightItems[].id` từ attempt, không dùng dữ liệu admin question.
 
-Submit response là review:
+#### 9.2.4 Get Current Attempt / Refresh
+
+```http
+GET /learning/student/attempts/:attemptId
+```
+
+FE dùng endpoint này khi refresh trang hoặc cần sync lại state.
+
+Nếu attempt đang `in_progress`:
+
+- Câu chưa trả lời có `answer = null`, `answeredAt = null` và không có `correctAnswer`/`feedback`.
+- Câu đã submit từng câu sẽ có `answer`, `answeredAt`, `isCorrect`, `correctAnswer`, `feedback` để FE vẫn hiển thị được review sau refresh.
+- FE không cho student sửa câu đã có `answeredAt`.
+
+Nếu attempt đã `submitted`, response là review đầy đủ các câu trong attempt đó.
+
+#### 9.2.5 Finish Attempt
+
+Khi student đã đi hết các câu trong attempt hiện tại, FE gọi:
+
+```http
+POST /learning/student/attempts/:attemptId/submit
+```
+
+Body có thể để rỗng:
+
+```json
+{}
+```
+
+BE vẫn hỗ trợ body cũ để backward compatibility:
 
 ```json
 {
-  "id": "attempt-id",
-  "status": "submitted",
-  "score": "8.00",
-  "maxScore": "10.00",
-  "percentage": "80.00",
-  "submittedAt": "2026-05-30T00:10:00.000Z",
-  "durationSeconds": 600,
   "answers": [
     {
       "questionId": "question-id",
-      "answer": {},
-      "correctAnswer": {},
-      "score": "1.00",
-      "maxScore": "1.00",
-      "isCorrect": true,
-      "feedback": {
-        "explanation": "Because..."
-      }
+      "answer": {}
     }
   ]
 }
 ```
 
-Attempt history:
+Nếu `answers` được gửi, BE chỉ chấm các câu chưa từng submit trong attempt hiện tại, sau đó finish attempt.
+
+Khi finish, BE sẽ:
+
+- Set `status = submitted`.
+- Set `submittedAt` và `durationSeconds`.
+- Tính lại số câu đúng trong attempt hiện tại.
+- Tính lại điểm cộng dồn từ toàn bộ submitted attempts cùng scope.
+- Trả `displayResult`, ví dụ `8/10`, `9/10`, `10/10`.
+- Chỉ mark assignment/curriculum exam completed khi `percentage = 100`.
+
+Ví dụ attempt 1 đúng 8/10:
+
+```json
+{
+  "id": "attempt-1",
+  "attemptNumber": 1,
+  "status": "submitted",
+  "score": "8.00",
+  "maxScore": "10.00",
+  "percentage": "80.00",
+  "displayResult": "8/10",
+  "totalQuestions": 10,
+  "attemptQuestionCount": 10,
+  "attemptCorrectCount": 8,
+  "attemptWrongCount": 2,
+  "attemptUnansweredCount": 0,
+  "cumulativeCorrectCount": 8,
+  "answers": []
+}
+```
+
+Ví dụ attempt 2 làm lại 2 câu, đúng thêm 1 câu:
+
+```json
+{
+  "id": "attempt-2",
+  "attemptNumber": 2,
+  "status": "submitted",
+  "score": "9.00",
+  "maxScore": "10.00",
+  "percentage": "90.00",
+  "displayResult": "9/10",
+  "totalQuestions": 10,
+  "attemptQuestionCount": 2,
+  "attemptCorrectCount": 1,
+  "attemptWrongCount": 1,
+  "attemptUnansweredCount": 0,
+  "cumulativeCorrectCount": 9,
+  "answers": []
+}
+```
+
+#### 9.2.6 Attempt History
+
+Direct exam assignment:
 
 ```http
 GET /learning/student/exam-assignments/:assignmentId/attempts
 ```
 
-Trả toàn bộ attempts của student trong assignment đó, bao gồm review nếu đã submit.
+Detail endpoints cũng trả attempt list trong response:
+
+```http
+GET /learning/student/exam-assignments/:assignmentId
+GET /learning/student/curriculums/:assignmentStudentId
+```
+
+History trả toàn bộ attempts của student theo `attemptNumber`. Mỗi attempt chỉ chứa các câu đã xuất hiện trong attempt đó, không lặp lại những câu đã đúng ở attempt trước.
+
+Ví dụ flow hiển thị lịch sử:
+
+```json
+[
+  {
+    "attemptNumber": 1,
+    "status": "submitted",
+    "displayResult": "8/10",
+    "score": "8.00",
+    "maxScore": "10.00",
+    "percentage": "80.00",
+    "attemptQuestionCount": 10,
+    "attemptCorrectCount": 8,
+    "attemptWrongCount": 2,
+    "cumulativeCorrectCount": 8,
+    "answers": [
+      {
+        "questionId": "question-3",
+        "answer": { "selectedOptionIds": ["wrong-option"] },
+        "correctAnswer": { "selectedOptionIds": ["right-option"] },
+        "isCorrect": false,
+        "answeredAt": "2026-05-30T00:04:00.000Z"
+      }
+    ]
+  },
+  {
+    "attemptNumber": 2,
+    "status": "submitted",
+    "displayResult": "9/10",
+    "score": "9.00",
+    "maxScore": "10.00",
+    "percentage": "90.00",
+    "attemptQuestionCount": 2,
+    "attemptCorrectCount": 1,
+    "attemptWrongCount": 1,
+    "cumulativeCorrectCount": 9,
+    "answers": []
+  },
+  {
+    "attemptNumber": 3,
+    "status": "submitted",
+    "displayResult": "10/10",
+    "score": "10.00",
+    "maxScore": "10.00",
+    "percentage": "100.00",
+    "attemptQuestionCount": 1,
+    "attemptCorrectCount": 1,
+    "attemptWrongCount": 0,
+    "cumulativeCorrectCount": 10,
+    "answers": []
+  }
+]
+```
+
+FE nên dùng:
+
+- `displayResult` để hiển thị dạng `8/10`, `9/10`, `10/10`.
+- `percentage` cho progress bar/ranking.
+- `answers[].answer` để hiển thị đáp án student đã điền.
+- `answers[].correctAnswer` và `answers[].feedback` để hiển thị review.
+- `answers[].answeredAt` để biết câu đã bị khóa trong attempt hiện tại.
+- `attemptQuestionCount` để biết attempt đó student phải làm bao nhiêu câu.
 
 ## 10. Auto Grading Rules
 

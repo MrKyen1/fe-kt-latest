@@ -7,21 +7,21 @@ export const coursesData = [
     id: 'toan',
     title: 'Toán',
     subCourses: [
-      { id: 'toan-1-5', title: 'Toán Lớp 1-5', image: 'https://picsum.photos/seed/toan1/400/300' },
-      { id: 'toan-6-9', title: 'Toán Lớp 6-9', image: 'https://picsum.photos/seed/toan2/400/300' },
-      { id: 'toan-10-12', title: 'Toán Lớp 10-12', image: 'https://picsum.photos/seed/toan3/400/300' },
-      { id: 'toan-chuyen', title: 'Ôn thi vào trường chuyên cấp 2,3, đại học', image: 'https://picsum.photos/seed/toan4/400/300' }
+      { id: 'toan-1-5', title: 'Toán Lớp 1-5', image: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=400&auto=format&fit=crop&q=60' },
+      { id: 'toan-6-9', title: 'Toán Lớp 6-9', image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=400&auto=format&fit=crop&q=60' },
+      { id: 'toan-10-12', title: 'Toán Lớp 10-12', image: 'https://images.unsplash.com/photo-1509228627152-72ae9ae6848c?w=400&auto=format&fit=crop&q=60' },
+      { id: 'toan-chuyen', title: 'Ôn thi vào trường chuyên cấp 2,3, đại học', image: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=400&auto=format&fit=crop&q=60' }
     ]
   },
   {
     id: 'tieng-anh',
     title: 'Tiếng Anh',
     subCourses: [
-      { id: 'ta-sgk', title: 'Tiếng Anh theo SGK', image: 'https://picsum.photos/seed/ta1/400/300' },
-      { id: 'ta-giao-tiep', title: 'Tiếng Anh giao tiếp', image: 'https://picsum.photos/seed/ta2/400/300' },
-      { id: 'ta-chuyen', title: 'Luyện thi chuyên 2-3, đại học', image: 'https://picsum.photos/seed/ta3/400/300' },
-      { id: 'ta-ielts', title: 'IELTS', image: 'https://picsum.photos/seed/ta4/400/300' },
-      { id: 'ta-vao-10', title: 'Luyện thi vào 10', image: 'https://picsum.photos/seed/ta5/400/300' }
+      { id: 'ta-sgk', title: 'Tiếng Anh theo SGK', image: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=400&auto=format&fit=crop&q=60' },
+      { id: 'ta-giao-tiep', title: 'Tiếng Anh giao tiếp', image: 'https://images.unsplash.com/photo-1577896851231-70ef18881754?w=400&auto=format&fit=crop&q=60' },
+      { id: 'ta-chuyen', title: 'Luyện thi chuyên 2-3, đại học', image: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=400&auto=format&fit=crop&q=60' },
+      { id: 'ta-ielts', title: 'IELTS', image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&auto=format&fit=crop&q=60' },
+      { id: 'ta-vao-10', title: 'Luyện thi vào 10', image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&auto=format&fit=crop&q=60' }
     ]
   }
 ];
@@ -29,8 +29,8 @@ export const coursesData = [
 /* ===================== TEACHERS ===================== */
 
 export const teachersData = [
-  { id: 1, name: 'Cô Nguyễn Thị A', subject: 'Toán', image: 'https://picsum.photos/seed/teacher1/200/200', desc: '10 năm kinh nghiệm luyện thi' },
-  { id: 2, name: 'Thầy Trần Văn B', subject: 'Tiếng Anh', image: 'https://picsum.photos/seed/teacher2/200/200', desc: 'IELTS 8.5, chuyên gia giao tiếp' }
+  { id: 1, name: 'Cô Nguyễn Thị A', subject: 'Toán', image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=60', desc: '10 năm kinh nghiệm luyện thi' },
+  { id: 2, name: 'Thầy Trần Văn B', subject: 'Tiếng Anh', image: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&auto=format&fit=crop&q=60', desc: 'IELTS 8.5, chuyên gia giao tiếp' }
 ];
 
 /* ===================== EXAMS (METADATA) ===================== */

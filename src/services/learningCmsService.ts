@@ -20,6 +20,8 @@ import {
   ReorderCurriculumExamsRequest,
   ReorderExamQuestionsRequest,
   StatusUpdateRequest,
+  RandomQuestionsRequest,
+  BulkAttachQuestionsRequest,
 } from "../types/learning";
 import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
@@ -199,6 +201,46 @@ export const learningCmsService = {
       return unwrapData(
         await apiClient.delete<ApiEnvelope<Exam>>(
           `/learning/exams/${examId}/questions/${questionId}`,
+        ),
+      );
+    },
+
+    /**
+     * Random câu hỏi theo nhóm tiêu chí (preview — KHÔNG ghi DB).
+     * Response: { data: { totalCount, items, groups[] } }
+     * FE có thể truyền thọng `data.items` vào bulkAttachQuestions.
+     */
+    async randomQuestions(payload: RandomQuestionsRequest) {
+      return unwrapData(
+        await apiClient.post<ApiEnvelope<{
+          totalCount: number;
+          items: Array<{ questionId: string; orderIndex: number }>;
+          groups: Array<{
+            index: number;
+            filters: Record<string, unknown>;
+            requested: number;
+            returned: number;
+            questions: Array<{
+              orderIndex: number;
+              id: string;
+              prompt: string;
+              type: string;
+              options: unknown[];
+            }>;
+          }>;
+        }>>("/learning/exams/random-questions", payload),
+      );
+    },
+
+    /**
+     * Bulk attach câu hỏi vào exam (lưu bộ câu vào DB).
+     * Dùng kết hợp với randomQuestions: truyền data.items từ response random.
+     */
+    async bulkAttachQuestions(examId: string, payload: BulkAttachQuestionsRequest): Promise<Exam> {
+      return unwrapData(
+        await apiClient.post<ApiEnvelope<Exam>>(
+          `/learning/exams/${examId}/questions/bulk`,
+          payload,
         ),
       );
     },

@@ -3,6 +3,8 @@ import { Form, Input, Button, message } from "antd";
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import loginImg from "../../assets/login/login.png";
+import logoImg from "../../assets/logo/logo.png";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -29,7 +31,7 @@ const Login = () => {
       {/* ===== LEFT: IMAGE (2/3) ===== */}
       <div className="hidden md:flex w-2/3 items-center justify-center">
         <img
-          src="src/assets/login/login.png"
+          src={loginImg}
           alt="Login Illustration"
           className="w-[80%] max-w-xl"
         />
@@ -41,7 +43,7 @@ const Login = () => {
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <img
-              src="/src/assets/logo/logo.png"
+              src={logoImg}
               alt="Logo"
               className="h-14 object-contain"
             />
@@ -117,9 +119,8 @@ const Login = () => {
             Bạn chưa có tài khoản?
             <span
               className="text-blue-600 ml-1 cursor-pointer hover:underline"
-              onClick={() => navigate("/register")}
             >
-              Đăng ký ngay
+              Liên hệ với quản lý trung tâm.
             </span>
           </p>
         </div>

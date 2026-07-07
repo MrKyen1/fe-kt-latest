@@ -1,6 +1,7 @@
 import { Form, Input, Button, message } from "antd";
 import { UserOutlined, MailOutlined, LockOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import logoImg from "../../assets/logo/logo.png";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ const Register = () => {
         {/* LOGO */}
         <div className="flex justify-center mb-6">
           <img
-            src="/src/assets/logo/logo.png"
+            src={logoImg}
             alt="Logo"
             className="h-14 object-contain"
           />

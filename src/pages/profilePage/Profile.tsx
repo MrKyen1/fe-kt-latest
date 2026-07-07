@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
 
 import {
   Avatar,
@@ -278,8 +280,16 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
 
 export default function Profile() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
 
-  const [menuKey, setMenuKey] = useState("profile");
+  const [menuKey, setMenuKey] = useState(tabParam || "profile");
+
+  useEffect(() => {
+    if (tabParam) {
+      setMenuKey(tabParam);
+    }
+  }, [tabParam]);
 
   const [students, setStudents] = useState<Student[]>([]);
 

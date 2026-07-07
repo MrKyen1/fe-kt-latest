@@ -19,7 +19,13 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
     },
 
     async list(params?: Record<string, unknown>): Promise<TItem[]> {
-      return unwrapData(await apiClient.get<ApiEnvelope<TItem[]>>(path, { params }));
+      // Thử unwrapData trước (nếu BE trả thẳng array), nếu không thì unwrap từ paginated
+      const response = await apiClient.get<ApiEnvelope<TItem[]>>(path, { params });
+      // BE có thể trả { data: [...] } (array) hoặc { data: [...], meta: {...} } (paginated)
+      const payload = response.data?.data;
+      if (Array.isArray(payload)) return payload;
+      // Fallback nếu data wrapped lạ
+      return (payload as any) ?? [];
     },
 
     async get(id: string): Promise<TItem> {

@@ -47,10 +47,9 @@ export default function AboutUs() {
             className="relative rounded-3xl overflow-hidden shadow-2xl"
           >
             <img
-              src="https://picsum.photos/seed/about/800/600"
+              src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop&q=80"
               alt="About Kata Edu"
               className="w-full h-auto"
-              referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-blue-600/10"></div>
             <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-xl max-w-xs">

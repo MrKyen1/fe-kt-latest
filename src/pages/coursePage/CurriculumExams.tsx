@@ -1,4 +1,4 @@
-import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button } from "antd";
+import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button, Modal, Table, Progress, Tooltip } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -9,7 +9,10 @@ import {
   PlayCircle,
   Lock,
   CheckCircle2,
+  History,
+  RotateCcw,
 } from "lucide-react";
+import { HistoryOutlined, ArrowRightOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { learningCmsService } from "../../services/learningCmsService";
 import { studentLearningService } from "../../services/studentLearningService";
@@ -30,9 +33,12 @@ type ExamEntry = {
 };
 
 type StudentCurriculumRow = {
-  id: string;
-  assignmentStudentId?: string;
+  curriculumId?: string;
+  enrollmentId?: string | null;
   curriculum?: { id: string };
+  // legacy shape fallback
+  id?: string;
+  assignmentStudentId?: string;
   assignment?: { curriculum?: { id: string } };
 };
 
@@ -51,6 +57,12 @@ export default function CurriculumExams() {
   // Student assignment ID for this curriculum (needed to start attempt)
   const [studentAssignmentId, setStudentAssignmentId] = useState<string | null>(null);
 
+  // ---- History modal ----
+  const [historyAssignmentStudentId, setHistoryAssignmentStudentId] = useState<string | null>(null);
+  const [historyExamId, setHistoryExamId] = useState<string | null>(null);
+  const [historyTitle, setHistoryTitle] = useState<string | undefined>(undefined);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+
   const isStudent = user?.role === "student";
 
   useEffect(() => {
@@ -61,8 +73,26 @@ export default function CurriculumExams() {
       try {
         setIsLoading(true);
 
-        // Load curriculum detail from CMS
-        const cur = await learningCmsService.curriculums.get(curriculumId!);
+        let cur;
+        if (isStudent) {
+          try {
+            const cmsCur = await learningCmsService.curriculums.get(curriculumId!);
+            const detail = await studentLearningService.curriculums.get(curriculumId!);
+            cur = {
+              ...cmsCur,
+              ...detail,
+              exams: detail.exams || []
+            };
+            if (active) {
+              setStudentAssignmentId(detail.enrollmentId || null);
+            }
+          } catch {
+            cur = await learningCmsService.curriculums.get(curriculumId!);
+          }
+        } else {
+          cur = await learningCmsService.curriculums.get(curriculumId!);
+        }
+
         if (active) setCurriculum(cur);
 
         // Load each exam's detail to get the accurate question count.
@@ -89,24 +119,6 @@ export default function CurriculumExams() {
             }),
           );
           if (active) setExamQuestionCounts(counts);
-        }
-
-        // If student, also load their assignment for this curriculum so we can startAttempt
-        if (isStudent) {
-          try {
-            const res = await studentLearningService.curriculums.list({ page: 1, limit: 100 });
-            const rows = res.data as StudentCurriculumRow[];
-            const matched = rows.find((row) => {
-              const cId =
-                row.curriculum?.id || row.assignment?.curriculum?.id;
-              return cId === curriculumId;
-            });
-            if (active && matched) {
-              setStudentAssignmentId(matched.assignmentStudentId ?? matched.id);
-            }
-          } catch {
-            // silently ignore — student may not be assigned yet
-          }
         }
 
         if (active) setError(null);
@@ -137,8 +149,9 @@ export default function CurriculumExams() {
     }
     try {
       setStartingExamId(examId);
+      // studentAssignmentId is now the curriculumId (used by /student/curriculums/:curriculumId/exams/:examId/attempts)
       const attempt = await studentLearningService.curriculums.startAttempt(
-        studentAssignmentId,
+        studentAssignmentId!,
         examId,
       );
       const attemptId = (attempt as any)?.id;
@@ -151,7 +164,18 @@ export default function CurriculumExams() {
     }
   };
 
-  const exams: ExamEntry[] = (curriculum?.exams ?? []).sort(
+  const percentColor = (pct?: string | number) => {
+    const n = parseFloat(String(pct ?? "0"));
+    if (n >= 80) return "#10b981";
+    if (n >= 50) return "#f59e0b";
+    return "#ef4444";
+  };
+
+  const exams: ExamEntry[] = (curriculum?.exams ?? []).map((entry: any) => {
+    const isRequired = entry.isRequired ?? entry.curriculumExam?.isRequired ?? false;
+    const orderIndex = entry.orderIndex ?? entry.curriculumExam?.orderIndex ?? 0;
+    return { ...entry, isRequired, orderIndex };
+  }).sort(
     (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0),
   );
 
@@ -288,29 +312,62 @@ export default function CurriculumExams() {
                                   Bắt buộc
                                 </Tag>
                               )}
+                              {isStudent && ((entry as any).attemptsCount ?? 0) > 0 && (
+                                <span className="text-slate-400 text-xs">{(entry as any).attemptsCount} lần đã làm</span>
+                              )}
+                              {isStudent && (entry as any).bestPercentage != null && (
+                                <span className="text-xs font-semibold" style={{ color: percentColor((entry as any).bestPercentage) }}>
+                                  Tốt nhất: {(entry as any).bestScore !== null && (entry as any).bestScore !== undefined ? `${(entry as any).bestScore}` : ""} ({parseFloat((entry as any).bestPercentage).toFixed(1)}%)
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
 
-                        <Button
-                          type="primary"
-                          size="large"
-                          icon={<PlayCircle size={18} />}
-                          loading={isStarting}
-                          disabled={isStarting || (!canDoExam && isStudent)}
-                          className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 ${
-                            canDoExam || !isStudent
-                              ? "bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20"
-                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                          }`}
-                          onClick={() => handleStartExam(exam?.id ?? entry.examId)}
-                        >
-                          {isStudent
-                            ? canDoExam
-                              ? "Làm bài ngay"
-                              : "Chưa được giao"
-                            : "Xem trước (chỉ HS)"}
-                        </Button>
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                          {isStudent && ((entry as any).attemptsCount ?? 0) > 0 && (
+                            <Tooltip title="Xem lịch sử làm bài">
+                              <Button
+                                size="large"
+                                icon={<History size={18} />}
+                                onClick={() => {
+                                  setHistoryAssignmentStudentId(studentAssignmentId);
+                                  setHistoryExamId(exam?.id ?? entry.examId);
+                                  setHistoryTitle(exam?.title ?? exam?.code ?? `Bài thi`);
+                                  setHistoryModalOpen(true);
+                                }}
+                                className="h-12 w-12 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-400"
+                              />
+                            </Tooltip>
+                          )}
+                          <Button
+                            type={isStudent && ((entry as any).attemptsCount ?? 0) > 0 ? "default" : "primary"}
+                            size="large"
+                            icon={isStudent && ((entry as any).attemptsCount ?? 0) > 0 ? <RotateCcw size={18} /> : <PlayCircle size={18} />}
+                            loading={isStarting}
+                            disabled={isStarting || (!canDoExam && isStudent) || (isStudent && curriculum?.maxAttempts && ((entry as any).attemptsCount ?? 0) >= curriculum.maxAttempts)}
+                            className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 justify-center ${
+                              isStudent && curriculum?.maxAttempts && ((entry as any).attemptsCount ?? 0) >= curriculum.maxAttempts
+                                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                : isStudent && ((entry as any).attemptsCount ?? 0) > 0
+                                ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
+                                : canDoExam || !isStudent
+                                ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                            }`}
+                            onClick={() => handleStartExam(exam?.id ?? entry.examId)}
+                          >
+                            {isStudent
+                              ? isStudent && curriculum?.maxAttempts && ((entry as any).attemptsCount ?? 0) >= curriculum.maxAttempts
+                                ? "Hết lượt"
+                                : canDoExam
+                                ? ((entry as any).attemptsCount ?? 0) > 0
+                                  ? "Làm lại"
+                                  : "Làm bài ngay"
+                                : "Chưa được giao"
+                              : "Xem trước (chỉ HS)"}
+                          </Button>
+                        </div>
                       </motion.div>
                     </Col>
                   );
@@ -320,6 +377,107 @@ export default function CurriculumExams() {
           </>
         )}
       </div>
+
+      <AttemptHistoryModal
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        assignmentStudentId={historyAssignmentStudentId}
+        examId={historyExamId}
+        title={historyTitle}
+      />
     </div>
+  );
+}
+
+// ==================== ATTEMPT HISTORY MODAL ====================
+function AttemptHistoryModal({
+  assignmentStudentId, examId, title, open, onClose,
+}: { assignmentStudentId: string | null; examId?: string | null; title?: string; open: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [attempts, setAttempts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const formatTime = (sec?: number) => {
+    if (!sec) return "—";
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? `${m}p ${s}s` : `${s}s`;
+  };
+
+  const formatDate = (iso?: string | null) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("vi-VN", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  };
+
+  const percentColor = (pct?: string | number) => {
+    const n = parseFloat(String(pct ?? "0"));
+    if (n >= 80) return "#10b981";
+    if (n >= 50) return "#f59e0b";
+    return "#ef4444";
+  };
+
+  useEffect(() => {
+    if (!open || !assignmentStudentId) return;
+    setLoading(true);
+    studentLearningService.examAssignments
+      .attempts(assignmentStudentId)
+      .then((res: any) => {
+        const arr = Array.isArray(res) ? res : res?.data ?? [];
+        const filtered = examId ? arr.filter((x: any) => x.examId === examId) : arr;
+        setAttempts(filtered);
+      })
+      .catch(() => message.error("Không thể tải lịch sử làm bài"))
+      .finally(() => setLoading(false));
+  }, [open, assignmentStudentId, examId]);
+
+  const columns = [
+    { title: "Lần", dataIndex: "attemptNumber", width: 60, render: (n: number) => <span className="font-bold text-indigo-600">#{n}</span> },
+    {
+      title: "Trạng thái", dataIndex: "status",
+      render: (status: string) => status === "submitted"
+        ? <Tag color="success" className="rounded-full border-none text-xs font-semibold">✓ Đã nộp</Tag>
+        : <Tag color="processing" className="rounded-full border-none text-xs font-semibold">Đang làm</Tag>,
+    },
+    {
+      title: "Điểm",
+      render: (_: any, r: any) => r.status === "submitted"
+        ? <span className="font-bold" style={{ color: percentColor(r.percentage) }}>{r.score ?? "—"} / {r.maxScore ?? "—"}</span>
+        : <span className="text-slate-400">—</span>,
+    },
+    {
+      title: "Phần trăm",
+      render: (_: any, r: any) => r.status === "submitted" && r.percentage
+        ? <Progress percent={Math.round(parseFloat(r.percentage))} size="small" strokeColor={percentColor(r.percentage)} format={(p) => `${p}%`} />
+        : <span className="text-slate-400">—</span>,
+    },
+    { title: "Thời gian làm", render: (_: any, r: any) => <span className="text-sm text-slate-500">{formatTime(r.durationSeconds)}</span> },
+    { title: "Ngày nộp", render: (_: any, r: any) => <span className="text-xs text-slate-400">{formatDate(r.submittedAt)}</span> },
+    {
+      title: "Chi tiết", align: "right" as const,
+      render: (_: any, r: any) => (
+        <Button type="link" size="small" icon={<ArrowRightOutlined />}
+          onClick={() => { onClose(); navigate(`/exam/${r.id}`); }}
+          className="text-indigo-600 font-medium">
+          {r.status === "submitted" ? "Xem đáp án" : "Tiếp tục"}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <Modal open={open} onCancel={onClose} footer={null}
+      title={<div className="flex items-center gap-2 text-indigo-700 font-bold"><HistoryOutlined /><span>Lịch sử làm bài: {title || "Bài thi"}</span></div>}
+      width={800}
+    >
+      {loading ? (
+        <div className="flex justify-center py-10"><Spin size="large" /></div>
+      ) : attempts.length === 0 ? (
+        <Empty description="Chưa có lần làm bài nào" />
+      ) : (
+        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={false} size="small" className="rounded-xl overflow-hidden" />
+      )}
+    </Modal>
   );
 }
