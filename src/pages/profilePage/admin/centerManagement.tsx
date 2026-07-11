@@ -22,7 +22,9 @@ import {
   Tooltip,
   Typography,
   message,
+  Upload,
 } from "antd";
+import type { UploadFile } from "antd";
 
 import {
   BookOutlined,
@@ -39,6 +41,7 @@ import {
   MailOutlined,
   PhoneOutlined,
   EnvironmentOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 
 import { userService } from "../../../services/userService";
@@ -46,6 +49,9 @@ import { rbacService } from "../../../services/rbacService";
 import { authService } from "../../../services/authService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { academicService } from "../../../services/academicService";
+import { learningCmsService } from "../../../services/learningCmsService";
+import { teacherLearningService } from "../../../services/teacherLearningService";
+import { resolveMediaUrl } from "../../../services/apiClient";
 import dayjs from "dayjs";
 
 const { Title, Text, Paragraph } = Typography;
@@ -93,10 +99,13 @@ export default function CenterManagement() {
   const [students, setStudents] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [specializations, setSpecializations] = useState<any[]>([]);
+  const [curriculums, setCurriculums] = useState<any[]>([]);
+  const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
 
   // ================= UI STATE =================
   const [loading, setLoading] = useState(false);
   const [selectedCenterId, setSelectedCenterId] = useState<string | null>(null);
+  const [subImagesFileList, setSubImagesFileList] = useState<UploadFile[]>([]);
 
   // Search state
   const [centerSearch, setCenterSearch] = useState("");
@@ -146,7 +155,9 @@ export default function CenterManagement() {
         activeStudents,
         inactiveStudents,
         rolesData,
-        specializationsData
+        specializationsData,
+        curriculumsData,
+        classCurriculumsData,
       ] = await Promise.all([
         academicService.centers.list(),
         academicService.classes.list(),
@@ -156,11 +167,15 @@ export default function CenterManagement() {
         userService.list({ roleCode: "student", isActive: "" as any }),
         rbacService.roles.list(),
         academicService.specializations.list(),
+        learningCmsService.curriculums.list({ status: "published", limit: 100 }),
+        teacherLearningService.classCurriculums.list({ limit: 100 }),
       ]);
 
       setCenters(centersData || []);
       setClasses(classesData || []);
-      
+      setCurriculums(curriculumsData?.data || []);
+      setClassCurriculums(classCurriculumsData?.data || []);
+
       const rawTeachers = [...(activeTeachers || []), ...(inactiveTeachers || [])];
       const uniqueTeachers = rawTeachers.filter(
         (teacher, index, self) => self.findIndex((t) => t.id === teacher.id) === index
@@ -172,7 +187,7 @@ export default function CenterManagement() {
         (student, index, self) => self.findIndex((s) => s.id === student.id) === index
       );
       setStudents(uniqueStudents);
-      
+
       setRoles(rolesData || []);
       setSpecializations(specializationsData || []);
 
@@ -200,8 +215,40 @@ export default function CenterManagement() {
   };
 
   // ================= CENTER CRUD HANDLERS =================
+  const getRelativeUrl = (file: UploadFile) => {
+    if (file.response?.url) {
+      return file.response.url;
+    }
+    if (file.url) {
+      if (file.url.startsWith("http")) {
+        try {
+          const parsed = new URL(file.url);
+          if (parsed.pathname.startsWith("/uploads")) {
+            return parsed.pathname;
+          }
+        } catch { }
+      }
+      return file.url;
+    }
+    return "";
+  };
+
+  const handleUploadChange = ({ fileList }: { fileList: UploadFile[] }) => {
+    const cappedList = fileList.slice(0, 20);
+    const updated = cappedList.map((file) => {
+      if (!file.url && file.originFileObj) {
+        const previewUrl = URL.createObjectURL(file.originFileObj);
+        file.url = previewUrl;
+        file.thumbUrl = previewUrl;
+      }
+      return file;
+    });
+    setSubImagesFileList(updated);
+  };
+
   const handleCenterCreate = () => {
     setEditingCenter(null);
+    setSubImagesFileList([]);
     centerForm.resetFields();
     setCenterModalOpen(true);
   };
@@ -209,6 +256,23 @@ export default function CenterManagement() {
   const handleCenterEdit = (record: any, e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid triggering selectedCenterId change
     setEditingCenter(record);
+
+    // Populate Auxiliary/Sub Images File List
+    if (record.images && Array.isArray(record.images)) {
+      setSubImagesFileList(
+        record.images.map((img: any, idx: number) => ({
+          uid: img.id || `-${idx + 2}`,
+          name: img.url.split("/").pop() || `image-${idx}.png`,
+          status: "done",
+          url: resolveMediaUrl(img.url),
+          thumbUrl: resolveMediaUrl(img.url),
+          response: { url: img.url },
+        }))
+      );
+    } else {
+      setSubImagesFileList([]);
+    }
+
     centerForm.setFieldsValue({
       name: record.name,
       address: record.address,
@@ -245,19 +309,99 @@ export default function CenterManagement() {
   };
 
   const handleCenterSubmit = async (values: any) => {
+    setLoading(true);
+    let payload: any = null;
     try {
-      if (editingCenter) {
-        await academicService.centers.update(editingCenter.id, values);
-        message.success("Cập nhật trung tâm thành công");
-      } else {
-        await academicService.centers.create(values);
-        message.success("Tạo trung tâm thành công");
+      const subImgUrls: string[] = [];
+
+      for (const file of subImagesFileList) {
+        if (file.originFileObj) {
+          // This is a newly added local file, upload it now
+          try {
+            const media = await learningCmsService.mediaAssets.upload(file.originFileObj, file.name);
+            subImgUrls.push(media.url);
+          } catch (uploadErr: any) {
+            message.error(`Tải ảnh ${file.name} lên thất bại: ${uploadErr.message || uploadErr}`);
+            setLoading(false);
+            return;
+          }
+        } else {
+          // This is an existing file, retrieve its relative URL path
+          const relUrl = getRelativeUrl(file);
+          if (relUrl) {
+            subImgUrls.push(relUrl);
+          }
+        }
       }
-      loadData();
-      setCenterModalOpen(false);
-      centerForm.resetFields();
+
+      payload = {
+        ...values,
+        image: null,
+        images: subImgUrls,
+      };
+
+      const doSubmit = async () => {
+        if (editingCenter) {
+          await academicService.centers.update(editingCenter.id, payload);
+          message.success("Cập nhật trung tâm thành công");
+        } else {
+          await academicService.centers.create(payload);
+          message.success("Tạo trung tâm thành công");
+        }
+        loadData();
+        setCenterModalOpen(false);
+        centerForm.resetFields();
+      };
+
+      await doSubmit();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const centerId = err.details?.id;
+        if (centerId) {
+          Modal.confirm({
+            title: "Khôi phục trung tâm",
+            content: "Tên trung tâm đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại trung tâm này không?",
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await academicService.centers.reactivate(centerId);
+                // 2. Update with current form details
+                await academicService.centers.update(centerId, payload);
+                message.success("Khôi phục và cập nhật trung tâm thành công");
+
+                loadData();
+                setSelectedCenterId(centerId);
+                setCenterModalOpen(false);
+                centerForm.resetFields();
+              } catch (reactivateErr: any) {
+                if (reactivateErr.fieldErrors) {
+                  const fields = Object.entries(reactivateErr.fieldErrors).map(([key, val]) => ({
+                    name: key,
+                    errors: Array.isArray(val) ? val : [val],
+                  }));
+                  centerForm.setFields(fields);
+                } else {
+                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                }
+              }
+            },
+          });
+          return;
+        }
+      }
+      if (err.fieldErrors) {
+        const fields = Object.entries(err.fieldErrors).map(([key, val]) => ({
+          name: key,
+          errors: Array.isArray(val) ? val : [val],
+        }));
+        centerForm.setFields(fields);
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -273,10 +417,12 @@ export default function CenterManagement() {
 
   const handleClassEdit = (record: any) => {
     setEditingClass(record);
+    const mapped = classCurriculums.filter((cc) => cc.classId === record.id);
     classForm.setFieldsValue({
       name: record.name,
       centerId: record.centerId,
       description: record.description,
+      curriculumIds: mapped.map((m) => m.curriculumId),
     });
     setClassModalOpen(true);
   };
@@ -300,20 +446,103 @@ export default function CenterManagement() {
     });
   };
 
+  const syncClassCurriculums = async (classId: string, targetCurriculumIds: string[]) => {
+    const currentMappings = classCurriculums.filter((cc) => cc.classId === classId);
+    const currentIds = currentMappings.map((m) => m.curriculumId);
+    const nextIds = targetCurriculumIds || [];
+
+    // Create new mappings
+    for (const id of nextIds) {
+      if (!currentIds.includes(id)) {
+        try {
+          await teacherLearningService.classCurriculums.create({
+            classId,
+            curriculumId: id,
+          });
+        } catch (err) {
+          console.error(`Failed to map curriculum ${id}:`, err);
+        }
+      }
+    }
+
+    // Remove old mappings
+    for (const mapping of currentMappings) {
+      if (!nextIds.includes(mapping.curriculumId)) {
+        try {
+          await teacherLearningService.classCurriculums.remove(mapping.id);
+        } catch (err) {
+          console.error(`Failed to remove curriculum map ${mapping.id}:`, err);
+        }
+      }
+    }
+  };
+
   const handleClassSubmit = async (values: any) => {
+    const { curriculumIds, ...classValues } = values;
     try {
+      let savedClass: any = null;
       if (editingClass) {
-        await academicService.classes.update(editingClass.id, values);
+        savedClass = await academicService.classes.update(editingClass.id, classValues);
+        await syncClassCurriculums(editingClass.id, curriculumIds);
         message.success("Cập nhật lớp học thành công");
       } else {
-        await academicService.classes.create(values);
+        savedClass = await academicService.classes.create(classValues);
+        if (savedClass?.id) {
+          await syncClassCurriculums(savedClass.id, curriculumIds);
+        }
         message.success("Tạo lớp học thành công");
       }
       loadData();
       setClassModalOpen(false);
       classForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const classId = err.details?.id;
+        if (classId) {
+          Modal.confirm({
+            title: "Khôi phục lớp học",
+            content: "Tên lớp học đã tồn tại trong trung tâm này nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại lớp học này không?",
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await academicService.classes.reactivate(classId);
+                // 2. Update with current form details
+                await academicService.classes.update(classId, classValues);
+                // 3. Sync curriculum mapping
+                await syncClassCurriculums(classId, curriculumIds);
+
+                message.success("Khôi phục và cập nhật lớp học thành công");
+
+                loadData();
+                setClassModalOpen(false);
+                classForm.resetFields();
+              } catch (reactivateErr: any) {
+                if (reactivateErr.fieldErrors) {
+                  const fields = Object.entries(reactivateErr.fieldErrors).map(([key, val]) => ({
+                    name: key,
+                    errors: Array.isArray(val) ? val : [val],
+                  }));
+                  classForm.setFields(fields);
+                } else {
+                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                }
+              }
+            },
+          });
+          return;
+        }
+      }
+      if (err.fieldErrors) {
+        const fields = Object.entries(err.fieldErrors).map(([key, val]) => ({
+          name: key,
+          errors: Array.isArray(val) ? val : [val],
+        }));
+        classForm.setFields(fields);
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
     }
   };
 
@@ -403,8 +632,7 @@ export default function CenterManagement() {
         });
         message.success("Cập nhật giáo viên thành công");
       } else {
-        await userService.create({
-          code: values.code,
+        const createdUser = await userService.create({
           password: values.password || "TempPass@123",
           fullName: values.fullName,
           email: cleanEmail,
@@ -415,7 +643,7 @@ export default function CenterManagement() {
           roleId: getTeacherRoleId(),
           teacherProfile: profileData,
         });
-        message.success("Tạo giáo viên thành công");
+        message.success(`Tạo giáo viên thành công! Mã: ${createdUser.code}`);
       }
       loadData();
       setTeacherModalOpen(false);
@@ -505,8 +733,7 @@ export default function CenterManagement() {
         });
         message.success("Cập nhật học sinh thành công");
       } else {
-        await userService.create({
-          code: values.code,
+        const createdUser = await userService.create({
           password: values.password || "TempPass@123",
           fullName: values.fullName,
           email: cleanEmail,
@@ -517,7 +744,7 @@ export default function CenterManagement() {
           roleId: getStudentRoleId(),
           studentProfile: profileData,
         });
-        message.success("Tạo học sinh thành công");
+        message.success(`Tạo học sinh thành công! Mã: ${createdUser.code}`);
       }
       loadData();
       setStudentModalOpen(false);
@@ -1121,10 +1348,10 @@ export default function CenterManagement() {
                   <div className="space-y-6">
 
                     {/* CENTER COVER IMAGE (If exists) */}
-                    {selectedCenter?.image && (
+                    {/* {(selectedCenter?.image || (selectedCenter?.images && selectedCenter.images.length > 0)) && (
                       <div className="w-full h-48 rounded-3xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100">
                         <img
-                          src={selectedCenter.image}
+                          src={resolveMediaUrl(selectedCenter.image || selectedCenter.images[0].url)}
                           alt={selectedCenter.name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -1133,7 +1360,7 @@ export default function CenterManagement() {
                           }}
                         />
                       </div>
-                    )}
+                    )} */}
 
                     {/* CENTER CONTACT & GENERAL DETAIL */}
                     <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
@@ -1215,6 +1442,32 @@ export default function CenterManagement() {
                       </Row>
                     </div>
 
+                    {/* CENTER IMAGES GALLERY */}
+                    {selectedCenter?.images && selectedCenter.images.length > 0 && (
+                      <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4">
+                          <span className="text-lg">🖼️</span>
+                          <h3 className="text-base font-bold text-slate-800 m-0">Ảnh chi tiết trung tâm ({selectedCenter.images.length})</h3>
+                        </div>
+                        <Row gutter={[16, 16]}>
+                          {selectedCenter.images.map((img: any) => (
+                            <Col xs={12} sm={8} md={6} key={img.id}>
+                              <div className="relative group aspect-[4/3] rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100 cursor-pointer">
+                                <img
+                                  src={resolveMediaUrl(img.url)}
+                                  alt="Center detail"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">Xem ảnh</span>
+                                </div>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    )}
+
                     {/* STATS INFO */}
                     <Row gutter={[16, 16]}>
                       {[
@@ -1278,6 +1531,8 @@ export default function CenterManagement() {
                             return sClassIds.includes(cls.id);
                           }).length;
 
+                          const mapped = classCurriculums.filter((cc) => cc.classId === cls.id);
+
                           return (
                             <Col xs={24} sm={12} md={8} key={cls.id}>
                               <div className="group border border-slate-100 rounded-2xl p-5 bg-slate-50/20 hover:bg-white hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 relative flex flex-col justify-between min-h-[120px]">
@@ -1300,6 +1555,19 @@ export default function CenterManagement() {
                                       />
                                     </div>
                                   </div>
+                                  {mapped.length > 0 && (
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {mapped.map((m) => {
+                                        const name = m.curriculum?.title || m.curriculum?.code;
+                                        if (!name) return null;
+                                        return (
+                                          <span key={m.id} className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full">
+                                            📚 {name}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                   {cls.description && (
                                     <div className="text-slate-400 text-xs mt-1.5 line-clamp-2">{cls.description}</div>
                                   )}
@@ -1483,6 +1751,16 @@ export default function CenterManagement() {
               onOk={() => centerForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              width={720}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "65vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
@@ -1491,28 +1769,69 @@ export default function CenterManagement() {
                 onFinish={handleCenterSubmit}
                 className="pt-2"
               >
-                <Form.Item
-                  name="name"
-                  label="Tên trung tâm"
-                  rules={[{ required: true, message: "Vui lòng nhập tên trung tâm!" }]}
-                >
-                  <Input placeholder="Ví dụ: Kata Hà Nội" className="rounded-xl" />
-                </Form.Item>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="name"
+                      label="Tên trung tâm"
+                      rules={[{ required: true, message: "Vui lòng nhập tên trung tâm!" }]}
+                    >
+                      <Input placeholder="Ví dụ: Kata Hà Nội" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="phone"
+                      label="Số điện thoại liên hệ"
+                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại liên hệ!" }]}
+                    >
+                      <Input placeholder="Ví dụ: 0123456789" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-                <Form.Item name="address" label="Địa chỉ">
-                  <Input placeholder="Ví dụ: Cầu Giấy, Hà Nội" className="rounded-xl" />
-                </Form.Item>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="email"
+                      label="Email liên hệ"
+                      rules={[
+                        { required: true, message: "Vui lòng nhập email liên hệ!" },
+                        { type: "email", message: "Email không hợp lệ!" }
+                      ]}
+                    >
+                      <Input placeholder="Ví dụ: contact@kata.edu.vn" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="address"
+                      label="Địa chỉ"
+                      rules={[{ required: true, message: "Vui lòng nhập địa chỉ!" }]}
+                    >
+                      <Input placeholder="Ví dụ: Cầu Giấy, Hà Nội" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-                <Form.Item name="phone" label="Số điện thoại liên hệ">
-                  <Input placeholder="Ví dụ: 0123456789" className="rounded-xl" />
-                </Form.Item>
-
-                <Form.Item name="email" label="Email liên hệ">
-                  <Input placeholder="Ví dụ: contact@kata.edu.vn" className="rounded-xl" />
-                </Form.Item>
-
-                <Form.Item name="image" label="Đường dẫn ảnh đại diện (Image URL)">
-                  <Input placeholder="Ví dụ: https://images.unsplash.com/... hoặc /uploads/..." className="rounded-xl" />
+                <Form.Item label="Hình ảnh trung tâm (Tối đa 20 ảnh)" tooltip="Hỗ trợ tải lên nhiều hình ảnh cùng lúc để giới thiệu trung tâm">
+                  <Upload
+                    listType="picture-card"
+                    fileList={subImagesFileList}
+                    beforeUpload={() => false}
+                    onChange={handleUploadChange}
+                    accept="image/*"
+                    multiple
+                    maxCount={20}
+                    showUploadList={{ showPreviewIcon: false }}
+                  >
+                    {subImagesFileList.length < 20 && (
+                      <div>
+                        <PlusOutlined />
+                        <div style={{ marginTop: 8 }}>Tải ảnh lên</div>
+                      </div>
+                    )}
+                  </Upload>
                 </Form.Item>
 
                 <Form.Item name="mapEmbedUrl" label="Link bản đồ nhúng (Google Map Embed URL)">
@@ -1563,6 +1882,16 @@ export default function CenterManagement() {
                   </Select>
                 </Form.Item>
 
+                <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
+                  <Select mode="multiple" placeholder="Chọn giáo trình gắn với lớp" allowClear className="rounded-xl">
+                    {curriculums.map((curr) => (
+                      <Select.Option key={curr.id} value={curr.id}>
+                        {curr.title || curr.code}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+
                 <Form.Item name="description" label="Mô tả lớp học">
                   <Input.TextArea placeholder="Nhập mô tả ngắn về lớp học này..." rows={2} className="rounded-xl" />
                 </Form.Item>
@@ -1581,6 +1910,15 @@ export default function CenterManagement() {
               okText="Lưu lại"
               cancelText="Hủy bỏ"
               width={650}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "70vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
@@ -1594,12 +1932,8 @@ export default function CenterManagement() {
                     <Form.Item
                       name="code"
                       label="Mã giáo viên"
-                      rules={[
-                        { required: true, message: "Nhập mã giáo viên!" },
-                        { min: 3, message: "Mã phải từ 3 ký tự!" },
-                      ]}
                     >
-                      <Input placeholder="teacher01" disabled={!!editingTeacher} className="rounded-xl" />
+                      <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
@@ -1823,6 +2157,15 @@ export default function CenterManagement() {
               okText="Lưu lại"
               cancelText="Hủy bỏ"
               width={650}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "70vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
@@ -1836,12 +2179,8 @@ export default function CenterManagement() {
                     <Form.Item
                       name="code"
                       label="Mã học sinh"
-                      rules={[
-                        { required: true, message: "Nhập mã học sinh!" },
-                        { min: 3, message: "Mã phải từ 3 ký tự!" },
-                      ]}
                     >
-                      <Input placeholder="student01" disabled={!!editingStudent} className="rounded-xl" />
+                      <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
                   <Col span={12}>

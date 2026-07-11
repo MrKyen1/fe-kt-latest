@@ -43,8 +43,18 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
 }
 
 export const academicService = {
-  centers: crudService<Center, CreateCenterRequest, UpdateCenterRequest>("/centers"),
-  classes: crudService<ClassRoom, CreateClassRequest, UpdateClassRequest>("/classes"),
+  centers: {
+    ...crudService<Center, CreateCenterRequest, UpdateCenterRequest>("/centers"),
+    async reactivate(id: string): Promise<Center> {
+      return unwrapData(await apiClient.patch<ApiEnvelope<Center>>(`/centers/${id}/reactivate`));
+    },
+  },
+  classes: {
+    ...crudService<ClassRoom, CreateClassRequest, UpdateClassRequest>("/classes"),
+    async reactivate(id: string): Promise<ClassRoom> {
+      return unwrapData(await apiClient.patch<ApiEnvelope<ClassRoom>>(`/classes/${id}/reactivate`));
+    },
+  },
   specializations: crudService<
     Specialization,
     CreateSpecializationRequest,

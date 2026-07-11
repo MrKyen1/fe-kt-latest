@@ -302,38 +302,6 @@ export default function Profile() {
           users = await userService.list({ roleCode: "student" });
         } catch (err) {
           console.warn("Failed to load students for ranking from API (403 Forbidden for teacher), falling back to database students:", err);
-          users = [
-            {
-              id: "019ec448-71b0-76bc-b821-4b758e23e6ea",
-              fullName: "Ngô Đăng Kiên",
-              code: "139384",
-              dateOfBirth: "2010-01-01",
-              studentProfile: {
-                id: "019ec448-71c2-755d-9540-771691e28d3a",
-                classes: [
-                  {
-                    id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5",
-                    name: "Toán 6"
-                  }
-                ]
-              }
-            },
-            {
-              id: "019ee804-260f-706c-b7cb-730856a408fa",
-              fullName: "Nguyễn Văn Hải",
-              code: "132495",
-              dateOfBirth: "2010-01-01",
-              studentProfile: {
-                id: "019ee804-2614-74a2-9b3f-83fed96cf805",
-                classes: [
-                  {
-                    id: "019ee7fe-1348-7338-a198-4fc554482a58",
-                    name: "Tiếng anh 10"
-                  }
-                ]
-              }
-            }
-          ];
         }
         if (!active) return;
 
@@ -401,7 +369,14 @@ export default function Profile() {
     {
       key: "ranking",
       icon: <TrophyOutlined />,
-      label: "Ranking",
+      label: (
+        <>
+          Ranking{" "}
+          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
+            Coming Soon
+          </span>
+        </>
+      ),
     },
   ];
 
@@ -428,17 +403,31 @@ export default function Profile() {
     {
       key: "ranking",
       icon: <TrophyOutlined />,
-      label: "Student Ranking",
+      label: (
+        <>
+          Student Ranking{" "}
+          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
+            Coming Soon
+          </span>
+        </>
+      ),
     },
-    {
-      key: "rbac",
-      icon: <CrownOutlined />,
-      label: "Phân quyền (RBAC)",
-    },
+    // {
+    //   key: "rbac",
+    //   icon: <CrownOutlined />,
+    //   label: "Phân quyền (RBAC)",
+    // },
     {
       key: "about",
       icon: <FileTextOutlined />,
-      label: "About",
+      label: (
+        <>
+          About{" "}
+          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
+            Coming Soon
+          </span>
+        </>
+      ),
     },
   ];
 
@@ -456,7 +445,14 @@ export default function Profile() {
     {
       key: "ranking",
       icon: <TrophyOutlined />,
-      label: "Student Ranking",
+      label: (
+        <>
+          Student Ranking{" "}
+          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
+            Coming Soon
+          </span>
+        </>
+      ),
     },
   ];
 

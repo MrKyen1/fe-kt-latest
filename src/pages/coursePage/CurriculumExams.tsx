@@ -56,6 +56,7 @@ export default function CurriculumExams() {
 
   // Student assignment ID for this curriculum (needed to start attempt)
   const [studentAssignmentId, setStudentAssignmentId] = useState<string | null>(null);
+  const [hasAccess, setHasAccess] = useState(false);
 
   // ---- History modal ----
   const [historyAssignmentStudentId, setHistoryAssignmentStudentId] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export default function CurriculumExams() {
             };
             if (active) {
               setStudentAssignmentId(detail.enrollmentId || null);
+              setHasAccess(true);
             }
           } catch {
             cur = await learningCmsService.curriculums.get(curriculumId!);
@@ -141,7 +143,7 @@ export default function CurriculumExams() {
       message.info("Chỉ học sinh mới có thể làm bài thi. Bạn đang xem ở chế độ preview.");
       return;
     }
-    if (!studentAssignmentId) {
+    if (!studentAssignmentId && !hasAccess) {
       message.warning(
         "Bạn chưa được giao giáo trình này. Vui lòng liên hệ giáo viên để được phân công.",
       );
@@ -149,9 +151,8 @@ export default function CurriculumExams() {
     }
     try {
       setStartingExamId(examId);
-      // studentAssignmentId is now the curriculumId (used by /student/curriculums/:curriculumId/exams/:examId/attempts)
       const attempt = await studentLearningService.curriculums.startAttempt(
-        studentAssignmentId!,
+        curriculumId!,
         examId,
       );
       const attemptId = (attempt as any)?.id;
@@ -179,7 +180,7 @@ export default function CurriculumExams() {
     (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0),
   );
 
-  const canDoExam = isStudent && !!studentAssignmentId;
+  const canDoExam = isStudent && (!!studentAssignmentId || hasAccess);
 
   return (
     <div className="w-full bg-slate-50 py-16 px-6 md:px-16 min-h-screen">

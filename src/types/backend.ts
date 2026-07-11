@@ -83,7 +83,6 @@ export interface StudentProfile {
 }
 
 export interface CreateUserRequest {
-  code: string;
   password: string;
   fullName: string;
   dateOfBirth?: string;
@@ -110,6 +109,14 @@ export type UpdateUserRequest = Partial<Omit<CreateUserRequest, "password">> & {
   endDate?: string | null;
 };
 
+export interface CenterImage {
+  id: string;
+  centerId: string;
+  url: string;
+  orderIndex: number;
+  isActive: boolean;
+}
+
 export interface Center {
   id: string;
   name: string;
@@ -117,7 +124,8 @@ export interface Center {
   phone?: string;
   email?: string;
   description?: string;
-  image?: string;
+  image?: string;         // Ảnh đại diện chính
+  images?: CenterImage[]; // [Mới] Danh sách ảnh phụ
   mapEmbedUrl?: string;
   isActive?: boolean;
   createdAt?: string;
@@ -146,7 +154,10 @@ export interface Specialization {
   updatedAt?: string;
 }
 
-export type CreateCenterRequest = Omit<Center, "id" | "isActive" | "createdAt" | "updatedAt">;
+export interface CreateCenterRequest extends Omit<Center, "id" | "isActive" | "createdAt" | "updatedAt" | "images"> {
+  images?: string[]; // Gửi danh sách URL dạng string[] lên BE
+}
+
 export type UpdateCenterRequest = Partial<CreateCenterRequest> & { isActive?: boolean };
 export type CreateClassRequest = Omit<ClassRoom, "id" | "center" | "isActive" | "createdAt" | "updatedAt">;
 export type UpdateClassRequest = Partial<CreateClassRequest> & { isActive?: boolean };

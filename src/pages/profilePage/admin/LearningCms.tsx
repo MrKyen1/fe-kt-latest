@@ -124,6 +124,8 @@ export default function LearningCms() {
   const lastFetchedSearchRef = useRef("");
 
   // ================= MODAL STATES =================
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<any>(null);
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [passageModalOpen, setPassageModalOpen] = useState(false);
@@ -336,8 +338,9 @@ export default function LearningCms() {
           await getTaxService(taxTab).remove(record.id);
           message.success("Xóa thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          const errMsg = error?.response?.data?.message || error?.message || "Xóa thất bại";
+          message.error(errMsg);
         }
       },
     });
@@ -393,8 +396,9 @@ export default function LearningCms() {
           await learningCmsService.mediaAssets.remove(record.id);
           message.success("Xóa tệp thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          const errMsg = error?.response?.data?.message || error?.message || "Xóa thất bại";
+          message.error(errMsg);
         }
       },
     });
@@ -430,8 +434,9 @@ export default function LearningCms() {
           await learningCmsService.readingPassages.remove(record.id);
           message.success("Xóa thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          const errMsg = error?.response?.data?.message || error?.message || "Xóa thất bại";
+          message.error(errMsg);
         }
       },
     });
@@ -532,8 +537,9 @@ export default function LearningCms() {
           await learningCmsService.questions.remove(record.id);
           message.success("Xóa thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          const errMsg = error?.response?.data?.message || error?.message || "Xóa thất bại";
+          message.error(errMsg);
         }
       },
     });
@@ -687,8 +693,9 @@ export default function LearningCms() {
           await learningCmsService.exams.remove(record.id);
           message.success("Xóa đề thi thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          const errMsg = error?.response?.data?.message || error?.message || "Xóa thất bại";
+          message.error(errMsg);
         }
       },
     });
@@ -763,8 +770,9 @@ export default function LearningCms() {
           await learningCmsService.curriculums.remove(record.id);
           message.success("Xóa giáo trình thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          const errMsg = error?.response?.data?.message || error?.message || "Xóa thất bại";
+          message.error(errMsg);
         }
       },
     });
@@ -847,8 +855,9 @@ export default function LearningCms() {
       const updatedExam = await learningCmsService.exams.get(selectedExam.id);
       setSelectedExam(updatedExam);
       loadAllData();
-    } catch {
-      message.error("Gỡ câu hỏi thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || error?.message || "Gỡ câu hỏi thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -909,8 +918,9 @@ export default function LearningCms() {
       const updatedCurr = await learningCmsService.curriculums.get(selectedCurriculum.id);
       setSelectedCurriculum(updatedCurr);
       loadAllData();
-    } catch {
-      message.error("Gỡ đề thi thất bại");
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.message || error?.message || "Gỡ đề thi thất bại";
+      message.error(errMsg);
     }
   };
 
@@ -1406,14 +1416,14 @@ export default function LearningCms() {
                                         {asset.type || "File"}
                                       </span>
                                       <Space size={2}>
-                                        <Tooltip title="Xem ID">
+                                        <Tooltip title="Xem chi tiết">
                                           <Button
                                             type="text"
                                             size="small"
                                             icon={<EyeOutlined />}
                                             onClick={() => {
-                                              navigator.clipboard.writeText(asset.id);
-                                              message.success("Đã copy ID");
+                                              setPreviewAsset(asset);
+                                              setPreviewVisible(true);
                                             }}
                                           />
                                         </Tooltip>
@@ -1851,7 +1861,7 @@ export default function LearningCms() {
                   <Input placeholder="Tên hiển thị" className="rounded-xl" />
                 </Form.Item>
                 {taxTab === "levels" && (
-                  <Form.Item name="rank" label="Thứ tự (Rank)">
+                  <Form.Item name="rank" label="Thứ tự (Rank)" rules={[{ required: true, message: "Vui lòng nhập thứ tự sắp xếp!" }]}>
                     <InputNumber style={{ width: "100%" }} min={0} placeholder="Thứ tự sắp xếp" className="rounded-xl" />
                   </Form.Item>
                 )}
@@ -1969,6 +1979,15 @@ export default function LearningCms() {
               onCancel={() => setQuestionModalOpen(false)}
               onOk={() => questionForm.submit()}
               width={800}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "70vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
               okText="Lưu lại"
               cancelText="Hủy"
@@ -2058,99 +2077,178 @@ export default function LearningCms() {
                 <Divider className="my-3" />
 
                 {/* Media Assets Section */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <Text className="text-sm font-semibold text-slate-700">Tệp tin đa phương tiện (Media)</Text>
+                <div className="mb-4 rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                  {/* Section Header */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <span className="text-sm">🖼️</span>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-700">Tệp tin đa phương tiện (Media)</span>
+                    </div>
                   </div>
-                  <Form.List name="mediaIds">
-                    {(mediaFields, { add, remove }) => (
-                      <div className="space-y-2">
-                        {mediaFields.map(({ key, name, ...restField }) => {
-                          const currentMediaId = questionForm.getFieldValue(["mediaIds", name, "mediaId"]);
-                          const selectedAsset = media.find((m) => m.id === currentMediaId);
 
-                          return (
-                            <div key={key} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl">
-                              <Form.Item
-                                {...restField}
-                                name={[name, "mediaId"]}
-                                rules={[{ required: true, message: "Chọn tệp media!" }]}
-                                className="mb-0 flex-1"
+                  {/* Media List */}
+                  <div className="p-3">
+                    <Form.List name="mediaIds">
+                      {(mediaFields, { add, remove }) => (
+                        <div className="space-y-2">
+                          {mediaFields.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-6 text-slate-400">
+                              <span className="text-3xl mb-2">📂</span>
+                              <span className="text-xs">Chưa có tệp tin nào. Nhấn bên dưới để thêm.</span>
+                            </div>
+                          )}
+
+                          {mediaFields.map(({ key, name, ...restField }, index) => {
+                            const currentMediaId = questionForm.getFieldValue(["mediaIds", name, "mediaId"]);
+                            const selectedAsset = media.find((m) => m.id === currentMediaId);
+                            const isImage = selectedAsset?.type === "image" || selectedAsset?.mimeType?.startsWith("image");
+                            const isAudio = selectedAsset?.type === "audio" || selectedAsset?.mimeType?.startsWith("audio");
+
+                            return (
+                              <div
+                                key={key}
+                                className="group relative flex gap-2 items-center bg-white border border-slate-150 rounded-xl p-3 hover:border-indigo-200 hover:shadow-sm transition-all duration-200"
+                                style={{ borderColor: "#f0f0f0" }}
                               >
-                                <Select
-                                  placeholder="Chọn tệp tin (ảnh, âm thanh, video)"
-                                  className="rounded-lg w-full"
-                                  allowClear
-                                  onChange={() => {
-                                    const roles = getAvailableRoles();
-                                    if (roles.length === 1) {
-                                      questionForm.setFieldValue(["mediaIds", name, "role"], roles[0].value);
-                                    }
-                                  }}
-                                >
-                                  {getFilteredMedia().map((asset) => (
-                                    <Select.Option key={asset.id} value={asset.id}>
-                                      [{asset.type.toUpperCase()}] {asset.altText || asset.url.split("/").pop()}
-                                    </Select.Option>
-                                  ))}
-                                </Select>
-                              </Form.Item>
+                                {/* Index badge */}
+                                <div className="shrink-0 w-6 h-6 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center text-xs font-bold self-start mt-1">
+                                  {index + 1}
+                                </div>
 
-                              <Form.Item
-                                {...restField}
-                                name={[name, "role"]}
-                                rules={[{ required: true, message: "Chọn vai trò!" }]}
-                                className="mb-0 w-44"
-                              >
-                                <Select placeholder="Vai trò" className="rounded-lg">
-                                  {getAvailableRoles().map((r) => (
-                                    <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
-                                  ))}
-                                </Select>
-                              </Form.Item>
+                                {/* Fields column */}
+                                <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+                                  <div className="flex gap-2 items-start">
+                                    {/* File select */}
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, "mediaId"]}
+                                      rules={[{ required: true, message: "Chọn tệp media!" }]}
+                                      className="mb-0 flex-1 min-w-0"
+                                      style={{ marginBottom: 0 }}
+                                    >
+                                      <Select
+                                        placeholder="Chọn tệp tin (ảnh, âm thanh, video)..."
+                                        className="w-full"
+                                        allowClear
+                                        size="middle"
+                                        onChange={() => {
+                                          const roles = getAvailableRoles();
+                                          if (roles.length === 1) {
+                                            questionForm.setFieldValue(["mediaIds", name, "role"], roles[0].value);
+                                          }
+                                        }}
+                                      >
+                                        {getFilteredMedia().map((asset) => (
+                                          <Select.Option key={asset.id} value={asset.id}>
+                                            [{asset.type.toUpperCase()}]{" "}
+                                            {asset.altText || asset.url.split("/").pop()}
+                                          </Select.Option>
+                                        ))}
+                                      </Select>
+                                    </Form.Item>
 
-                              {/* Preview thumbnail */}
-                              {selectedAsset && (
-                                <div className="w-10 h-10 flex items-center justify-center bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shrink-0">
-                                  {selectedAsset.type === "image" || selectedAsset.mimeType?.startsWith("image") ? (
-                                    <img
-                                      src={resolveMediaUrl(selectedAsset.url)}
-                                      alt="Preview"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : selectedAsset.type === "audio" || selectedAsset.mimeType?.startsWith("audio") ? (
-                                    <SoundOutlined className="text-lg text-indigo-600" />
-                                  ) : (
-                                    <span className="text-lg">📹</span>
+                                    {/* Role select */}
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, "role"]}
+                                      rules={[{ required: true, message: "Chọn vai trò!" }]}
+                                      className="mb-0 w-44 shrink-0"
+                                      style={{ marginBottom: 0 }}
+                                    >
+                                      <Select placeholder="Vai trò" className="w-full" size="middle">
+                                        {getAvailableRoles().map((r) => (
+                                          <Select.Option key={r.value} value={r.value}>
+                                            {r.label}
+                                          </Select.Option>
+                                        ))}
+                                      </Select>
+                                    </Form.Item>
+
+                                    {/* Thumbnail preview */}
+                                    {selectedAsset ? (
+                                      <Tooltip title="Nhấp để xem/nghe thử">
+                                        <div
+                                          className="shrink-0 w-8 h-8 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center cursor-pointer hover:scale-105 hover:border-indigo-300 hover:shadow-md transition-all duration-200"
+                                          onClick={() => {
+                                            setPreviewAsset(selectedAsset);
+                                            setPreviewVisible(true);
+                                          }}
+                                        >
+                                          {isImage ? (
+                                            <img
+                                              src={resolveMediaUrl(selectedAsset.url)}
+                                              alt="Preview"
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : isAudio ? (
+                                            <SoundOutlined className="text-base text-indigo-500" />
+                                          ) : (
+                                            <span className="text-base">📹</span>
+                                          )}
+                                        </div>
+                                      </Tooltip>
+                                    ) : (
+                                      <div className="shrink-0 w-8 h-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center">
+                                        <span className="text-slate-300 text-sm">?</span>
+                                      </div>
+                                    )}
+
+                                    {/* Delete */}
+                                    <Tooltip title="Xoá tệp này">
+                                      <Button
+                                        type="text"
+                                        danger
+                                        shape="circle"
+                                        icon={<DeleteOutlined />}
+                                        onClick={() => remove(name)}
+                                        className="shrink-0 w-8 h-8 flex items-center justify-center hover:bg-red-50 transition-all duration-200"
+                                      />
+                                    </Tooltip>
+                                  </div>
+
+                                  {/* Type badge */}
+                                  {selectedAsset && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                          isImage
+                                            ? "bg-blue-50 text-blue-600"
+                                            : isAudio
+                                            ? "bg-violet-50 text-violet-600"
+                                            : "bg-orange-50 text-orange-600"
+                                        }`}
+                                      >
+                                        {isImage ? "🖼️ Hình ảnh" : isAudio ? "🔊 Âm thanh" : "📹 Video"}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 truncate max-w-[180px]">
+                                        {selectedAsset.altText || selectedAsset.url.split("/").pop()}
+                                      </span>
+                                    </div>
                                   )}
                                 </div>
-                              )}
+                              </div>
+                            );
+                          })}
 
-                              <Button
-                                type="text"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => remove(name)}
-                                className="shrink-0"
-                              />
-                            </div>
-                          );
-                        })}
-                        <Button
-                          type="dashed"
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            const roles = getAvailableRoles();
-                            const defaultRole = roles.length === 1 ? roles[0].value : "prompt_image";
-                            add({ mediaId: undefined, role: defaultRole });
-                          }}
-                          className="w-full rounded-xl"
-                        >
-                          Thêm liên kết Media
-                        </Button>
-                      </div>
-                    )}
-                  </Form.List>
+                          {/* Add button */}
+                          <Button
+                            type="dashed"
+                            icon={<PlusOutlined />}
+                            onClick={() => {
+                              const roles = getAvailableRoles();
+                              const defaultRole = roles.length === 1 ? roles[0].value : "prompt_image";
+                              add({ mediaId: undefined, role: defaultRole });
+                            }}
+                            className="w-full rounded-xl h-9 text-slate-500 hover:text-indigo-500 hover:border-indigo-300 transition-all duration-200"
+                          >
+                            + Thêm liên kết Media
+                          </Button>
+                        </div>
+                      )}
+                    </Form.List>
+                  </div>
                 </div>
 
                 <Divider className="my-3" />
@@ -2535,6 +2633,57 @@ export default function LearningCms() {
                   </Card>
                 </Col>
               </Row>
+            </Modal>
+
+            {/* MEDIA PREVIEW MODAL */}
+            <Modal
+              open={previewVisible}
+              title={previewAsset?.altText || "Xem chi tiết Media"}
+              footer={null}
+              onCancel={() => {
+                setPreviewVisible(false);
+                setPreviewAsset(null);
+              }}
+              centered
+              destroyOnClose
+            >
+              {previewAsset && (
+                <div className="flex flex-col items-center justify-center p-4">
+                  {previewAsset.type === "image" || previewAsset.mimeType?.startsWith("image") ? (
+                    <img
+                      src={resolveMediaUrl(previewAsset.url)}
+                      alt={previewAsset.altText}
+                      style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
+                      className="rounded-lg shadow-sm"
+                    />
+                  ) : previewAsset.type === "audio" || previewAsset.mimeType?.startsWith("audio") ? (
+                    <div className="w-full text-center space-y-4">
+                      <div className="text-6xl text-indigo-500">
+                        <SoundOutlined />
+                      </div>
+                      <audio
+                        src={resolveMediaUrl(previewAsset.url)}
+                        controls
+                        autoPlay
+                        className="w-full"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full text-center space-y-4">
+                      <video
+                        src={resolveMediaUrl(previewAsset.url)}
+                        controls
+                        autoPlay
+                        style={{ maxWidth: "100%", maxHeight: "60vh" }}
+                        className="rounded-lg"
+                      />
+                    </div>
+                  )}
+                  <div className="mt-4 text-xs text-slate-400 font-mono select-all">
+                    ID: {previewAsset.id}
+                  </div>
+                </div>
+              )}
             </Modal>
           </div>
         </Spin>
