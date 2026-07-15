@@ -47,7 +47,7 @@ export default function AboutUs() {
             className="relative rounded-3xl overflow-hidden shadow-2xl"
           >
             <img
-              src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop&q=80"
+              src="src\assets\aboutus\aboutUs.jpg"
               alt="About Kata Edu"
               className="w-full h-auto"
             />
