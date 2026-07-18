@@ -8,4 +8,5 @@ export * from "./learningCmsService";
 export * from "./teacherLearningService";
 export * from "./studentLearningService";
 export * from "./observabilityService";
+export * from "./leaderboardService";
 

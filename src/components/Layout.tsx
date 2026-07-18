@@ -5,9 +5,9 @@ import { Layout as AntLayout } from 'antd';
 
 export default function Layout() {
   return (
-    <AntLayout className="min-h-screen flex flex-col bg-slate-50 font-sans">
+    <AntLayout className="min-h-screen flex flex-col bg-slate-50 font-sans" style={{ overflow: 'visible' }}>
       <Header />
-      <AntLayout.Content className="flex-1 flex flex-col">
+      <AntLayout.Content className="flex-1 flex flex-col" style={{ overflow: 'visible' }}>
         <Outlet />
       </AntLayout.Content>
       <Footer />

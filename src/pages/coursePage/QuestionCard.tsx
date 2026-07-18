@@ -1,7 +1,11 @@
 import React, { useMemo } from "react";
-import { Input } from "antd";
+import { Input, Modal, Form, Select, Checkbox, Button, message, Space } from "antd";
 import { ExamOption, ExamQuestion } from "../../types";
 import { MatchingQuestion } from "./MatchingQuestion";
+import { tokenStorage } from "../../services/tokenStorage";
+import { learningCmsService } from "../../services/learningCmsService";
+
+const CHOICE_TYPES = ["multiple_choice", "audio_choice", "image_choice", "reading_comprehension", "multiple-choice", "listening"];
 
 interface QuestionCardProps {
   question: ExamQuestion;
@@ -26,6 +30,82 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   isLastQuestion,
   isReviewMode,
 }) => {
+  const [regradeModalOpen, setRegradeModalOpen] = React.useState(false);
+  const [regradeLoading, setRegradeLoading] = React.useState(false);
+  const [regradeForm] = Form.useForm();
+
+  React.useEffect(() => {
+    if (regradeModalOpen) {
+      let initialValues: any = {};
+      if (CHOICE_TYPES.includes(question.type)) {
+        const currentVal = question.correctAnswer;
+        initialValues = {
+          selectedOptionIds: Array.isArray(currentVal) ? currentVal : (currentVal ? [currentVal] : []),
+        };
+      } else if (question.type === "word_ordering" || question.type === "word-ordering") {
+        initialValues = {
+          tokens: Array.isArray(question.correctAnswer) ? question.correctAnswer.join(" ") : String(question.correctAnswer || ""),
+        };
+      } else if (question.type === "sentence_rewrite" || question.type === "hint_rewrite" || question.type === "fill-in-the-blank") {
+        initialValues = {
+          acceptedAnswers: Array.isArray(question.correctAnswer) ? question.correctAnswer.join("\n") : String(question.correctAnswer || ""),
+        };
+      } else if (question.type === "error_correction") {
+        initialValues = {
+          correctedSentence: String(question.correctAnswer || ""),
+        };
+      } else if (question.type === "matching") {
+        const currentPairs = question.correctAnswer || {};
+        initialValues = {
+          matchingPairs: currentPairs,
+        };
+      }
+      regradeForm.setFieldsValue(initialValues);
+    }
+  }, [regradeModalOpen, question, regradeForm]);
+
+  const handleRegradeSubmit = async (values: any) => {
+    try {
+      setRegradeLoading(true);
+      let correctAnswer: any = {};
+      if (CHOICE_TYPES.includes(question.type)) {
+        correctAnswer = { selectedOptionIds: values.selectedOptionIds };
+      } else if (question.type === "word_ordering" || question.type === "word-ordering") {
+        correctAnswer = {
+          tokens: values.tokens.split(" ").filter(Boolean),
+          caseSensitive: question.sourceSentence ? false : true, // safe default
+          allowPunctuationVariants: true,
+        };
+      } else if (question.type === "sentence_rewrite" || question.type === "hint_rewrite" || question.type === "fill-in-the-blank") {
+        correctAnswer = {
+          acceptedAnswers: values.acceptedAnswers.split("\n").map((s: string) => s.trim()).filter(Boolean),
+          gradingMode: "normalized",
+        };
+      } else if (question.type === "error_correction") {
+        correctAnswer = { correctedSentence: values.correctedSentence };
+      } else if (question.type === "matching") {
+        const pairsArray = Object.entries(values.matchingPairs || {}).map(([left, right]) => ({
+          leftItemId: left,
+          rightItemId: right,
+        }));
+        correctAnswer = { pairs: pairsArray };
+      }
+
+      const res = await learningCmsService.questionVersions.regrade(
+        question.questionVersionId!,
+        correctAnswer
+      );
+      message.success(`Chấm lại thành công! Số câu trả lời được chấm lại: ${res.regradedAnswers}, số lượt làm bị ảnh hưởng: ${res.affectedAttempts}`);
+      setRegradeModalOpen(false);
+      window.location.reload();
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || "Chấm lại thất bại";
+      message.error(errMsg);
+    } finally {
+      setRegradeLoading(false);
+    }
+  };
+
   const orderedWords = useMemo(() => {
     return Array.isArray(currentAnswer) ? currentAnswer : [];
   }, [currentAnswer]);
@@ -361,16 +441,18 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const renderFeedbackBox = () => {
     if (!showFeedback) return null;
+    const user = tokenStorage.getUser();
+    const hasManagePerm = user?.role?.permissions?.includes("learning.manage") || user?.role?.code === "admin" || user?.role?.code === "teacher";
 
     return (
       <div
-        className={`mt-2 mb-6 p-5 rounded-2xl border-l-4 shadow-sm flex gap-4 ${
+        className={`mt-2 mb-6 p-5 rounded-2xl border-l-4 shadow-sm flex justify-between items-start gap-4 ${
           isCorrect
             ? "bg-emerald-50 border-emerald-400"
             : "bg-rose-50 border-rose-400"
         }`}
       >
-        <div>
+        <div className="flex-1">
           <p
             className={`text-sm font-bold ${
               isCorrect ? "text-emerald-800" : "text-rose-800"
@@ -397,6 +479,17 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             {question.explanation || (isCorrect ? "" : "Chưa có giải thích chi tiết cho câu hỏi này.")}
           </p>
         </div>
+        {isReviewMode && hasManagePerm && question.questionVersionId && (
+          <Button
+            type="dashed"
+            danger
+            size="small"
+            onClick={() => setRegradeModalOpen(true)}
+            className="flex-shrink-0 font-semibold border-rose-300 hover:border-rose-500 rounded-lg text-xs"
+          >
+            ⚙️ Chấm lại (Hotfix)
+          </Button>
+        )}
       </div>
     );
   };
@@ -512,6 +605,114 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           </button>
         )}
       </div>
+
+      <Modal
+        title={
+          <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
+            ⚙️ Chấm lại Câu hỏi (Hotfix)
+          </div>
+        }
+        open={regradeModalOpen}
+        onCancel={() => setRegradeModalOpen(false)}
+        onOk={() => regradeForm.submit()}
+        confirmLoading={regradeLoading}
+        okText="Cập nhật & Chấm lại"
+        cancelText="Hủy bỏ"
+        className="rounded-2xl"
+        destroyOnClose
+      >
+        <div className="py-2 space-y-4">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs leading-relaxed">
+            ⚠️ <strong>Lưu ý:</strong> Thao tác này sẽ cập nhật đáp án đúng của <strong>phiên bản câu hỏi hiện tại</strong> và <strong>chấm lại ngay lập tức</strong> tất cả câu trả lời của học sinh trỏ tới phiên bản này.
+          </div>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
+            <span className="font-semibold block mb-1">Đề bài:</span>
+            <div dangerouslySetInnerHTML={{ __html: question.questionContent }} className="font-medium text-slate-700 whitespace-pre-wrap" />
+          </div>
+          <Form form={regradeForm} layout="vertical" onFinish={handleRegradeSubmit}>
+            {CHOICE_TYPES.includes(question.type) && question.options && (
+              <Form.Item
+                name="selectedOptionIds"
+                label="Chọn các đáp án đúng"
+                rules={[{ required: true, message: "Chọn ít nhất 1 đáp án đúng!" }]}
+              >
+                <Checkbox.Group className="flex flex-col gap-2">
+                  {question.options.map((opt: any) => {
+                    const id = opt.id || opt.content;
+                    const label = opt.label || "";
+                    const content = opt.content || opt;
+                    return (
+                      <Checkbox key={id} value={id}>
+                        <span className="font-bold mr-1">{label}.</span> {content}
+                      </Checkbox>
+                    );
+                  })}
+                </Checkbox.Group>
+              </Form.Item>
+            )}
+
+            {(question.type === "word_ordering" || question.type === "word-ordering") && (
+              <Form.Item
+                name="tokens"
+                label="Mảng các từ (Tokens) - Phân cách bằng khoảng trắng"
+                rules={[{ required: true, message: "Vui lòng nhập các từ!" }]}
+              >
+                <Input placeholder="ví dụ: She goes to school every day" className="rounded-xl" />
+              </Form.Item>
+            )}
+
+            {(question.type === "sentence_rewrite" || question.type === "hint_rewrite" || question.type === "fill-in-the-blank") && (
+              <Form.Item
+                name="acceptedAnswers"
+                label="Các đáp án được chấp nhận (Mỗi đáp án 1 dòng)"
+                rules={[{ required: true, message: "Vui lòng nhập đáp án đúng!" }]}
+              >
+                <Input.TextArea rows={4} placeholder="Nhập các đáp án, xuống dòng cho mỗi đáp án khác nhau" className="rounded-xl" />
+              </Form.Item>
+            )}
+
+            {question.type === "error_correction" && (
+              <Form.Item
+                name="correctedSentence"
+                label="Câu chính xác sau khi sửa"
+                rules={[{ required: true, message: "Vui lòng nhập câu đúng!" }]}
+              >
+                <Input placeholder="Nhập câu chính xác" className="rounded-xl" />
+              </Form.Item>
+            )}
+
+            {question.type === "matching" && question.leftItems && question.rightItems && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-slate-700 text-xs mb-2">Ghép các cặp:</h3>
+                {question.leftItems.map((left: any) => {
+                  const leftId = left.id || left;
+                  const leftText = left.text || left;
+                  return (
+                    <Form.Item
+                      key={leftId}
+                      name={["matchingPairs", leftId]}
+                      label={<span>Mục bên trái: <strong>{leftText}</strong></span>}
+                      rules={[{ required: true, message: "Chọn mục ghép đôi phù hợp!" }]}
+                    >
+                      <Select placeholder="Chọn mục bên phải..." className="rounded-xl">
+                        {question.rightItems.map((right: any) => {
+                          const rightId = right.id || right;
+                          const rightText = right.text || right;
+                          return (
+                            <Select.Option key={rightId} value={rightId}>
+                              {rightText}
+                            </Select.Option>
+                          );
+                        })}
+                      </Select>
+                    </Form.Item>
+                  );
+                })}
+              </div>
+            )}
+          </Form>
+        </div>
+      </Modal>
     </div>
   );
 };

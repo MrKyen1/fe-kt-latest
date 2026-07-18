@@ -23,6 +23,7 @@ import {
   Typography,
   message,
   Upload,
+  Image,
 } from "antd";
 import type { UploadFile } from "antd";
 
@@ -32,6 +33,7 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  EyeOutlined,
   HomeOutlined,
   KeyOutlined,
   PlusOutlined,
@@ -42,6 +44,7 @@ import {
   PhoneOutlined,
   EnvironmentOutlined,
   UploadOutlined,
+  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 
 import { userService } from "../../../services/userService";
@@ -52,6 +55,7 @@ import { academicService } from "../../../services/academicService";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { teacherLearningService } from "../../../services/teacherLearningService";
 import { resolveMediaUrl } from "../../../services/apiClient";
+import { SecureImage } from "../../../components/SecureImage";
 import dayjs from "dayjs";
 
 const { Title, Text, Paragraph } = Typography;
@@ -97,6 +101,7 @@ export default function CenterManagement() {
   const [classes, setClasses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [admins, setAdmins] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [specializations, setSpecializations] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
@@ -111,14 +116,19 @@ export default function CenterManagement() {
   const [centerSearch, setCenterSearch] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
 
   // ================= MODAL STATE =================
   const [centerModalOpen, setCenterModalOpen] = useState(false);
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [teacherModalOpen, setTeacherModalOpen] = useState(false);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   const [specializationModalOpen, setSpecializationModalOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState("");
+  const [previewTitle, setPreviewTitle] = useState("");
 
   // Dynamic filter state for modal inputs
   const [selectedModalCenterId, setSelectedModalCenterId] = useState<string | undefined>(undefined);
@@ -128,6 +138,7 @@ export default function CenterManagement() {
   const [classForm] = Form.useForm();
   const [teacherForm] = Form.useForm<TeacherFormValues>();
   const [studentForm] = Form.useForm<StudentFormValues>();
+  const [adminForm] = Form.useForm();
   const [specializationForm] = Form.useForm();
 
   // ================= EDIT/DELETE STATE =================
@@ -135,6 +146,7 @@ export default function CenterManagement() {
   const [editingClass, setEditingClass] = useState<any>(null);
   const [editingTeacher, setEditingTeacher] = useState<any>(null);
   const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [editingAdmin, setEditingAdmin] = useState<any>(null);
   const [editingSpecialization, setEditingSpecialization] = useState<any>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<any>(null);
   const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(null);
@@ -154,6 +166,8 @@ export default function CenterManagement() {
         inactiveTeachers,
         activeStudents,
         inactiveStudents,
+        activeAdmins,
+        inactiveAdmins,
         rolesData,
         specializationsData,
         curriculumsData,
@@ -162,9 +176,11 @@ export default function CenterManagement() {
         academicService.centers.list(),
         academicService.classes.list(),
         userService.list({ roleCode: "teacher", isActive: true }),
-        userService.list({ roleCode: "teacher", isActive: "" as any }),
+        userService.list({ roleCode: "teacher", isActive: false }),
         userService.list({ roleCode: "student", isActive: true }),
-        userService.list({ roleCode: "student", isActive: "" as any }),
+        userService.list({ roleCode: "student", isActive: false }),
+        userService.list({ roleCode: "admin", isActive: true }),
+        userService.list({ roleCode: "admin", isActive: false }),
         rbacService.roles.list(),
         academicService.specializations.list(),
         learningCmsService.curriculums.list({ status: "published", limit: 100 }),
@@ -188,6 +204,12 @@ export default function CenterManagement() {
       );
       setStudents(uniqueStudents);
 
+      const rawAdmins = [...(activeAdmins || []), ...(inactiveAdmins || [])];
+      const uniqueAdmins = rawAdmins.filter(
+        (admin, index, self) => self.findIndex((a) => a.id === admin.id) === index
+      );
+      setAdmins(uniqueAdmins);
+
       setRoles(rolesData || []);
       setSpecializations(specializationsData || []);
 
@@ -204,6 +226,7 @@ export default function CenterManagement() {
 
   const getTeacherRoleId = () => roles.find((r) => r.code === "teacher")?.id || "";
   const getStudentRoleId = () => roles.find((r) => r.code === "student")?.id || "";
+  const getAdminRoleId = () => roles.find((r) => r.code === "admin")?.id || "";
 
   const isUserActive = (record: any) => {
     if (!record) return false;
@@ -421,6 +444,7 @@ export default function CenterManagement() {
     classForm.setFieldsValue({
       name: record.name,
       centerId: record.centerId,
+      specializationId: record.specializationId,
       description: record.description,
       curriculumIds: mapped.map((m) => m.curriculumId),
     });
@@ -478,7 +502,7 @@ export default function CenterManagement() {
   };
 
   const handleClassSubmit = async (values: any) => {
-    const { curriculumIds, ...classValues } = values;
+    const { curriculumIds, specializationId, ...classValues } = values;
     try {
       let savedClass: any = null;
       if (editingClass) {
@@ -486,7 +510,10 @@ export default function CenterManagement() {
         await syncClassCurriculums(editingClass.id, curriculumIds);
         message.success("Cập nhật lớp học thành công");
       } else {
-        savedClass = await academicService.classes.create(classValues);
+        savedClass = await academicService.classes.create({
+          ...classValues,
+          specializationId,
+        });
         if (savedClass?.id) {
           await syncClassCurriculums(savedClass.id, curriculumIds);
         }
@@ -554,6 +581,7 @@ export default function CenterManagement() {
     teacherForm.setFieldsValue({
       startDate: dayjs(),
       ...(selectedCenterId && { centerId: selectedCenterId }),
+      degrees: [],
     });
     setTeacherModalOpen(true);
   };
@@ -562,12 +590,25 @@ export default function CenterManagement() {
     setEditingTeacher(record);
     const profile = record.teacherProfile || {};
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
+    const specIds = profile.specializations?.map((s: any) => s.id) || profile.specializationIds || [];
 
     // Auto-detect center based on classes
     const matchedClass = classes.find((c) => classIds.includes(c.id));
     const initialCenterId = matchedClass?.centerId || record.centerId || undefined;
 
     setSelectedModalCenterId(initialCenterId);
+
+    // Map degrees for Upload component
+    const mappedDegrees = (profile.degrees || []).map((deg: any, dIdx: number) => ({
+      name: deg.name,
+      files: (deg.images || []).map((img: any, iIdx: number) => ({
+        uid: img.id || `existing-img-${dIdx}-${iIdx}`,
+        name: img.url.split("/").pop() || `degree-img-${iIdx}`,
+        status: "done" as const,
+        url: img.url,
+        response: { url: img.url },
+      })),
+    }));
 
     teacherForm.setFieldsValue({
       code: record.code,
@@ -578,11 +619,17 @@ export default function CenterManagement() {
       startDate: record.startDate ? dayjs(record.startDate) : undefined,
       endDate: record.endDate ? dayjs(record.endDate) : undefined,
       address: record.address,
+      citizenId: record.citizenId || undefined,
       centerId: initialCenterId,
       yearsOfExperience: profile.yearsOfExperience,
       description: profile.description || "",
       classIds: classIds,
-      specializationIds: profile.specializations?.map((s: any) => s.id) || profile.specializationIds || [],
+      specializationIds: specIds,
+      bankAccountNumber: profile.bankAccountNumber || "",
+      bankName: profile.bankName || "",
+      insuranceStartDate: profile.insuranceStartDate ? dayjs(profile.insuranceStartDate) : undefined,
+      employmentType: profile.employmentType || undefined,
+      degrees: mappedDegrees,
     });
     setTeacherModalOpen(true);
   };
@@ -608,17 +655,43 @@ export default function CenterManagement() {
 
   const handleTeacherSubmit = async (values: TeacherFormValues) => {
     try {
-      const formattedDob = values.dateOfBirth ? (values.dateOfBirth as any).format("YYYY-MM-DD") : undefined;
-      const formattedStartDate = values.startDate ? (values.startDate as any).format("YYYY-MM-DD") : undefined;
-      const formattedEndDate = (values.endDate && values.endDate !== "") ? (values.endDate as any).format("YYYY-MM-DD") : null;
+      setLoading(true);
+      const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
+      const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
+      const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
-      const profileData = {
+      
+      const formattedInsuranceDate = (values.insuranceStartDate && values.insuranceStartDate.isValid()) 
+        ? values.insuranceStartDate.format("YYYY-MM-DD") 
+        : null;
+
+      const formattedDegrees = values.degrees !== undefined ? (values.degrees || []).map((deg: any) => {
+        const imageUrls = (deg.files || [])
+          .map((f: any) => f.response?.url || f.url)
+          .filter(Boolean);
+        return {
+          name: deg.name,
+          imageUrls,
+        };
+      }) : undefined;
+
+      const profileData: any = {
         yearsOfExperience: values.yearsOfExperience || 0,
         description: values.description || "",
+        bankAccountNumber: values.bankAccountNumber,
+        bankName: values.bankName,
+        insuranceStartDate: formattedInsuranceDate,
+        employmentType: values.employmentType || null,
         classIds: values.classIds || [],
         specializationIds: values.specializationIds || [],
       };
+
+      if (formattedDegrees !== undefined) {
+        profileData.degrees = formattedDegrees;
+      }
+
+      const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
 
       if (editingTeacher) {
         await userService.update(editingTeacher.id, {
@@ -628,18 +701,20 @@ export default function CenterManagement() {
           dateOfBirth: formattedDob,
           endDate: formattedEndDate,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           teacherProfile: profileData,
         });
         message.success("Cập nhật giáo viên thành công");
       } else {
         const createdUser = await userService.create({
-          password: values.password || "TempPass@123",
+          password: values.password || "Teacher@123",
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
           dateOfBirth: formattedDob,
-          startDate: formattedStartDate,
+          startDate: formattedStartDate!,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           roleId: getTeacherRoleId(),
           teacherProfile: profileData,
         });
@@ -649,7 +724,13 @@ export default function CenterManagement() {
       setTeacherModalOpen(false);
       teacherForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
+        message.error("Số căn cước công dân đã tồn tại");
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -685,8 +766,10 @@ export default function CenterManagement() {
       startDate: record.startDate ? dayjs(record.startDate) : undefined,
       endDate: record.endDate ? dayjs(record.endDate) : undefined,
       address: record.address,
+      citizenId: record.citizenId || undefined,
       centerId: initialCenterId,
       classIds: classIds,
+      parentFullName: profile.parentFullName || "",
     });
     setStudentModalOpen(true);
   };
@@ -712,14 +795,19 @@ export default function CenterManagement() {
 
   const handleStudentSubmit = async (values: StudentFormValues) => {
     try {
-      const formattedDob = values.dateOfBirth ? (values.dateOfBirth as any).format("YYYY-MM-DD") : undefined;
-      const formattedStartDate = values.startDate ? (values.startDate as any).format("YYYY-MM-DD") : undefined;
-      const formattedEndDate = (values.endDate && values.endDate !== "") ? (values.endDate as any).format("YYYY-MM-DD") : null;
+      setLoading(true);
+      const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
+      const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
+      const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
+      
       const profileData = {
         classIds: values.classIds || [],
+        parentFullName: values.parentFullName,
       };
+
+      const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
 
       if (editingStudent) {
         await userService.update(editingStudent.id, {
@@ -729,18 +817,20 @@ export default function CenterManagement() {
           dateOfBirth: formattedDob,
           endDate: formattedEndDate,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           studentProfile: profileData,
         });
         message.success("Cập nhật học sinh thành công");
       } else {
         const createdUser = await userService.create({
-          password: values.password || "TempPass@123",
+          password: values.password || "Student@123",
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
           dateOfBirth: formattedDob,
-          startDate: formattedStartDate,
+          startDate: formattedStartDate!,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           roleId: getStudentRoleId(),
           studentProfile: profileData,
         });
@@ -750,7 +840,108 @@ export default function CenterManagement() {
       setStudentModalOpen(false);
       studentForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
+        message.error("Số căn cước công dân đã tồn tại");
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ================= ADMIN HANDLERS =================
+  const handleAdminCreate = () => {
+    setEditingAdmin(null);
+    adminForm.resetFields();
+    adminForm.setFieldsValue({
+      startDate: dayjs(),
+    });
+    setAdminModalOpen(true);
+  };
+
+  const handleAdminEdit = (record: any) => {
+    setEditingAdmin(record);
+    adminForm.setFieldsValue({
+      code: record.code,
+      fullName: record.fullName,
+      email: record.email,
+      phone: record.phone,
+      dateOfBirth: record.dateOfBirth ? dayjs(record.dateOfBirth) : undefined,
+      startDate: record.startDate ? dayjs(record.startDate) : undefined,
+      endDate: record.endDate ? dayjs(record.endDate) : undefined,
+      address: record.address,
+      citizenId: record.citizenId || undefined,
+    });
+    setAdminModalOpen(true);
+  };
+
+  const handleAdminDelete = (record: any) => {
+    Modal.confirm({
+      title: "Xóa quản trị viên",
+      content: `Bạn có chắc chắn muốn xóa quản trị viên ${record.fullName}?`,
+      okText: "Xóa",
+      cancelText: "Hủy",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await userService.remove(record.id);
+          setAdmins((prev) => prev.filter((a) => a.id !== record.id));
+          message.success("Xóa quản trị viên thành công");
+        } catch (err) {
+          message.error("Xóa thất bại");
+        }
+      },
+    });
+  };
+
+  const handleAdminSubmit = async (values: any) => {
+    try {
+      setLoading(true);
+      const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
+      const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
+      const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
+      const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
+      const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
+      
+      const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
+
+      if (editingAdmin) {
+        await userService.update(editingAdmin.id, {
+          fullName: values.fullName,
+          email: cleanEmail,
+          phone: values.phone,
+          dateOfBirth: formattedDob,
+          endDate: formattedEndDate,
+          address: cleanAddress,
+          citizenId: citizenIdVal,
+        });
+        message.success("Cập nhật quản trị viên thành công");
+      } else {
+        const createdUser = await userService.create({
+          password: values.password || "Admin@123456",
+          fullName: values.fullName,
+          email: cleanEmail,
+          phone: values.phone,
+          dateOfBirth: formattedDob,
+          startDate: formattedStartDate!,
+          address: cleanAddress,
+          citizenId: citizenIdVal,
+          roleId: getAdminRoleId(),
+        });
+        message.success(`Tạo quản trị viên thành công! Mã: ${createdUser.code}`);
+      }
+      loadData();
+      setAdminModalOpen(false);
+      adminForm.resetFields();
+    } catch (err: any) {
+      if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
+        message.error("Số căn cước công dân đã tồn tại");
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1205,6 +1396,156 @@ export default function CenterManagement() {
     );
   });
 
+  const filteredAdmins = admins.filter((a) => {
+    const q = adminSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      a.fullName?.toLowerCase().includes(q) ||
+      a.code?.toLowerCase().includes(q) ||
+      a.email?.toLowerCase().includes(q) ||
+      a.phone?.toLowerCase().includes(q)
+    );
+  });
+
+  const adminColumns = [
+    {
+      title: "Quản trị viên",
+      render: (_: any, record: any) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="bg-gradient-to-r from-emerald-500 to-emerald-600 font-semibold uppercase text-xs">
+            {record.fullName?.charAt(0) || "A"}
+          </Avatar>
+          <div>
+            <div className="font-semibold text-slate-800">{record.fullName}</div>
+            <div className="text-xs text-slate-400">@{record.code}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "Căn cước công dân (CCCD)",
+      render: (_: any, record: any) => (
+        <span className="text-slate-600 font-medium text-sm">
+          {record.citizenId || "-"}
+        </span>
+      ),
+    },
+    {
+      title: "Liên hệ",
+      render: (_: any, record: any) => (
+        <div className="text-xs text-slate-500 space-y-0.5">
+          {record.email && <div>{record.email}</div>}
+          {record.phone && <div>{record.phone}</div>}
+          {!record.email && !record.phone && <span>-</span>}
+        </div>
+      ),
+    },
+    {
+      title: "Thời gian làm việc",
+      render: (_: any, record: any) => {
+        const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
+        const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
+        return (
+          <div className="text-xs space-y-1">
+            {start && (
+              <div className="flex items-center gap-1.5 text-emerald-600">
+                <CalendarOutlined className="text-[10px]" />
+                <span className="font-medium">Bắt đầu:</span> {start}
+              </div>
+            )}
+            {end ? (
+              <div className="flex items-center gap-1.5 text-orange-500">
+                <ClockCircleOutlined className="text-[10px]" />
+                <span className="font-medium">Kết thúc:</span> {end}
+              </div>
+            ) : (
+              <div className="text-slate-400 italic">Chưa có ngày kết thúc</div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Trạng thái",
+      render: (_: any, record: any) => {
+        const active = isUserActive(record);
+        const endDate = record.endDate ? dayjs(record.endDate) : null;
+        const now = dayjs();
+        const isScheduled = active && endDate && endDate.isAfter(now);
+        const daysLeft = isScheduled ? endDate.diff(now, "day") : 0;
+
+        if (!active) {
+          return (
+            <Tooltip title={endDate ? `Ngày kết thúc: ${endDate.format("DD/MM/YYYY")}` : "Tài khoản đã bị vô hiệu hóa"}>
+              <Tag color="default" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500">
+                Đã nghỉ
+              </Tag>
+            </Tooltip>
+          );
+        }
+
+        if (isScheduled) {
+          return (
+            <Tooltip title={`Sẽ ngừng hoạt động vào ${endDate!.format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
+              <div className="space-y-1">
+                <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                  Đang hoạt động
+                </Tag>
+                <div className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
+                  <ClockCircleOutlined /> Còn {daysLeft} ngày
+                </div>
+              </div>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
+            Đang hoạt động
+          </Tag>
+        );
+      },
+    },
+    {
+      title: "Thao tác",
+      align: "right" as const,
+      render: (_: any, record: any) => (
+        <Space size="small">
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            onClick={() => handleAdminEdit(record)}
+          />
+          {isUserActive(record) ? (
+            <Button
+              type="text"
+              size="small"
+              icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              onClick={() => handleResetPassword(record)}
+            />
+          ) : (
+            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
+              <Button
+                type="text"
+                size="small"
+                disabled
+                icon={<KeyOutlined className="text-slate-300" />}
+              />
+            </Tooltip>
+          )}
+          <Button
+            type="text"
+            size="small"
+            danger
+            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+            onClick={() => handleAdminDelete(record)}
+          />
+        </Space>
+      ),
+    },
+  ];
+
   return (
     <ConfigProvider
       theme={{
@@ -1449,22 +1790,27 @@ export default function CenterManagement() {
                           <span className="text-lg">🖼️</span>
                           <h3 className="text-base font-bold text-slate-800 m-0">Ảnh chi tiết trung tâm ({selectedCenter.images.length})</h3>
                         </div>
-                        <Row gutter={[16, 16]}>
-                          {selectedCenter.images.map((img: any) => (
-                            <Col xs={12} sm={8} md={6} key={img.id}>
-                              <div className="relative group aspect-[4/3] rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100 cursor-pointer">
-                                <img
-                                  src={resolveMediaUrl(img.url)}
-                                  alt="Center detail"
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                />
-                                <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                  <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">Xem ảnh</span>
+                        <Image.PreviewGroup>
+                          <Row gutter={[16, 16]}>
+                            {selectedCenter.images.map((img: any) => (
+                              <Col xs={12} sm={8} md={6} key={img.id}>
+                                <div className="group aspect-[4/3] rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100">
+                                  <Image
+                                    src={resolveMediaUrl(img.url)}
+                                    alt="Center detail"
+                                    wrapperClassName="w-full h-full"
+                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                    preview={{
+                                      mask: (
+                                        <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">Xem ảnh</span>
+                                      ),
+                                    }}
+                                  />
                                 </div>
-                              </div>
-                            </Col>
-                          ))}
-                        </Row>
+                              </Col>
+                            ))}
+                          </Row>
+                        </Image.PreviewGroup>
                       </div>
                     )}
 
@@ -1555,6 +1901,13 @@ export default function CenterManagement() {
                                       />
                                     </div>
                                   </div>
+                                  {cls.specializationId && (
+                                    <div className="mt-1">
+                                      <span className="text-[10px] text-emerald-600 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full inline-block">
+                                        📖 {specializations.find(s => s.id === cls.specializationId)?.name || "Môn học khác"}
+                                      </span>
+                                    </div>
+                                  )}
                                   {mapped.length > 0 && (
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       {mapped.map((m) => {
@@ -1734,6 +2087,46 @@ export default function CenterManagement() {
                               </div>
                             ),
                           },
+                          {
+                            key: "admins",
+                            label: (
+                              <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
+                                <SafetyCertificateOutlined />
+                                Quản trị viên ({admins.length})
+                              </span>
+                            ),
+                            children: (
+                              <div className="space-y-4 pt-4">
+                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+                                  <Input
+                                    placeholder="Tìm kiếm quản trị viên theo tên, mã..."
+                                    prefix={<SearchOutlined className="text-slate-400" />}
+                                    value={adminSearch}
+                                    onChange={(e) => setAdminSearch(e.target.value)}
+                                    className="max-w-md rounded-xl border-slate-200"
+                                    allowClear
+                                  />
+                                  <Button
+                                    type="primary"
+                                    icon={<PlusOutlined />}
+                                    onClick={handleAdminCreate}
+                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                  >
+                                    Tạo Quản trị viên
+                                  </Button>
+                                </div>
+
+                                <Table
+                                  rowKey="id"
+                                  dataSource={filteredAdmins}
+                                  columns={adminColumns}
+                                  pagination={{ pageSize: 5, showSizeChanger: false }}
+                                  locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
+                                  className="border border-slate-100 rounded-2xl overflow-hidden"
+                                />
+                              </div>
+                            ),
+                          },
                         ]}
                       />
                     </div>
@@ -1882,6 +2275,20 @@ export default function CenterManagement() {
                   </Select>
                 </Form.Item>
 
+                <Form.Item
+                  name="specializationId"
+                  label="Môn học (Chuyên môn)"
+                  rules={[{ required: true, message: "Vui lòng chọn môn học cho lớp!" }]}
+                >
+                  <Select placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass}>
+                    {specializations.map((spec) => (
+                      <Select.Option key={spec.id} value={spec.id}>
+                        {spec.name}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+
                 <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
                   <Select mode="multiple" placeholder="Chọn giáo trình gắn với lớp" allowClear className="rounded-xl">
                     {curriculums.map((curr) => (
@@ -1988,6 +2395,18 @@ export default function CenterManagement() {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
+                      name="citizenId"
+                      label="Căn cước công dân (CCCD - 12 chữ số)"
+                      rules={[
+                        { required: !editingTeacher, message: "Vui lòng nhập số CCCD!" },
+                        { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
+                      ]}
+                    >
+                      <Input placeholder="Nhập 12 chữ số CCCD" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
                       name="startDate"
                       label="Ngày bắt đầu giảng dạy"
                       tooltip="Ngày giáo viên chính thức tham gia trung tâm."
@@ -2002,8 +2421,11 @@ export default function CenterManagement() {
                       />
                     </Form.Item>
                   </Col>
-                  {editingTeacher && (
-                    <Col span={12}>
+                </Row>
+
+                {editingTeacher && (
+                  <Row gutter={16}>
+                    <Col span={24}>
                       <Form.Item
                         name="endDate"
                         label="Ngày kết thúc giảng dạy"
@@ -2017,8 +2439,8 @@ export default function CenterManagement() {
                         />
                       </Form.Item>
                     </Col>
-                  )}
-                </Row>
+                  </Row>
+                )}
 
                 {editingTeacher && (
                   <>
@@ -2121,6 +2543,59 @@ export default function CenterManagement() {
                   />
                 </Form.Item>
 
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="bankName"
+                      label="Tên ngân hàng"
+                      rules={[{ required: true, message: "Vui lòng nhập tên ngân hàng!" }]}
+                    >
+                      <Input placeholder="Ví dụ: Vietcombank" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="bankAccountNumber"
+                      label="Số tài khoản ngân hàng"
+                      rules={[{ required: true, message: "Vui lòng nhập số tài khoản!" }]}
+                    >
+                      <Input placeholder="Ví dụ: 00123456789" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="employmentType"
+                      label="Loại hợp đồng"
+                    >
+                      <Select
+                        placeholder="Chọn loại hợp đồng"
+                        className="rounded-xl"
+                        allowClear
+                        options={[
+                          { label: "Toàn thời gian (Full-time)", value: "full_time" },
+                          { label: "Bán thời gian (Part-time)", value: "part_time" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="insuranceStartDate"
+                      label="Ngày đóng bảo hiểm"
+                    >
+                      <DatePicker
+                        style={{ width: "100%" }}
+                        placeholder="Chọn ngày đóng bảo hiểm"
+                        className="rounded-xl"
+                        format="DD/MM/YYYY"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
                 {!editingTeacher && (
                   <Form.Item
                     name="password"
@@ -2142,6 +2617,116 @@ export default function CenterManagement() {
                   <Input.TextArea placeholder="Nhập một số thông tin giới thiệu ngắn về giáo viên..." rows={2} className="rounded-xl" />
                 </Form.Item>
 
+                <div className="border-t border-slate-100 pt-4 mt-4">
+                  <h4 className="font-bold text-slate-700 text-sm mb-3">Bằng cấp & Chứng chỉ giáo viên</h4>
+                  <Form.List name="degrees">
+                    {(fields, { add, remove }) => (
+                      <div className="space-y-4">
+                        {fields.map(({ key, name, ...restField }) => (
+                          <Card
+                            key={key}
+                            size="small"
+                            className="border-slate-100 bg-slate-50/50 rounded-xl relative"
+                            title={`Bằng cấp #${name + 1}`}
+                            extra={
+                              <Button
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={() => remove(name)}
+                              />
+                            }
+                          >
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'name']}
+                              label="Tên bằng cấp / chứng chỉ"
+                              rules={[{ required: true, message: 'Nhập tên bằng cấp!' }]}
+                            >
+                              <Input placeholder="Ví dụ: Cử nhân Ngôn ngữ Anh, Chứng chỉ IELTS..." className="rounded-xl" />
+                            </Form.Item>
+
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'files']}
+                              label="Ảnh bằng cấp (Cần ít nhất 1 ảnh)"
+                              valuePropName="fileList"
+                              getValueFromEvent={(e: any) => {
+                                if (Array.isArray(e)) return e;
+                                return e && e.fileList;
+                              }}
+                              rules={[
+                                {
+                                  validator(_, value) {
+                                    if (value && value.length > 0) return Promise.resolve();
+                                    return Promise.reject(new Error("Vui lòng tải lên ít nhất 1 ảnh bằng cấp!"));
+                                  }
+                                }
+                              ]}
+                            >
+                              <Upload
+                                customRequest={async (options) => {
+                                  const { file, onSuccess, onError } = options;
+                                  try {
+                                    const urls = await userService.uploadTeacherDegreeImages([file as File]);
+                                    onSuccess!({ url: urls[0] });
+                                  } catch (err) {
+                                    onError!(err as Error);
+                                  }
+                                }}
+                                listType="picture-card"
+                                multiple
+                                accept="image/*"
+                                itemRender={(originNode, file, fileList, actions) => {
+                                  const url = file.url || file.response?.url;
+                                  if (!url) return originNode;
+                                  return (
+                                    <div className="relative group w-full h-full rounded-lg overflow-hidden border border-slate-200">
+                                      <SecureImage src={url} className="w-full h-full object-cover" />
+                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          icon={<EyeOutlined className="text-white text-xs" />}
+                                          onClick={() => {
+                                            setPreviewImage(url);
+                                            setPreviewTitle(file.name || "Xem ảnh bằng cấp");
+                                            setPreviewOpen(true);
+                                          }}
+                                        />
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          danger
+                                          icon={<DeleteOutlined className="text-white text-xs" />}
+                                          onClick={actions.remove}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                }}
+                              >
+                                <div>
+                                  <PlusOutlined />
+                                  <div style={{ marginTop: 8 }}>Tải ảnh</div>
+                                </div>
+                              </Upload>
+                            </Form.Item>
+                          </Card>
+                        ))}
+                        <Button
+                          type="dashed"
+                          onClick={() => add()}
+                          block
+                          icon={<PlusOutlined />}
+                          className="rounded-xl"
+                        >
+                          Thêm bằng cấp mới
+                        </Button>
+                      </div>
+                    )}
+                  </Form.List>
+                </div>
               </Form>
             </Modal>
 
@@ -2309,6 +2894,29 @@ export default function CenterManagement() {
                   </>
                 )}
 
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="parentFullName"
+                      label="Họ và tên phụ huynh"
+                      rules={[{ required: true, message: "Vui lòng nhập họ tên phụ huynh!" }]}
+                    >
+                      <Input placeholder="Nguyễn Văn B" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="citizenId"
+                      label="Căn cước công dân (CCCD - 12 chữ số)"
+                      rules={[
+                        { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
+                      ]}
+                    >
+                      <Input placeholder="Nhập 12 chữ số CCCD (tùy chọn)" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
                 <Form.Item
                   name="centerId"
                   label="Trung tâm đăng ký"
@@ -2343,6 +2951,199 @@ export default function CenterManagement() {
                 </Form.Item>
 
                 {!editingStudent && (
+                  <Form.Item
+                    name="password"
+                    label="Mật khẩu tài khoản"
+                    rules={[
+                      { required: true, message: "Nhập mật khẩu!" },
+                      { min: 8, message: "Mật khẩu phải tối thiểu từ 8 ký tự!" },
+                    ]}
+                  >
+                    <Input.Password placeholder="Tối thiểu 8 ký tự" className="rounded-xl" />
+                  </Form.Item>
+                )}
+
+              </Form>
+            </Modal>
+
+            {/* CREATE / EDIT ADMIN MODAL */}
+            <Modal
+              title={editingAdmin ? "Cập nhật Quản trị viên" : "Tạo Quản trị viên mới"}
+              open={adminModalOpen}
+              onCancel={() => {
+                setAdminModalOpen(false);
+                adminForm.resetFields();
+              }}
+              onOk={() => adminForm.submit()}
+              okText="Lưu lại"
+              cancelText="Hủy bỏ"
+              width={650}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "70vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
+              className="rounded-2xl"
+            >
+              <Form
+                form={adminForm}
+                layout="vertical"
+                onFinish={handleAdminSubmit}
+                className="pt-2"
+              >
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="code"
+                      label="Mã quản trị viên"
+                    >
+                      <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="fullName"
+                      label="Họ và tên"
+                      rules={[{ required: true, message: "Vui lòng nhập họ tên!" }]}
+                    >
+                      <Input placeholder="Admin B" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="email"
+                      label="Email"
+                      rules={[{ type: "email", message: "Email không hợp lệ!" }]}
+                    >
+                      <Input placeholder="admin@email.com" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="phone"
+                      label="Số điện thoại"
+                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại!" }]}
+                    >
+                      <Input placeholder="0123456789" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="dateOfBirth"
+                      label="Ngày sinh"
+                    >
+                      <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="address" label="Địa chỉ">
+                      <Input placeholder="Hồ Chí Minh" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="citizenId"
+                      label="Căn cước công dân (CCCD - 12 chữ số)"
+                      rules={[
+                        { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
+                      ]}
+                    >
+                      <Input placeholder="Nhập 12 chữ số CCCD (tùy chọn)" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="startDate"
+                      label="Ngày bắt đầu làm việc"
+                      tooltip="Ngày admin chính thức tham gia trung tâm."
+                      rules={[{ required: true, message: "Vui lòng chọn ngày bắt đầu!" }]}
+                    >
+                      <DatePicker
+                        style={{ width: "100%" }}
+                        placeholder="Chọn ngày bắt đầu"
+                        className="rounded-xl"
+                        format="DD/MM/YYYY"
+                        disabled={!!editingAdmin}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                {editingAdmin && (
+                  <Row gutter={16}>
+                    <Col span={24}>
+                      <Form.Item
+                        name="endDate"
+                        label="Ngày kết thúc làm việc"
+                        tooltip="Nếu endDate ≤ ngày hiện tại → tài khoản bị inactive. Nếu endDate trong tương lai → tài khoản sẽ bị cron tự động vô hiệu hóa khi đến ngày. Bỏ trống = hoạt động vô thời hạn."
+                      >
+                        <DatePicker
+                          style={{ width: "100%" }}
+                          placeholder="Bỏ trống = hoạt động mãi"
+                          className="rounded-xl"
+                          format="DD/MM/YYYY"
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                )}
+
+                {editingAdmin && (
+                  <>
+                    {/* Active status banner */}
+                    {(() => {
+                      const active = isUserActive(editingAdmin);
+                      const endDate = editingAdmin.endDate ? dayjs(editingAdmin.endDate) : null;
+                      const isScheduled = active && endDate && endDate.isAfter(dayjs());
+                      const daysLeft = isScheduled ? endDate.diff(dayjs(), "day") : 0;
+
+                      return (
+                        <div className={`rounded-xl p-3 mb-4 text-sm flex items-center gap-2 ${!active
+                          ? "bg-slate-50 border border-slate-200 text-slate-600"
+                          : isScheduled
+                            ? "bg-amber-50 border border-amber-200 text-amber-700"
+                            : "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                          }`}>
+                          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${!active ? "bg-slate-400" : isScheduled ? "bg-amber-400" : "bg-emerald-400"
+                            }`} />
+                          {!active && (
+                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){endDate && ` — kết thúc ngày ${endDate.format("DD/MM/YYYY")}`}</span>
+                          )}
+                          {active && isScheduled && (
+                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {endDate!.format("DD/MM/YYYY")})</span>
+                          )}
+                          {active && !isScheduled && (
+                            <span>Tài khoản <strong>đang hoạt động</strong></span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
+                      <div className="font-semibold text-blue-700">ℹ️ Quy tắc trạng thái tài khoản:</div>
+                      <ul className="list-disc pl-4 m-0 space-y-0.5">
+                        <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
+                        <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
+                        <li>Hệ thống backend sẽ tự động kiểm tra và vô hiệu hóa tài khoản khi đến ngày kết thúc</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+
+                {!editingAdmin && (
                   <Form.Item
                     name="password"
                     label="Mật khẩu tài khoản"
@@ -2467,6 +3268,26 @@ export default function CenterManagement() {
                   <Input.TextArea placeholder="Nhập mô tả ngắn về chuyên môn..." rows={3} className="rounded-xl" />
                 </Form.Item>
               </Form>
+            </Modal>
+
+            {/* IMAGE PREVIEW MODAL */}
+            <Modal
+              open={previewOpen}
+              title={previewTitle}
+              footer={null}
+              onCancel={() => setPreviewOpen(false)}
+              centered
+              className="rounded-2xl"
+              styles={{
+                body: {
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  padding: "10px",
+                }
+              }}
+            >
+              <SecureImage src={previewImage} className="max-w-full max-h-[70vh] object-contain rounded-xl" />
             </Modal>
 
           </div>

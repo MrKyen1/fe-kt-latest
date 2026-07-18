@@ -194,6 +194,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
       return {
         id: answer.questionId,
         type: answer.questionType,
+        questionVersionId: answer.questionVersionId,
         questionContent: attemptContent,
         passage: mockQuestion?.passage || detail.passage?.content || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
         media,

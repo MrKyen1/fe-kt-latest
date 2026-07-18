@@ -49,6 +49,7 @@ import {
 } from "@ant-design/icons";
 
 import { learningCmsService } from "../../../services/learningCmsService";
+import { academicService } from "../../../services/academicService";
 import { resolveMediaUrl } from "../../../services/apiClient";
 
 const { Title, Text, Paragraph } = Typography;
@@ -108,6 +109,8 @@ export default function LearningCms() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
+  const [specializations, setSpecializations] = useState<any[]>([]);
+  const [selectedSpecializationId, setSelectedSpecializationId] = useState<string | undefined>(undefined);
 
   // ================= TAXONOMY SEARCH/FILTER STATES =================
   const [taxSearch, setTaxSearch] = useState("");
@@ -131,6 +134,12 @@ export default function LearningCms() {
   const [passageModalOpen, setPassageModalOpen] = useState(false);
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
   const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examVersionsModalOpen, setExamVersionsModalOpen] = useState(false);
+  const [examVersions, setExamVersions] = useState<any[]>([]);
+  const [viewingExam, setViewingExam] = useState<any>(null);
+  const [questionVersionsModalOpen, setQuestionVersionsModalOpen] = useState(false);
+  const [questionVersions, setQuestionVersions] = useState<any[]>([]);
+  const [viewingQuestion, setViewingQuestion] = useState<any>(null);
   const [curriculumModalOpen, setCurriculumModalOpen] = useState(false);
   const [manageQuestionsOpen, setManageQuestionsOpen] = useState(false);
   const [manageExamsOpen, setManageExamsOpen] = useState(false);
@@ -170,6 +179,7 @@ export default function LearningCms() {
       setTaxLoading(true);
       lastFetchedSearchRef.current = searchVal;
       const res = await getTaxService(tab).list({
+        specializationId: tab !== "tags" ? selectedSpecializationId : undefined,
         limit: 100,
         search: searchVal || undefined,
         sortBy: "name",
@@ -199,22 +209,39 @@ export default function LearningCms() {
   };
 
   useEffect(() => {
-    loadAllData();
+    const fetchSpecializations = async () => {
+      try {
+        const specs = await academicService.specializations.list({ isActive: true });
+        setSpecializations(specs || []);
+        if (specs && specs.length > 0) {
+          setSelectedSpecializationId(specs[0].id);
+        }
+      } catch (err) {
+        message.error("Tải danh sách môn học thất bại");
+      }
+    };
+    fetchSpecializations();
   }, []);
+
+  useEffect(() => {
+    if (selectedSpecializationId) {
+      loadAllData();
+    }
+  }, [selectedSpecializationId]);
 
   const loadAllData = async () => {
     try {
       setLoading(true);
       const results = await Promise.allSettled([
-        learningCmsService.levels.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 0
-        learningCmsService.skills.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 1
-        learningCmsService.topics.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 2
+        learningCmsService.levels.list({ specializationId: selectedSpecializationId, limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 0
+        learningCmsService.skills.list({ specializationId: selectedSpecializationId, limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 1
+        learningCmsService.topics.list({ specializationId: selectedSpecializationId, limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 2
         learningCmsService.tags.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),          // 3
         learningCmsService.mediaAssets.list({ limit: 100 }),   // 4
-        learningCmsService.readingPassages.list({ limit: 100, sortBy: "title", sortOrder: "ASC" }), // 5
-        learningCmsService.questions.list({ limit: 100 }),     // 6
-        learningCmsService.exams.list({ limit: 100 }),         // 7
-        learningCmsService.curriculums.list({ limit: 100 }),   // 8
+        learningCmsService.readingPassages.list({ specializationId: selectedSpecializationId, limit: 100, sortBy: "title", sortOrder: "ASC" }), // 5
+        learningCmsService.questions.list({ specializationId: selectedSpecializationId, limit: 100 }),     // 6
+        learningCmsService.exams.list({ specializationId: selectedSpecializationId, limit: 100 }),         // 7
+        learningCmsService.curriculums.list({ specializationId: selectedSpecializationId, limit: 100 }),   // 8
       ]);
 
       const get = (i: number) => results[i].status === "fulfilled" ? (results[i] as PromiseFulfilledResult<any>).value : null;
@@ -346,19 +373,60 @@ export default function LearningCms() {
     });
   };
 
+  const getTaxName = (tab: string) => {
+    switch (tab) {
+      case "levels": return "Cấp độ";
+      case "skills": return "Kỹ năng";
+      case "topics": return "Chủ đề";
+      case "tags": default: return "Thẻ gắn";
+    }
+  };
+
   const handleTaxSubmit = async (values: any) => {
     try {
       if (editingItem) {
         await getTaxService(taxTab).update(editingItem.id, values);
         message.success("Cập nhật thành công");
       } else {
-        await getTaxService(taxTab).create(values);
+        const payload = taxTab !== "tags" ? { ...values, specializationId: selectedSpecializationId } : values;
+        await getTaxService(taxTab).create(payload);
         message.success("Tạo mới thành công");
       }
       loadAllData();
       setTaxModalOpen(false);
     } catch (error: any) {
-      const errMsg = error?.response?.data?.message || "Thao tác thất bại";
+      const err = error?.response?.data || error;
+      if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const itemId = err.details?.id;
+        const taxName = getTaxName(taxTab);
+        if (itemId) {
+          Modal.confirm({
+            title: `Khôi phục ${taxName}`,
+            content: `"${values.name}" đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại không?`,
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await getTaxService(taxTab).reactivate(itemId);
+                // 2. Update with current form details
+                await getTaxService(taxTab).update(itemId, values);
+                
+                message.success(`Khôi phục và cập nhật ${taxName.toLowerCase()} thành công`);
+                
+                loadAllData();
+                setTaxModalOpen(false);
+                taxForm.resetFields();
+              } catch (reactivateErr: any) {
+                const reactivateErrMsg = reactivateErr?.response?.data?.message || reactivateErr?.message || "Khôi phục thất bại";
+                message.error(reactivateErrMsg);
+              }
+            },
+          });
+          return;
+        }
+      }
+      const errMsg = error?.response?.data?.message || error?.message || "Thao tác thất bại";
       message.error(errMsg);
     }
   };
@@ -448,7 +516,7 @@ export default function LearningCms() {
         await learningCmsService.readingPassages.update(editingItem.id, values);
         message.success("Cập nhật bài đọc thành công");
       } else {
-        await learningCmsService.readingPassages.create(values);
+        await learningCmsService.readingPassages.create({ ...values, specializationId: selectedSpecializationId });
         message.success("Tạo bài đọc thành công");
       }
       loadAllData();
@@ -638,7 +706,7 @@ export default function LearningCms() {
         await learningCmsService.questions.update(editingItem.id, updatePayload);
         message.success("Cập nhật câu hỏi thành công");
       } else {
-        await learningCmsService.questions.create(payload);
+        await learningCmsService.questions.create({ ...payload, specializationId: selectedSpecializationId });
         message.success("Tạo câu hỏi thành công");
       }
       loadAllData();
@@ -713,6 +781,7 @@ export default function LearningCms() {
       } else {
         await learningCmsService.exams.create({
           ...values,
+          specializationId: selectedSpecializationId,
           status: "draft",
         });
         message.success("Tạo đề thi thành công");
@@ -737,6 +806,48 @@ export default function LearningCms() {
     } catch (err: any) {
       const msg = err?.response?.data?.message || "Đổi trạng thái thất bại";
       message.error(msg);
+    }
+  };
+
+  const handleRepublishExam = async (record: any) => {
+    try {
+      await learningCmsService.exams.updateStatus(record.id, {
+        status: "published",
+        expectedUpdatedAt: record.updatedAt,
+      });
+      message.success("Xuất bản phiên bản mới thành công!");
+      loadAllData();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Xuất bản thất bại";
+      message.error(msg);
+    }
+  };
+
+  const handleViewExamVersions = async (record: any) => {
+    try {
+      setLoading(true);
+      const data = await learningCmsService.exams.listVersions(record.id);
+      setExamVersions(data || []);
+      setViewingExam(record);
+      setExamVersionsModalOpen(true);
+    } catch {
+      message.error("Không thể tải lịch sử phiên bản của đề thi");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewQuestionVersions = async (record: any) => {
+    try {
+      setLoading(true);
+      const data = await learningCmsService.questions.listVersions(record.id);
+      setQuestionVersions(data || []);
+      setViewingQuestion(record);
+      setQuestionVersionsModalOpen(true);
+    } catch {
+      message.error("Không thể tải lịch sử phiên bản của câu hỏi");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -790,6 +901,7 @@ export default function LearningCms() {
       } else {
         await learningCmsService.curriculums.create({
           ...values,
+          specializationId: selectedSpecializationId,
           status: "draft",
         });
         message.success("Tạo giáo trình thành công");
@@ -981,11 +1093,6 @@ export default function LearningCms() {
           )}
         </div>
       ),
-    },
-    {
-      title: "Mô tả",
-      dataIndex: "description",
-      render: (val: string) => <span className="text-slate-500 text-sm">{val || "—"}</span>,
     },
     taxTab === "topics" ? {
       title: "Chủ đề cha",
@@ -1269,15 +1376,35 @@ export default function LearningCms() {
           <div className="max-w-[1500px] mx-auto space-y-6">
             {/* HEADER */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
-              <div>
+              <div className="flex-1">
                 <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
                   Learning CMS Dashboard
                 </Title>
-                <Text className="text-slate-400 text-sm">
-                  Quản lý ngân hàng câu hỏi, bài đọc, đề kiểm tra và giáo trình giảng dạy
-                </Text>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-1.5">
+                  <Text className="text-slate-400 text-sm">
+                    Quản lý ngân hàng câu hỏi, bài đọc, đề kiểm tra và giáo trình giảng dạy
+                  </Text>
+                  {specializations.length > 0 && (
+                    <div className="flex items-center gap-2 bg-indigo-50/50 border border-indigo-100/50 rounded-xl px-3 py-1 inline-flex w-fit">
+                      <span className="text-xs font-bold text-indigo-700">Môn học:</span>
+                      <Select
+                        value={selectedSpecializationId}
+                        onChange={setSelectedSpecializationId}
+                        variant="borderless"
+                        className="text-xs font-extrabold text-indigo-900 min-w-[150px] !p-0"
+                        popupMatchSelectWidth={false}
+                      >
+                        {specializations.map((spec) => (
+                          <Select.Option key={spec.id} value={spec.id}>
+                            📖 {spec.name} ({spec.code})
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-3 flex-wrap">
+              <div className="flex gap-3 flex-wrap items-center">
                 <Badge count={questions.filter((q) => q.status === "draft").length} overflowCount={99} color="orange">
                   <div className="bg-orange-50 text-orange-700 px-4 py-2 rounded-xl text-sm font-semibold">
                     Câu hỏi chờ duyệt
@@ -1594,6 +1721,14 @@ export default function LearningCms() {
                               align: "right" as const,
                               render: (_: any, record: any) => (
                                 <Space size="small">
+                                  <Button
+                                    type="dashed"
+                                    size="small"
+                                    onClick={() => handleViewQuestionVersions(record)}
+                                    className="text-xs font-semibold border-amber-200 text-amber-600 rounded-lg hover:border-amber-500"
+                                  >
+                                    Lịch sử phiên bản
+                                  </Button>
                                   <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
                                     <Button
                                       type="text"
@@ -1680,15 +1815,31 @@ export default function LearningCms() {
                               title: "Trạng thái",
                               dataIndex: "status",
                               render: (val: string, record: any) => (
-                                <Tooltip title={val === "published" ? "Click để chuyển về Nháp" : "Click để Phát hành"}>
+                                <Space direction="vertical" size={2} align="center" className="w-full">
                                   <Tag
                                     color={val === "published" ? "success" : "default"}
-                                    onClick={() => handleToggleExamStatus(record)}
-                                    className="cursor-pointer rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
+                                    className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold m-0"
                                   >
                                     {val === "published" ? "✓ Đang phát hành" : "Nháp"}
                                   </Tag>
-                                </Tooltip>
+                                  {val === "published" && record.hasUnpublishedChanges && (
+                                    <div className="flex flex-col items-center gap-1 mt-1.5">
+                                      <Tooltip title="Đề thi đã bị thay đổi sau khi xuất bản. Hãy bấm nút bên dưới hoặc chuyển về nháp rồi xuất bản lại để cập nhật phiên bản mới.">
+                                        <Tag color="warning" className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-bold m-0">
+                                          ⚠️ Có thay đổi
+                                        </Tag>
+                                      </Tooltip>
+                                      <Button
+                                        type="link"
+                                        size="small"
+                                        onClick={() => handleRepublishExam(record)}
+                                        className="text-[10px] p-0 h-auto font-bold text-indigo-600 hover:text-indigo-800"
+                                      >
+                                        🚀 Xuất bản bản mới
+                                      </Button>
+                                    </div>
+                                  )}
+                                </Space>
                               ),
                             },
                             {
@@ -1704,6 +1855,22 @@ export default function LearningCms() {
                                   >
                                     Cấu hình câu hỏi
                                   </Button>
+                                  <Button
+                                    type="dashed"
+                                    size="small"
+                                    onClick={() => handleViewExamVersions(record)}
+                                    className="text-xs font-semibold border-amber-200 text-amber-600 rounded-lg hover:border-amber-500"
+                                  >
+                                    Lịch sử phiên bản
+                                  </Button>
+                                  <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
+                                    <Button
+                                      type="text"
+                                      size="small"
+                                      icon={record.status === "published" ? <CloseCircleOutlined className="text-orange-400" /> : <CheckCircleOutlined className="text-emerald-500" />}
+                                      onClick={() => handleToggleExamStatus(record)}
+                                    />
+                                  </Tooltip>
                                   <Button
                                     type="text"
                                     size="small"
@@ -1782,16 +1949,13 @@ export default function LearningCms() {
                             {
                               title: "Trạng thái",
                               dataIndex: "status",
-                              render: (val: string, record: any) => (
-                                <Tooltip title={val === "published" ? "Click để chuyển về Nháp" : "Click để Phát hành (cần ít nhất 1 đề thi đã phát hành)"}>
-                                  <Tag
-                                    color={val === "published" ? "success" : "default"}
-                                    onClick={() => handleToggleCurriculumStatus(record)}
-                                    className="cursor-pointer rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
-                                  >
-                                    {val === "published" ? "✓ Đang phát hành" : "Nháp"}
-                                  </Tag>
-                                </Tooltip>
+                              render: (val: string) => (
+                                <Tag
+                                  color={val === "published" ? "success" : "default"}
+                                  className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
+                                >
+                                  {val === "published" ? "✓ Đang phát hành" : "Nháp"}
+                                </Tag>
                               ),
                             },
                             {
@@ -1807,6 +1971,14 @@ export default function LearningCms() {
                                   >
                                     Cấu hình đề thi
                                   </Button>
+                                  <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Phát hành giáo trình (cần ít nhất 1 đề thi đã phát hành)"}>
+                                    <Button
+                                      type="text"
+                                      size="small"
+                                      icon={record.status === "published" ? <CloseCircleOutlined className="text-orange-400" /> : <CheckCircleOutlined className="text-emerald-500" />}
+                                      onClick={() => handleToggleCurriculumStatus(record)}
+                                    />
+                                  </Tooltip>
                                   <Button
                                     type="text"
                                     size="small"
@@ -1874,9 +2046,6 @@ export default function LearningCms() {
                     </Select>
                   </Form.Item>
                 )}
-                <Form.Item name="description" label="Mô tả">
-                  <Input.TextArea placeholder="Mô tả chi tiết..." rows={3} className="rounded-xl" />
-                </Form.Item>
               </Form>
             </Modal>
 
@@ -2345,6 +2514,180 @@ export default function LearningCms() {
               </Form>
             </Modal>
 
+            {/* EXAM VERSION HISTORY MODAL */}
+            <Modal
+              title={
+                <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  📖 Lịch sử phiên bản — {viewingExam?.title}
+                </div>
+              }
+              open={examVersionsModalOpen}
+              onCancel={() => {
+                setExamVersionsModalOpen(false);
+                setViewingExam(null);
+              }}
+              footer={null}
+              width={700}
+              className="rounded-2xl"
+              destroyOnClose
+            >
+              <div className="py-2 space-y-4 font-sans">
+                {viewingExam?.hasUnpublishedChanges && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3.5 text-xs flex justify-between items-center gap-3 shadow-sm">
+                    <div className="leading-relaxed">
+                      ⚠️ <strong>Có thay đổi chưa xuất bản:</strong> Nhấn nút bên phải để lưu phiên bản mới của đề thi này ngay lập tức.
+                    </div>
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={async () => {
+                        try {
+                          await learningCmsService.exams.updateStatus(viewingExam.id, {
+                            status: "published",
+                            expectedUpdatedAt: viewingExam.updatedAt,
+                          });
+                          message.success("Xuất bản phiên bản mới thành công!");
+                          // Refresh versions
+                          const data = await learningCmsService.exams.listVersions(viewingExam.id);
+                          setExamVersions(data || []);
+                          // Refresh viewingExam properties
+                          const updatedExam = await learningCmsService.exams.get(viewingExam.id);
+                          setViewingExam(updatedExam);
+                          loadAllData();
+                        } catch (err: any) {
+                          message.error(err?.response?.data?.message || "Tạo phiên bản mới thất bại");
+                        }
+                      }}
+                      className="font-semibold text-xs flex-shrink-0"
+                    >
+                      Tạo phiên bản mới (Upgrade)
+                    </Button>
+                  </div>
+                )}
+                <Table
+                  dataSource={examVersions}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  className="border border-slate-100 rounded-xl overflow-hidden shadow-sm"
+                  columns={[
+                    {
+                      title: "Phiên bản",
+                      dataIndex: "versionNumber",
+                      key: "versionNumber",
+                      render: (num: number, r: any) => (
+                        <span className="font-bold text-indigo-600">
+                          v{num} {r.isCurrent && <Tag color="success" className="ml-2 border-none rounded-full px-2 text-[10px] font-bold">Hiện hành</Tag>}
+                        </span>
+                      ),
+                    },
+                    {
+                      title: "Số câu hỏi",
+                      dataIndex: "questionCount",
+                      key: "questionCount",
+                      render: (cnt: number) => <span className="font-semibold text-slate-700">{cnt ?? 0} câu</span>,
+                    },
+                    {
+                      title: "Thời gian",
+                      dataIndex: "timeLimitSeconds",
+                      key: "timeLimitSeconds",
+                      render: (sec: number) => sec ? `${Math.round(sec / 60)} phút` : "Không giới hạn",
+                    },
+                    {
+                      title: "Ngày tạo",
+                      dataIndex: "createdAt",
+                      key: "createdAt",
+                      render: (date: string) => new Date(date).toLocaleString("vi-VN"),
+                    },
+                  ]}
+                />
+              </div>
+            </Modal>
+
+            {/* QUESTION VERSION HISTORY MODAL */}
+            <Modal
+              title={
+                <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  📖 Lịch sử phiên bản câu hỏi — {viewingQuestion?.prompt ? (viewingQuestion.prompt.length > 30 ? viewingQuestion.prompt.substring(0, 30) + "..." : viewingQuestion.prompt) : ""}
+                </div>
+              }
+              open={questionVersionsModalOpen}
+              onCancel={() => {
+                setQuestionVersionsModalOpen(false);
+                setViewingQuestion(null);
+              }}
+              footer={null}
+              width={800}
+              className="rounded-2xl"
+              destroyOnClose
+            >
+              <div className="py-2 space-y-4 font-sans">
+                <Table
+                  dataSource={questionVersions}
+                  rowKey="id"
+                  pagination={{ pageSize: 5 }}
+                  size="small"
+                  className="border border-slate-100 rounded-xl overflow-hidden shadow-sm"
+                  columns={[
+                    {
+                      title: "Phiên bản",
+                      dataIndex: "versionNumber",
+                      key: "versionNumber",
+                      width: 100,
+                      render: (num: number) => (
+                        <span className="font-bold text-indigo-600">
+                          v{num}
+                        </span>
+                      ),
+                    },
+                    {
+                      title: "Loại câu hỏi",
+                      dataIndex: "questionType",
+                      key: "questionType",
+                      width: 130,
+                      render: (type: string) => (
+                        <Tag color={QUESTION_TYPE_COLORS[type] || "default"}>
+                          {QUESTION_TYPE_LABELS[type] || type}
+                        </Tag>
+                      ),
+                    },
+                    {
+                      title: "Nội dung đề bài",
+                      key: "prompt",
+                      render: (_: any, r: any) => (
+                        <div
+                          className="text-xs text-slate-700 max-w-sm truncate"
+                          title={r.questionSnapshot?.prompt}
+                        >
+                          {r.questionSnapshot?.prompt || "Không có nội dung"}
+                        </div>
+                      ),
+                    },
+                    {
+                      title: "Đáp án",
+                      key: "correctAnswer",
+                      render: (_: any, r: any) => (
+                        <div
+                          className="text-xs font-mono text-slate-500 max-w-xs truncate"
+                          title={JSON.stringify(r.correctAnswer || {})}
+                        >
+                          {JSON.stringify(r.correctAnswer || {})}
+                        </div>
+                      ),
+                    },
+                    {
+                      title: "Ngày tạo",
+                      dataIndex: "createdAt",
+                      key: "createdAt",
+                      width: 180,
+                      render: (date: string) => new Date(date).toLocaleString("vi-VN"),
+                    },
+                  ]}
+                />
+              </div>
+            </Modal>
+
             {/* MANAGE QUESTIONS IN EXAM MODAL */}
             <Modal
               title={
@@ -2371,6 +2714,36 @@ export default function LearningCms() {
               }
               className="rounded-2xl"
             >
+              {selectedExam?.status === "published" && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3.5 text-xs flex justify-between items-center gap-3">
+                  <div className="leading-relaxed">
+                    ⚠️ <strong>Lưu ý:</strong> Đề thi này đang ở trạng thái <strong>Đang phát hành</strong>. Các thay đổi về câu hỏi sẽ không tự động áp dụng cho học sinh đã giao cho đến khi bạn <strong>Xuất bản phiên bản mới</strong>.
+                  </div>
+                  <Button
+                    type="primary"
+                    size="small"
+                    danger
+                    icon={<SendOutlined />}
+                    onClick={async () => {
+                      try {
+                        await learningCmsService.exams.updateStatus(selectedExam.id, {
+                          status: "published",
+                          expectedUpdatedAt: selectedExam.updatedAt,
+                        });
+                        message.success("Xuất bản phiên bản mới thành công!");
+                        const updated = await learningCmsService.exams.get(selectedExam.id);
+                        setSelectedExam(updated);
+                        loadAllData();
+                      } catch (err: any) {
+                        message.error(err?.response?.data?.message || "Xuất bản thất bại");
+                      }
+                    }}
+                    className="font-semibold text-xs flex-shrink-0"
+                  >
+                    Xuất bản bản mới
+                  </Button>
+                </div>
+              )}
               <Row gutter={24} className="pt-2">
                 {/* Left column: Current exam questions */}
                 <Col span={12}>

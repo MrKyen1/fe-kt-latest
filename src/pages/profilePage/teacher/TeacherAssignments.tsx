@@ -245,6 +245,25 @@ export default function TeacherAssignments() {
   const [selectedClassForExam, setSelectedClassForExam] = useState<string | undefined>(undefined);
   const [selectedClassForCurriculum, setSelectedClassForCurriculum] = useState<string | undefined>(undefined);
 
+  const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
+  const [examVersionsMap, setExamVersionsMap] = useState<Record<string, any[]>>({});
+
+  const handleExamSelectionChange = async (ids: string[]) => {
+    setSelectedExamIds(ids);
+    const newVersionsMap = { ...examVersionsMap };
+    for (const id of ids) {
+      if (!newVersionsMap[id]) {
+        try {
+          const versions = await learningCmsService.exams.listVersions(id);
+          newVersionsMap[id] = versions || [];
+        } catch (err) {
+          console.error("Failed to fetch versions for exam " + id, err);
+        }
+      }
+    }
+    setExamVersionsMap(newVersionsMap);
+  };
+
   // ==================== LOAD DATA ====================
   useEffect(() => { loadAll(); }, []);
 
@@ -440,8 +459,13 @@ export default function TeacherAssignments() {
     }
     try {
       setSubmitting(true);
+      const examVersions = values.examVersions || {};
+      const examsPayload = examIds.map((examId) => ({
+        examId,
+        examVersionId: examVersions[examId] || undefined,
+      }));
       await teacherLearningService.examAssignments.create({
-        examIds,
+        exams: examsPayload,
         classId: values.classId || undefined,
         studentIds: values.studentIds?.length ? values.studentIds : undefined,
         maxAttempts: values.maxAttempts || undefined,
@@ -450,6 +474,8 @@ export default function TeacherAssignments() {
       });
       message.success(`Giao ${examIds.length > 1 ? `${examIds.length} bài thi` : "bài thi"} thành công!`);
       examForm.resetFields();
+      setSelectedExamIds([]);
+      setExamVersionsMap({});
       setSelectedClassForExam(undefined);
       setExamFormOpen(false);
       loadAll();
@@ -940,7 +966,14 @@ export default function TeacherAssignments() {
             label={<span>Bài thi <span className="text-slate-400 font-normal text-xs">(có thể chọn nhiều)</span></span>}
             rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 bài thi!" }]}
           >
-            <Select mode="multiple" showSearch placeholder="Chọn bài thi..." optionFilterProp="children" className="rounded-xl">
+            <Select
+              mode="multiple"
+              showSearch
+              placeholder="Chọn bài thi..."
+              optionFilterProp="children"
+              className="rounded-xl"
+              onChange={handleExamSelectionChange}
+            >
               {exams.map((e) => (
                 <Select.Option key={e.id} value={e.id}>
                   {e.title || e.code} <span className="text-slate-400 text-xs ml-1">({e.code})</span>
@@ -948,6 +981,35 @@ export default function TeacherAssignments() {
               ))}
             </Select>
           </Form.Item>
+
+          {selectedExamIds.length > 0 && (
+            <div className="mb-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+              <span className="text-xs font-bold text-slate-500 block mb-1">Chọn phiên bản cho từng đề thi (Mặc định bản mới nhất):</span>
+              {selectedExamIds.map((examId) => {
+                const exam = exams.find((e) => e.id === examId);
+                const versions = examVersionsMap[examId] || [];
+                return (
+                  <div key={examId} className="flex items-center justify-between gap-3 text-xs bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="font-semibold text-slate-700 truncate max-w-[280px]">{exam?.title || exam?.code}</span>
+                    <Form.Item
+                      name={["examVersions", examId]}
+                      className="mb-0"
+                      initialValue=""
+                    >
+                      <Select className="w-52 text-xs font-medium" size="small">
+                        <Select.Option value="">Bản mới nhất (Latest)</Select.Option>
+                        {versions.map((v: any) => (
+                          <Select.Option key={v.id} value={v.id}>
+                            Phiên bản {v.versionNumber} ({v.questionCount} câu) {v.isCurrent ? "★" : ""}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <Row gutter={16}>
             <Col span={12}>

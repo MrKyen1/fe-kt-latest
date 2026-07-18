@@ -45,6 +45,7 @@ export interface ExamQuestion {
   sourceSentence?: string;
   incorrectSentence?: string;
   hintWord?: string;
+  questionVersionId?: string;
 }
 
 export interface ExamData {

@@ -41,6 +41,7 @@ import RbacManagement from "./admin/RbacManagement";
 import LearningCms from "./admin/LearningCms";
 import TeacherAssignments from "./teacher/TeacherAssignments";
 import StudentMyExams from "./student/StudentMyExams";
+import Leaderboard from "./Leaderboard";
 
 import UserProfile from "./userProfile";
 import ProfileLayout from "./layouts/ProfileLayout";
@@ -280,16 +281,12 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
 
 export default function Profile() {
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
-  const tabParam = searchParams.get("tab");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const menuKey = searchParams.get("tab") || "profile";
 
-  const [menuKey, setMenuKey] = useState(tabParam || "profile");
-
-  useEffect(() => {
-    if (tabParam) {
-      setMenuKey(tabParam);
-    }
-  }, [tabParam]);
+  const handleTabChange = (key: string) => {
+    setSearchParams({ tab: key });
+  };
 
   const [students, setStudents] = useState<Student[]>([]);
 
@@ -369,14 +366,7 @@ export default function Profile() {
     {
       key: "ranking",
       icon: <TrophyOutlined />,
-      label: (
-        <>
-          Ranking{" "}
-          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
-            Coming Soon
-          </span>
-        </>
-      ),
+      label: "Xếp hạng",
     },
   ];
 
@@ -403,14 +393,7 @@ export default function Profile() {
     {
       key: "ranking",
       icon: <TrophyOutlined />,
-      label: (
-        <>
-          Student Ranking{" "}
-          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
-            Coming Soon
-          </span>
-        </>
-      ),
+      label: "Xếp hạng",
     },
     // {
     //   key: "rbac",
@@ -445,14 +428,7 @@ export default function Profile() {
     {
       key: "ranking",
       icon: <TrophyOutlined />,
-      label: (
-        <>
-          Student Ranking{" "}
-          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
-            Coming Soon
-          </span>
-        </>
-      ),
+      label: "Xếp hạng",
     },
   ];
 
@@ -467,13 +443,7 @@ export default function Profile() {
       case "my-exams":
         return <StudentMyExams />;
       case "ranking":
-        return (
-          <StudentRanking
-            students={students}
-            role="student"
-            currentStudentId={currentStudent?.id}
-          />
-        );
+        return <Leaderboard />;
     }
   };
 
@@ -484,7 +454,7 @@ export default function Profile() {
       case "assignments":
         return <TeacherAssignments />;
       case "ranking":
-        return <StudentRanking students={students} role="admin" />;
+        return <Leaderboard />;
       default:
         return <UserProfile />;
     }
@@ -499,7 +469,7 @@ export default function Profile() {
       case "dashboard":
         return <AdminDashboard />;
       case "ranking":
-        return <StudentRanking students={students} role="admin" />;
+        return <Leaderboard />;
       case "rbac":
         return <RbacManagement />;
       case "cms":
@@ -533,7 +503,7 @@ export default function Profile() {
     <ProfileLayout
       menuItems={getMenuItems()}
       selectedKey={menuKey}
-      onChange={setMenuKey}
+      onChange={handleTabChange}
     >
       {renderContent()}
     </ProfileLayout>

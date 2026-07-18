@@ -22,6 +22,11 @@ function mapUserResponse(user: any): User {
       id: user.teacher.id,
       yearsOfExperience: user.teacher.yearsOfExperience ?? 0,
       description: user.teacher.description,
+      bankAccountNumber: user.teacher.bankAccountNumber,
+      bankName: user.teacher.bankName,
+      insuranceStartDate: user.teacher.insuranceStartDate,
+      employmentType: user.teacher.employmentType,
+      degrees: user.teacher.degrees || [],
       classIds: (user.teacher.classes || [])
         .filter((c: any) => c.isActive)
         .map((c: any) => c.classId),
@@ -39,6 +44,7 @@ function mapUserResponse(user: any): User {
 
     mapped.studentProfile = {
       id: user.student.id,
+      parentFullName: user.student.parentFullName,
       classIds: (user.student.classes || [])
         .filter((c: any) => c.isActive)
         .map((c: any) => c.classId),
@@ -74,5 +80,22 @@ export const userService = {
   async remove(id: string): Promise<User> {
     const data = unwrapData(await apiClient.delete<ApiEnvelope<User>>(`/users/${id}`));
     return mapUserResponse(data);
+  },
+
+  async uploadTeacherDegreeImages(files: File[]): Promise<string[]> {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append("files", file);
+    });
+    const response = await apiClient.post<ApiEnvelope<string[]>>(
+      "/users/teacher-degree-images/upload/multiple",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return unwrapData(response);
   },
 };

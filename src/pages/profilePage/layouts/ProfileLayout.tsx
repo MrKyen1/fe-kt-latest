@@ -17,13 +17,17 @@ export default function ProfileLayout({
   children,
 }: Props) {
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ minHeight: "100vh", overflow: "visible" }}>
       <Sider
         width={250}
         breakpoint="lg"
         collapsedWidth={0}
         theme="light"
         style={{
+          position: "sticky",
+          top: "64px",
+          height: "calc(100vh - 64px)",
+          overflowY: "auto",
           background: "#f0f2f5",
           borderRight: "1px solid #d9d9d9",
         }}

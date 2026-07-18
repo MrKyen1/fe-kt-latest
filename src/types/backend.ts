@@ -58,6 +58,7 @@ export interface User {
   isActive?: boolean;
   roleId?: string;
   role?: Role;
+  citizenId?: string | null;
   teacherProfile?: TeacherProfile;
   studentProfile?: StudentProfile;
   startDate?: string;
@@ -70,6 +71,20 @@ export interface TeacherProfile {
   id?: string;
   yearsOfExperience?: number;
   description?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  insuranceStartDate?: string | null;
+  employmentType?: "full_time" | "part_time" | null;
+  degrees?: Array<{
+    id: string;
+    name: string;
+    orderIndex: number;
+    images: Array<{
+      id: string;
+      url: string;
+      orderIndex: number;
+    }>;
+  }>;
   classIds?: string[];
   specializationIds?: string[];
   classes?: ClassRoom[];
@@ -78,12 +93,13 @@ export interface TeacherProfile {
 
 export interface StudentProfile {
   id?: string;
+  parentFullName?: string;
   classIds?: string[];
   classes?: ClassRoom[];
 }
 
 export interface CreateUserRequest {
-  password: string;
+  password?: string;
   fullName: string;
   dateOfBirth?: string;
   phone?: string;
@@ -92,13 +108,23 @@ export interface CreateUserRequest {
   roleId: string;
   avatar?: string;
   startDate: string;
+  citizenId?: string | null;
   teacherProfile?: {
     yearsOfExperience?: number;
     description: string;
+    bankAccountNumber: string;
+    bankName: string;
+    insuranceStartDate?: string | null;
+    employmentType?: "full_time" | "part_time" | null;
     classIds: string[];
     specializationIds: string[];
+    degrees?: Array<{
+      name: string;
+      imageUrls: string[];
+    }>;
   };
   studentProfile?: {
+    parentFullName: string;
     classIds: string[];
   };
 }
@@ -137,6 +163,7 @@ export interface ClassRoom {
   name: string;
   centerId?: string;
   center?: Center;
+  specializationId?: string;
   description?: string;
   image?: string;
   isActive?: boolean;
@@ -231,6 +258,7 @@ export interface QuestionMediaMapping {
 
 export interface Question {
   id: string;
+  specializationId?: string;
   type: QuestionType;
   prompt: string;
   instruction?: string;
@@ -257,12 +285,27 @@ export type UpdateQuestionRequest = Partial<CreateQuestionRequest> & {
   expectedUpdatedAt?: string;
 };
 
+export interface ExamVersion {
+  id: string;
+  versionNumber: number;
+  title?: string;
+  timeLimitSeconds?: number;
+  questionCount?: number;
+  isCurrent?: boolean;
+  createdAt?: string;
+}
+
 export interface Exam {
   id: string;
+  specializationId?: string;
   code: string;
   title: string;
   description?: string;
   timeLimitSeconds?: number;
+  /** ID của version được publish hiện tại */
+  currentVersionId?: string;
+  /** true khi exam đã sửa sau publish, cần republish */
+  hasUnpublishedChanges?: boolean;
   status: LearningStatus;
   questions?: Question[];
   examQuestions?: Array<{
@@ -278,6 +321,7 @@ export interface Exam {
 
 export interface Curriculum {
   id: string;
+  specializationId?: string;
   code: string;
   title: string;
   description?: string;
@@ -330,10 +374,11 @@ export interface TeacherAssignment {
 export interface ExamAssignment extends TeacherAssignment {
   /**
    * Multiple exams per assignment (v2 API).
-   * List/Detail trả `exams: [{ examId, orderIndex, isRequired, exam }]`.
+   * List/Detail trả `exams: [{ examId, examVersionId, orderIndex, isRequired, exam }]`.
    */
   exams?: Array<{
     examId: string;
+    examVersionId?: string;
     orderIndex?: number;
     isRequired?: boolean;
     exam?: Exam;

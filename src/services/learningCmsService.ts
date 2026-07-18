@@ -5,6 +5,7 @@ import {
   CreateQuestionRequest,
   Curriculum,
   Exam,
+  ExamVersion,
   LearningTaxonomy,
   MediaAsset,
   Question,
@@ -61,6 +62,10 @@ function paginatedCrud<TItem, TCreate = Partial<TItem>, TUpdate = Partial<TCreat
 
     async remove(id: string): Promise<TItem> {
       return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`));
+    },
+
+    async reactivate(id: string): Promise<TItem> {
+      return unwrapData(await apiClient.patch<ApiEnvelope<TItem>>(`${path}/${id}/reactivate`));
     },
   };
 }
@@ -155,6 +160,14 @@ export const learningCmsService = {
         await apiClient.patch<ApiEnvelope<Question>>(`/learning/questions/${id}/status`, payload),
       );
     },
+
+    async listVersions(questionId: string): Promise<any[]> {
+      return unwrapData(
+        await apiClient.get<ApiEnvelope<any[]>>(
+          `/learning/questions/${questionId}/versions`,
+        ),
+      );
+    },
   },
 
   exams: {
@@ -242,6 +255,31 @@ export const learningCmsService = {
           `/learning/exams/${examId}/questions/bulk`,
           payload,
         ),
+      );
+    },
+
+    /**
+     * Lấy danh sách version đã publish của exam.
+     * GET /learning/exams/{id}/versions
+     * Dùng để hiển thị dropdown chọn version khi giao bài (nếu cần).
+     */
+    async listVersions(examId: string): Promise<ExamVersion[]> {
+      return unwrapData(
+        await apiClient.get<ApiEnvelope<ExamVersion[]>>(
+          `/learning/exams/${examId}/versions`,
+        ),
+      );
+    },
+  },
+
+  questionVersions: {
+    async regrade(questionVersionId: string, correctAnswer: Record<string, unknown>) {
+      return unwrapData(
+        await apiClient.post<ApiEnvelope<{
+          questionVersionId: string;
+          regradedAnswers: number;
+          affectedAttempts: number;
+        }>>(`/learning/question-versions/${questionVersionId}/regrade`, { correctAnswer }),
       );
     },
   },
