@@ -67,7 +67,7 @@ export default function UserProfile() {
   };
 
   const handlePreview = (info: { file: { originFileObj?: File } | File }) => {
-    const file = "originFileObj" in info.file ? info.file.originFileObj : info.file;
+    const file = info.file instanceof File ? info.file : info.file.originFileObj;
     if (!file) return;
 
     setAvatarFile(file);
@@ -133,7 +133,7 @@ export default function UserProfile() {
                 size={120}
                 src={previewAvatar || resolveMediaUrl(avatar)}
                 icon={!avatar && <UserOutlined />}
-                imgProps={{ crossOrigin: "anonymous" }}
+                crossOrigin="anonymous"
               />
 
               <Upload

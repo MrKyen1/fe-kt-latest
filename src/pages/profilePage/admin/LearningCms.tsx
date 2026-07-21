@@ -25,6 +25,7 @@ import {
   Switch,
   Tooltip,
   Badge,
+  Popover,
 } from "antd";
 
 import {
@@ -149,6 +150,131 @@ export default function LearningCms() {
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [selectedCurriculum, setSelectedCurriculum] = useState<any>(null);
   const [currentQuestionType, setCurrentQuestionType] = useState<string>("multiple_choice");
+
+  // Filter state for Exam Question Configuration Modal
+  const [examQSearch, setExamQSearch] = useState("");
+  const [examQTypeFilter, setExamQTypeFilter] = useState<string | undefined>(undefined);
+  const [examQSkillFilter, setExamQSkillFilter] = useState<string | undefined>(undefined);
+  const [examQLevelFilter, setExamQLevelFilter] = useState<string | undefined>(undefined);
+  const [examQTopicFilter, setExamQTopicFilter] = useState<string | undefined>(undefined);
+  const [examQTagFilter, setExamQTagFilter] = useState<string | undefined>(undefined);
+  // Cache: full question detail by ID (includes options[], detail, etc.)
+  const [questionDetails, setQuestionDetails] = useState<Record<string, any>>({});
+
+  const resetExamQFilters = () => {
+    setExamQSearch("");
+    setExamQTypeFilter(undefined);
+    setExamQSkillFilter(undefined);
+    setExamQLevelFilter(undefined);
+    setExamQTopicFilter(undefined);
+    setExamQTagFilter(undefined);
+  };
+
+  const renderQuestionPopoverContent = (q: any) => {
+    if (!q) return null;
+    const skill = skills.find((s) => s.id === q.skillId);
+    const level = levels.find((l) => l.id === q.difficultyLevelId);
+    const topic = topics.find((t) => t.id === q.topicId);
+    const qTags = (q.tagIds || []).map((tid: string) => tags.find((t) => t.id === tid)).filter(Boolean);
+
+    // Determine the correct answer text for non-MCQ types
+    const getCorrectAnswer = () => {
+      if (!q.detail) return null;
+      if (q.type === "word_ordering" && q.detail.correctTokens) {
+        return Array.isArray(q.detail.correctTokens) ? q.detail.correctTokens.join(" ") : q.detail.correctTokens;
+      }
+      if ((q.type === "sentence_rewrite" || q.type === "hint_rewrite") && q.detail.acceptedAnswers) {
+        return Array.isArray(q.detail.acceptedAnswers) ? q.detail.acceptedAnswers.join(" | ") : q.detail.acceptedAnswers;
+      }
+      if (q.type === "error_correction" && q.detail.correctSentence) {
+        return q.detail.correctSentence;
+      }
+      if (q.type === "fill_blank" && q.detail.correctAnswer) {
+        return Array.isArray(q.detail.correctAnswer) ? q.detail.correctAnswer.join(" | ") : q.detail.correctAnswer;
+      }
+      return null;
+    };
+
+    const correctAnswer = getCorrectAnswer();
+
+    return (
+      <div style={{ width: 340 }} className="text-xs font-sans">
+
+        {/* ── Câu hỏi ─────────────────── */}
+        <div className="mb-2">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Đề bài</div>
+          {q.instruction && (
+            <div className="text-slate-500 italic text-[11px] mb-1 leading-relaxed">
+              📌 {q.instruction}
+            </div>
+          )}
+          <div
+            className="font-semibold text-slate-800 leading-snug"
+            dangerouslySetInnerHTML={{ __html: q.prompt || "(Không có đề bài)" }}
+          />
+        </div>
+
+        {/* ── Metadata tags ────────────── */}
+        <div className="flex flex-wrap gap-1 mb-2 pb-2 border-b border-slate-100">
+          <Tag color={QUESTION_TYPE_COLORS[q.type] || "default"} className="text-[10px] m-0 border-none">
+            {QUESTION_TYPE_LABELS[q.type] || q.type}
+          </Tag>
+          {skill && <Tag color="blue" className="text-[10px] m-0 border-none">💡 {skill.name}</Tag>}
+          {level && <Tag color="purple" className="text-[10px] m-0 border-none">🎯 {level.name}</Tag>}
+          {topic && <Tag color="cyan" className="text-[10px] m-0 border-none">📁 {topic.name}</Tag>}
+          {qTags.map((t: any) => (
+            <Tag key={t.id} color="gold" className="text-[10px] m-0 border-none"># {t.name}</Tag>
+          ))}
+        </div>
+
+        {/* ── Đáp án (MCQ) ─────────────── */}
+        {q.options && q.options.length > 0 && (
+          <div className="mb-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Đáp án</div>
+            <div className="space-y-1">
+              {q.options.map((opt: any, idx: number) => (
+                <div
+                  key={idx}
+                  className={`flex items-start gap-1.5 px-2 py-1 rounded-md text-[11px] leading-snug ${
+                    opt.isCorrect
+                      ? "bg-emerald-50 border border-emerald-200 font-semibold text-emerald-700"
+                      : "bg-slate-50 border border-slate-100 text-slate-600"
+                  }`}
+                >
+                  <span className={`shrink-0 font-bold ${opt.isCorrect ? "text-emerald-600" : "text-slate-500"}`}>
+                    {opt.label || String.fromCharCode(65 + idx)}.
+                  </span>
+                  <span className="flex-1">{opt.content}</span>
+                  {opt.isCorrect && <span className="shrink-0">✓</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Câu trả lời đúng (non-MCQ) ─ */}
+        {correctAnswer && (
+          <div className="mb-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Câu trả lời đúng</div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5 text-[11px] font-semibold text-emerald-700">
+              ✓ {correctAnswer}
+            </div>
+          </div>
+        )}
+
+        {/* ── Giải thích ───────────────── */}
+        {q.explanation && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Giải thích</div>
+            <div className="bg-indigo-50 border border-indigo-100 rounded-md px-2 py-1.5 text-[11px] text-indigo-700 leading-relaxed">
+              {q.explanation}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
 
   // ================= FORMS =================
   const [taxForm] = Form.useForm();
@@ -743,7 +869,7 @@ export default function LearningCms() {
     examForm.setFieldsValue({
       code: record.code,
       title: record.title,
-      timeLimitSeconds: record.timeLimitSeconds,
+      timeLimitMinutes: record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) : undefined,
       description: record.description,
     });
     setExamModalOpen(true);
@@ -771,16 +897,20 @@ export default function LearningCms() {
 
   const handleExamSubmit = async (values: any) => {
     try {
+      const timeLimitSeconds = values.timeLimitMinutes ? values.timeLimitMinutes * 60 : undefined;
+
       if (editingItem) {
         await learningCmsService.exams.update(editingItem.id, {
           title: values.title,
-          timeLimitSeconds: values.timeLimitSeconds,
+          timeLimitSeconds,
           description: values.description,
         });
         message.success("Cập nhật đề thi thành công");
       } else {
+        const { timeLimitMinutes, ...rest } = values;
         await learningCmsService.exams.create({
-          ...values,
+          ...rest,
+          timeLimitSeconds,
           specializationId: selectedSpecializationId,
           status: "draft",
         });
@@ -931,6 +1061,7 @@ export default function LearningCms() {
 
   // ================= RELATIONSHIP MAPPING HANDLERS =================
   const handleOpenQuestions = async (exam: any) => {
+    resetExamQFilters();
     try {
       const full = await learningCmsService.exams.get(exam.id);
       setSelectedExam(full);
@@ -938,6 +1069,24 @@ export default function LearningCms() {
       setSelectedExam(exam);
     }
     setManageQuestionsOpen(true);
+
+    // Prefetch full details for all published questions in the background
+    // so that the hover popover can show options/answers correctly.
+    const publishedQs = questions.filter((q) => q.status === "published");
+    const idsToFetch = publishedQs.map((q) => q.id).filter((id) => !questionDetails[id]);
+    if (idsToFetch.length > 0) {
+      Promise.allSettled(idsToFetch.map((id) => learningCmsService.questions.get(id))).then((results) => {
+        const updates: Record<string, any> = {};
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            updates[idsToFetch[i]] = r.value;
+          }
+        });
+        if (Object.keys(updates).length > 0) {
+          setQuestionDetails((prev) => ({ ...prev, ...updates }));
+        }
+      });
+    }
   };
 
   const handleAddQuestionToExam = async (questionId: string) => {
@@ -2455,11 +2604,11 @@ export default function LearningCms() {
                 <Form.Item name="title" label="Tiêu đề đề thi" rules={[{ required: true }]}>
                   <Input placeholder="Ví dụ: Đề kiểm tra giữa kỳ 1" className="rounded-xl" />
                 </Form.Item>
-                <Form.Item name="timeLimitSeconds" label="Thời gian làm bài (giây)" rules={[{ required: true }]}>
+                <Form.Item name="timeLimitMinutes" label="Thời gian làm bài (phút)" rules={[{ required: true, message: "Nhập thời gian làm bài!" }]}>
                   <InputNumber
                     style={{ width: "100%" }}
-                    min={0}
-                    placeholder="Ví dụ: 2700 (= 45 phút)"
+                    min={1}
+                    placeholder="Ví dụ: 45"
                     className="rounded-xl"
                   />
                 </Form.Item>
@@ -2758,6 +2907,7 @@ export default function LearningCms() {
                     size="small"
                   >
                     <List
+                      style={{ maxHeight: 460, overflowY: "auto" }}
                       dataSource={selectedExam?.questions || []}
                       renderItem={(eq: any, index: number) => {
                         const q = questions.find((q) => q.id === eq.questionId);
@@ -2787,24 +2937,39 @@ export default function LearningCms() {
                               />,
                             ]}
                           >
-                            <List.Item.Meta
-                              avatar={
-                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">
-                                  {index + 1}
-                                </div>
-                              }
-                              title={
-                                <div className="text-xs font-semibold line-clamp-1">
-                                  {q?.prompt || "(Câu hỏi không tìm thấy)"}
-                                </div>
-                              }
-                              description={
-                                <div className="flex gap-2">
-                                  <span className="text-[10px] text-slate-400">Điểm: {eq.score}</span>
-                                  {q && <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">{QUESTION_TYPE_LABELS[q.type]}</Tag>}
-                                </div>
-                              }
-                            />
+                            <Popover
+                              content={renderQuestionPopoverContent(questionDetails[q?.questionId] || questions.find((qq) => qq.id === q?.questionId) || q)}
+                              title={<div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>}
+                              trigger="hover"
+                              placement="right"
+                              mouseEnterDelay={0.15}
+                              overlayStyle={{ maxWidth: 380 }}
+                            >
+                              <div className="cursor-pointer flex-1 pr-2">
+                                <List.Item.Meta
+                                  avatar={
+                                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">
+                                      {index + 1}
+                                    </div>
+                                  }
+                                  title={
+                                    <div
+                                      className="text-xs font-semibold line-clamp-1 text-slate-800"
+                                      dangerouslySetInnerHTML={{ __html: q?.prompt || "(Câu hỏi không tìm thấy)" }}
+                                    />
+                                  }
+                                  description={
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      {q && (
+                                        <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">
+                                          {QUESTION_TYPE_LABELS[q.type]}
+                                        </Tag>
+                                      )}
+                                    </div>
+                                  }
+                                />
+                              </div>
+                            </Popover>
                           </List.Item>
                         );
                       }}
@@ -2820,20 +2985,177 @@ export default function LearningCms() {
                       <div className="flex items-center justify-between">
                         <span>Ngân hàng câu hỏi (đã duyệt)</span>
                         <Badge
-                          count={questions.filter((q) => q.status === "published" && !(selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id)).length}
+                          count={
+                            questions.filter(
+                              (q) =>
+                                q.status === "published" &&
+                                !(selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id),
+                            ).length
+                          }
                           color="green"
                         />
                       </div>
                     }
                     className="rounded-2xl border-slate-100 shadow-sm"
                     size="small"
+                    styles={{ body: { paddingTop: 8 } }}
                   >
-                    <List
-                      dataSource={questions.filter(
-                        (q) =>
-                          q.status === "published" &&
-                          !(selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id),
+                    {/* ── Filter Panel ─────────────────────────────── */}
+                    <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden">
+                      {/* Search bar */}
+                      <div className="px-3 pt-3 pb-2">
+                        <Input
+                          placeholder="🔍  Tìm theo đề bài, đáp án, giải thích..."
+                          value={examQSearch}
+                          onChange={(e) => setExamQSearch(e.target.value)}
+                          allowClear
+                          size="small"
+                          style={{
+                            borderRadius: 8,
+                            border: "1px solid #e0e7ff",
+                            background: "#fff",
+                            fontSize: 12,
+                          }}
+                        />
+                      </div>
+
+                      {/* Divider */}
+                      <div className="mx-3 border-t border-slate-100" />
+
+                      {/* Dropdown filters in 2 columns */}
+                      <div className="px-3 py-2 grid grid-cols-2 gap-1.5">
+                        <Select
+                          placeholder="📋 Loại câu hỏi"
+                          value={examQTypeFilter}
+                          onChange={setExamQTypeFilter}
+                          allowClear
+                          size="small"
+                          style={{ width: "100%", fontSize: 11 }}
+                          popupMatchSelectWidth={false}
+                        >
+                          {QUESTION_TYPES.map((qt) => (
+                            <Select.Option key={qt.value} value={qt.value}>
+                              {qt.label}
+                            </Select.Option>
+                          ))}
+                        </Select>
+
+                        <Select
+                          placeholder="💡 Kỹ năng"
+                          value={examQSkillFilter}
+                          onChange={setExamQSkillFilter}
+                          allowClear
+                          size="small"
+                          style={{ width: "100%", fontSize: 11 }}
+                          popupMatchSelectWidth={false}
+                        >
+                          {skills.map((s) => (
+                            <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
+                          ))}
+                        </Select>
+
+                        <Select
+                          placeholder="🎯 Cấp độ"
+                          value={examQLevelFilter}
+                          onChange={setExamQLevelFilter}
+                          allowClear
+                          size="small"
+                          style={{ width: "100%", fontSize: 11 }}
+                          popupMatchSelectWidth={false}
+                        >
+                          {levels.map((l) => (
+                            <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
+                          ))}
+                        </Select>
+
+                        <Select
+                          placeholder="📁 Chủ đề"
+                          value={examQTopicFilter}
+                          onChange={setExamQTopicFilter}
+                          allowClear
+                          size="small"
+                          style={{ width: "100%", fontSize: 11 }}
+                          popupMatchSelectWidth={false}
+                        >
+                          {topics.map((t) => (
+                            <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                          ))}
+                        </Select>
+
+                        <Select
+                          placeholder="🏷 Thẻ gắn (Tag)"
+                          value={examQTagFilter}
+                          onChange={setExamQTagFilter}
+                          allowClear
+                          size="small"
+                          style={{ width: "100%", fontSize: 11 }}
+                          className="col-span-2"
+                          popupMatchSelectWidth={false}
+                        >
+                          {tags.map((t) => (
+                            <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      {/* Active filter result count + clear */}
+                      {(examQSearch || examQTypeFilter || examQSkillFilter || examQLevelFilter || examQTopicFilter || examQTagFilter) && (
+                        <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
+                          <span className="text-[11px] text-indigo-600">
+                            🔎 Tìm thấy <strong>
+                              {questions.filter((q) => {
+                                if (q.status !== "published") return false;
+                                if ((selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id)) return false;
+                                if (examQSearch.trim()) {
+                                  const query = examQSearch.trim().toLowerCase();
+                                  if (
+                                    !q.prompt?.toLowerCase().includes(query) &&
+                                    !q.instruction?.toLowerCase().includes(query) &&
+                                    !q.explanation?.toLowerCase().includes(query) &&
+                                    !(q.options || []).some((opt: any) => opt.content?.toLowerCase().includes(query))
+                                  ) return false;
+                                }
+                                if (examQTypeFilter && q.type !== examQTypeFilter) return false;
+                                if (examQSkillFilter && q.skillId !== examQSkillFilter) return false;
+                                if (examQLevelFilter && q.difficultyLevelId !== examQLevelFilter) return false;
+                                if (examQTopicFilter && q.topicId !== examQTopicFilter) return false;
+                                if (examQTagFilter && !(q.tagIds || []).includes(examQTagFilter)) return false;
+                                return true;
+                              }).length}
+                            </strong> câu hỏi
+                          </span>
+                          <button
+                            onClick={resetExamQFilters}
+                            className="text-[11px] text-indigo-500 hover:text-indigo-700 underline underline-offset-2 bg-transparent border-none cursor-pointer p-0 font-medium"
+                          >
+                            Xóa bộ lọc
+                          </button>
+                        </div>
                       )}
+                    </div>
+
+                    {/* ── Question List ─────────────────────────────── */}
+                    <List
+                      style={{ maxHeight: 340, overflowY: "auto" }}
+                      dataSource={questions.filter((q) => {
+                        if (q.status !== "published") return false;
+                        if ((selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id)) return false;
+                        if (examQSearch.trim()) {
+                          const query = examQSearch.trim().toLowerCase();
+                          if (
+                            !q.prompt?.toLowerCase().includes(query) &&
+                            !q.instruction?.toLowerCase().includes(query) &&
+                            !q.explanation?.toLowerCase().includes(query) &&
+                            !(q.options || []).some((opt: any) => opt.content?.toLowerCase().includes(query))
+                          ) return false;
+                        }
+                        if (examQTypeFilter && q.type !== examQTypeFilter) return false;
+                        if (examQSkillFilter && q.skillId !== examQSkillFilter) return false;
+                        if (examQLevelFilter && q.difficultyLevelId !== examQLevelFilter) return false;
+                        if (examQTopicFilter && q.topicId !== examQTopicFilter) return false;
+                        if (examQTagFilter && !(q.tagIds || []).includes(examQTagFilter)) return false;
+                        return true;
+                      })}
                       renderItem={(q: any) => (
                         <List.Item
                           actions={[
@@ -2847,17 +3169,45 @@ export default function LearningCms() {
                             </Button>,
                           ]}
                         >
-                          <List.Item.Meta
-                            title={<div className="text-xs font-semibold line-clamp-1">{q.prompt}</div>}
-                            description={
-                              <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">
-                                {QUESTION_TYPE_LABELS[q.type]}
-                              </Tag>
-                            }
-                          />
+                          <Popover
+                            content={renderQuestionPopoverContent(questionDetails[q.id] || q)}
+                            title={<div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>}
+                            trigger="hover"
+                            placement="left"
+                            mouseEnterDelay={0.15}
+                            overlayStyle={{ maxWidth: 380 }}
+                          >
+                            <div className="cursor-pointer flex-1 pr-2 min-w-0">
+                              <List.Item.Meta
+                                title={
+                                  <div
+                                    className="text-xs font-semibold line-clamp-1 text-slate-800"
+                                    dangerouslySetInnerHTML={{ __html: q.prompt }}
+                                  />
+                                }
+                                description={
+                                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                    <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none m-0">
+                                      {QUESTION_TYPE_LABELS[q.type]}
+                                    </Tag>
+                                    {q.difficultyLevelId && (
+                                      <span className="text-[10px] text-slate-400">
+                                        • {levels.find((l) => l.id === q.difficultyLevelId)?.name}
+                                      </span>
+                                    )}
+                                    {q.skillId && (
+                                      <span className="text-[10px] text-slate-400">
+                                        • {skills.find((s) => s.id === q.skillId)?.name}
+                                      </span>
+                                    )}
+                                  </div>
+                                }
+                              />
+                            </div>
+                          </Popover>
                         </List.Item>
                       )}
-                      locale={{ emptyText: <Empty description="Không có câu hỏi đã duyệt" imageStyle={{ height: 40 }} /> }}
+                      locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" imageStyle={{ height: 40 }} /> }}
                     />
                   </Card>
                 </Col>

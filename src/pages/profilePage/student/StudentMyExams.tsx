@@ -311,10 +311,10 @@ export default function StudentMyExams() {
         {examAssignments.map((row: any) => {
           const assignmentStudentId = row.id; // student-level assignment record
           const cls = row.class || row.assignment?.class;
-          
+
           // Get list of exams in this assignment
           const exams: any[] = row.exams || [];
-          
+
           // If no exams array (e.g. legacy/pre-enriched fallback), fallback to single exam
           const exam = row.exam || row.assignment?.exam;
           const resolvedExams = exams.length > 0 ? exams : (exam ? [{
@@ -371,7 +371,7 @@ export default function StudentMyExams() {
                     const examId = ep.examId || currentExam?.id;
                     const examTitle = currentExam?.title || currentExam?.code || `Bài thi ${idx + 1}`;
                     const attemptsCount = ep.attemptsCount ?? 0;
-                    
+
                     // Find the best attempt in the assignment's attempts list (if populated)
                     const attemptsList = row.attempts || [];
                     const examAttempts = attemptsList.filter((att: any) => att.examId === examId && att.status === "submitted");
@@ -381,7 +381,7 @@ export default function StudentMyExams() {
 
                     const bestPct = ep.bestPercentage || bestAttempt?.percentage;
                     const bestScore = bestAttempt?.score;
-                    
+
                     const maxAttempts = ep.maxAttempts ?? row.maxAttempts ?? row.assignment?.maxAttempts;
                     const isCompleted = ep.status === "completed" || parseFloat(bestPct ?? "0") >= 100 || attemptsCount > 0;
                     const isStarting = startingId === `${assignmentStudentId}:${examId}`;

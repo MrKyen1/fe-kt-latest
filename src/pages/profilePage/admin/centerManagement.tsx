@@ -71,11 +71,17 @@ interface TeacherFormValues {
   startDate?: dayjs.Dayjs;
   endDate?: dayjs.Dayjs;
   address?: string;
+  citizenId?: string;
   yearsOfExperience?: number;
   description: string;
   centerId?: string;
   classIds: string[];
   specializationIds: string[];
+  bankAccountNumber?: string;
+  bankName?: string;
+  insuranceStartDate?: dayjs.Dayjs;
+  employmentType?: string;
+  degrees?: any[];
 }
 
 interface StudentFormValues {
@@ -89,8 +95,10 @@ interface StudentFormValues {
   startDate?: dayjs.Dayjs;
   endDate?: dayjs.Dayjs;
   address?: string;
+  citizenId?: string;
   centerId?: string;
   classIds: string[];
+  parentFullName?: string;
 }
 
 export default function CenterManagement() {
@@ -1021,7 +1029,51 @@ export default function CenterManagement() {
       setSpecializationModalOpen(false);
       specializationForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      const errObj = err?.response?.data || err;
+      if (errObj.statusCode === 409 && errObj.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const specId = errObj.details?.id;
+        if (specId) {
+          Modal.confirm({
+            title: "Khôi phục chuyên môn",
+            content: "Mã hoặc tên chuyên môn đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại chuyên môn này không?",
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await academicService.specializations.reactivate(specId);
+                // 2. Update with current form details
+                await academicService.specializations.update(specId, values);
+                message.success("Khôi phục và cập nhật chuyên môn thành công");
+
+                loadData();
+                setSpecializationModalOpen(false);
+                specializationForm.resetFields();
+              } catch (reactivateErr: any) {
+                if (reactivateErr.fieldErrors) {
+                  const fields = Object.entries(reactivateErr.fieldErrors).map(([key, val]) => ({
+                    name: key,
+                    errors: Array.isArray(val) ? val : [val],
+                  }));
+                  specializationForm.setFields(fields);
+                } else {
+                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                }
+              }
+            },
+          });
+          return;
+        }
+      }
+      if (err.fieldErrors) {
+        const fields = Object.entries(err.fieldErrors).map(([key, val]) => ({
+          name: key,
+          errors: Array.isArray(val) ? val : [val],
+        }));
+        specializationForm.setFields(fields);
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
     }
   };
 
@@ -1534,13 +1586,6 @@ export default function CenterManagement() {
               />
             </Tooltip>
           )}
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => handleAdminDelete(record)}
-          />
         </Space>
       ),
     },
@@ -1798,7 +1843,7 @@ export default function CenterManagement() {
                                   <Image
                                     src={resolveMediaUrl(img.url)}
                                     alt="Center detail"
-                                    wrapperClassName="w-full h-full"
+                                    rootClassName="w-full h-full"
                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                                     preview={{
                                       mask: (
@@ -2160,6 +2205,8 @@ export default function CenterManagement() {
                 form={centerForm}
                 layout="vertical"
                 onFinish={handleCenterSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Row gutter={16}>
@@ -2251,6 +2298,8 @@ export default function CenterManagement() {
                 form={classForm}
                 layout="vertical"
                 onFinish={handleClassSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Form.Item
@@ -2332,6 +2381,8 @@ export default function CenterManagement() {
                 form={teacherForm}
                 layout="vertical"
                 onFinish={handleTeacherSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Row gutter={16}>
@@ -2757,6 +2808,8 @@ export default function CenterManagement() {
                 form={studentForm}
                 layout="vertical"
                 onFinish={handleStudentSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Row gutter={16}>
@@ -2993,6 +3046,8 @@ export default function CenterManagement() {
                 form={adminForm}
                 layout="vertical"
                 onFinish={handleAdminSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Row gutter={16}>
@@ -3243,6 +3298,8 @@ export default function CenterManagement() {
                 form={specializationForm}
                 layout="vertical"
                 onFinish={handleSpecializationSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Form.Item

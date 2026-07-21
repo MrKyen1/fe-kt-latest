@@ -395,11 +395,11 @@ export default function Profile() {
       icon: <TrophyOutlined />,
       label: "Xếp hạng",
     },
-    // {
-    //   key: "rbac",
-    //   icon: <CrownOutlined />,
-    //   label: "Phân quyền (RBAC)",
-    // },
+    {
+      key: "rbac",
+      icon: <CrownOutlined />,
+      label: "Phân quyền (RBAC)",
+    },
     {
       key: "about",
       icon: <FileTextOutlined />,

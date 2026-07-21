@@ -55,9 +55,14 @@ export const academicService = {
       return unwrapData(await apiClient.patch<ApiEnvelope<ClassRoom>>(`/classes/${id}/reactivate`));
     },
   },
-  specializations: crudService<
-    Specialization,
-    CreateSpecializationRequest,
-    UpdateSpecializationRequest
-  >("/specializations"),
+  specializations: {
+    ...crudService<
+      Specialization,
+      CreateSpecializationRequest,
+      UpdateSpecializationRequest
+    >("/specializations"),
+    async reactivate(id: string): Promise<Specialization> {
+      return unwrapData(await apiClient.patch<ApiEnvelope<Specialization>>(`/specializations/${id}/reactivate`));
+    },
+  },
 };

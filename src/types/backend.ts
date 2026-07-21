@@ -124,7 +124,7 @@ export interface CreateUserRequest {
     }>;
   };
   studentProfile?: {
-    parentFullName: string;
+    parentFullName?: string;
     classIds: string[];
   };
 }

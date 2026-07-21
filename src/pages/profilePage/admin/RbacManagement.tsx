@@ -46,13 +46,14 @@ export default function RbacManagement() {
 
   // ================= UI STATE =================
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("roles");
+  const [activeTab, setActiveTab] = useState("matrix");
 
   // Search
   const [roleSearch, setRoleSearch] = useState("");
   const [permSearch, setPermSearch] = useState("");
 
   // ================= MODAL STATE =================
+  /*
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [permModalOpen, setPermModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<any>(null);
@@ -61,6 +62,7 @@ export default function RbacManagement() {
   // ================= FORMS =================
   const [roleForm] = Form.useForm();
   const [permForm] = Form.useForm();
+  */
 
   // ================= MATRIX STATE =================
   const [matrixAssignments, setMatrixAssignments] = useState<Set<string>>(new Set());
@@ -100,6 +102,7 @@ export default function RbacManagement() {
     }
   };
 
+  /*
   // ================= ROLE HANDLERS =================
   const handleRoleCreate = () => {
     setEditingRole(null);
@@ -205,6 +208,7 @@ export default function RbacManagement() {
       message.error(err.message || "Thao tác thất bại");
     }
   };
+  */
 
   // ================= MATRIX HANDLERS =================
   const toggleMatrixCell = (roleId: string, permId: string) => {
@@ -290,6 +294,7 @@ export default function RbacManagement() {
         </Tag>
       ),
     },
+    /*
     {
       title: "Thao tác",
       align: "right" as const,
@@ -315,6 +320,7 @@ export default function RbacManagement() {
         </Space>
       ),
     },
+    */
   ];
 
   const permColumns = [
@@ -350,6 +356,7 @@ export default function RbacManagement() {
         </Tag>
       ),
     },
+    /*
     {
       title: "Thao tác",
       align: "right" as const,
@@ -375,6 +382,7 @@ export default function RbacManagement() {
         </Space>
       ),
     },
+    */
   ];
 
   // ================= RENDER =================
@@ -460,6 +468,7 @@ export default function RbacManagement() {
                 activeKey={activeTab}
                 onChange={setActiveTab}
                 items={[
+                  /*
                   {
                     key: "roles",
                     label: (
@@ -536,6 +545,7 @@ export default function RbacManagement() {
                       </div>
                     ),
                   },
+                  */
                   {
                     key: "matrix",
                     label: (
@@ -624,6 +634,7 @@ export default function RbacManagement() {
             </div>
 
             {/* ROLE MODAL */}
+            {/*
             <Modal
               title={editingRole ? "Cập nhật Vai trò" : "Tạo Vai trò mới"}
               open={roleModalOpen}
@@ -633,7 +644,7 @@ export default function RbacManagement() {
               cancelText="Hủy bỏ"
               className="rounded-2xl"
             >
-              <Form form={roleForm} layout="vertical" onFinish={handleRoleSubmit} className="pt-2">
+              <Form form={roleForm} layout="vertical" onFinish={handleRoleSubmit} onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")} scrollToFirstError={{ behavior: "smooth", block: "center" }} className="pt-2">
                 <Form.Item
                   name="code"
                   label="Mã vai trò"
@@ -653,8 +664,10 @@ export default function RbacManagement() {
                 </Form.Item>
               </Form>
             </Modal>
+            */}
 
             {/* PERMISSION MODAL */}
+            {/*
             <Modal
               title={editingPerm ? "Cập nhật Quyền" : "Tạo Quyền mới"}
               open={permModalOpen}
@@ -664,7 +677,7 @@ export default function RbacManagement() {
               cancelText="Hủy bỏ"
               className="rounded-2xl"
             >
-              <Form form={permForm} layout="vertical" onFinish={handlePermSubmit} className="pt-2">
+              <Form form={permForm} layout="vertical" onFinish={handlePermSubmit} onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")} scrollToFirstError={{ behavior: "smooth", block: "center" }} className="pt-2">
                 <Form.Item
                   name="code"
                   label="Mã quyền"
@@ -684,6 +697,7 @@ export default function RbacManagement() {
                 </Form.Item>
               </Form>
             </Modal>
+            */}
           </div>
         </Spin>
       </div>
