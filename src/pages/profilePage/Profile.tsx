@@ -421,6 +421,11 @@ export default function Profile() {
       label: "Profile",
     },
     {
+      key: "cms",
+      icon: <BookOutlined />,
+      label: "Learning CMS",
+    },
+    {
       key: "assignments",
       icon: <TeamOutlined />,
       label: "Giao bài",
@@ -451,6 +456,8 @@ export default function Profile() {
     switch (menuKey) {
       case "profile":
         return <UserProfile />;
+      case "cms":
+        return <LearningCms />;
       case "assignments":
         return <TeacherAssignments />;
       case "ranking":

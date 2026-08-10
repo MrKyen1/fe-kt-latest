@@ -59,7 +59,7 @@ export default function UserProfile() {
 
   const beforeUpload = (file: File) => {
     if (!file.type.startsWith("image/")) {
-      message.error("Chi duoc upload anh");
+      message.error("Chỉ được upload ảnh");
       return Upload.LIST_IGNORE;
     }
 
@@ -106,7 +106,7 @@ export default function UserProfile() {
       setAvatarFile(null);
       message.success("Cập nhật thành công");
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Cap nhat that bai");
+      message.error(err instanceof Error ? err.message : "Cập nhật thất bại");
     } finally {
       setIsSaving(false);
     }

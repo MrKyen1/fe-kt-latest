@@ -16,7 +16,6 @@ const Header = memo(function Header() {
 
   useEffect(() => {
     setCurrent(location.pathname);
-    console.log("user", user);
   }, [location]);
 
   const handleMenuClick = (e: any) => {

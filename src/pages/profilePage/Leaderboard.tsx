@@ -158,6 +158,13 @@ function MyRankWidget({ summary, loading }: MyRankWidgetProps) {
 
 // ======== Main Leaderboard ========
 
+function getEffectivePeriod(m: LeaderboardMetric, p: LeaderboardPeriod): LeaderboardPeriod {
+  if (m === "progress" && p === "all_time") {
+    return "month";
+  }
+  return p;
+}
+
 export default function Leaderboard() {
   const { user } = useAuth();
   const isStudent = (user as any)?.role === "student";
@@ -171,7 +178,13 @@ export default function Leaderboard() {
   const [scopeId, setScopeId] = useState<string | undefined>(undefined);
   const [specializationId, setSpecializationId] = useState<string | undefined>(undefined);
   const [metric, setMetric] = useState<LeaderboardMetric>("mastery");
-  const [period, setPeriod] = useState<LeaderboardPeriod>("all_time");
+  const [metricPeriods, setMetricPeriods] = useState<Record<LeaderboardMetric, LeaderboardPeriod>>({
+    mastery: "all_time",
+    accuracy: "all_time",
+    progress: "month",
+  });
+
+  const activePeriod = getEffectivePeriod(metric, metricPeriods[metric]);
 
   // Table data
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
@@ -190,7 +203,7 @@ export default function Leaderboard() {
     leaderboardService.getScopes()
       .then((data) => {
         setScopes(data);
-        // Auto-select first class if available
+        // Auto-select first available scope
         if (data.classes?.length) {
           setScope("class");
           setScopeId(data.classes[0].id);
@@ -199,6 +212,16 @@ export default function Leaderboard() {
           setScope("curriculum");
           setScopeId(data.curriculums[0].id);
           setSpecializationId(data.curriculums[0].specializationId);
+        } else if (data.centers?.length) {
+          setScope("center");
+          setScopeId(data.centers[0].id);
+          setSpecializationId(data.centers[0].subjects?.[0]?.id);
+        } else if (data.assignments?.length) {
+          setScope("assignment");
+          setScopeId(data.assignments[0].id);
+        } else if (data.subjects?.length) {
+          setScope("global");
+          setSpecializationId(data.subjects[0].id);
         }
       })
       .catch(() => {
@@ -207,19 +230,11 @@ export default function Leaderboard() {
       .finally(() => setScopesLoading(false));
   }, []);
 
-  // Validate period when metric changes
-  useEffect(() => {
-    if (metric === "progress" && period === "all_time") {
-      setPeriod("month");
-    }
-  }, [metric]);
-
   // Load leaderboard table
   const loadLeaderboard = useCallback(async () => {
     if (!scope) return;
     if (scope !== "global" && !scopeId) return;
     if ((scope === "center" || scope === "global") && !specializationId) return;
-    if (metric === "progress" && period === "all_time") return;
 
     setLoading(true);
     try {
@@ -228,7 +243,7 @@ export default function Leaderboard() {
         scopeId: scope === "global" ? undefined : scopeId,
         specializationId,
         metric,
-        period,
+        period: activePeriod,
         page,
         limit: PAGE_SIZE,
       });
@@ -241,7 +256,7 @@ export default function Leaderboard() {
     } finally {
       setLoading(false);
     }
-  }, [scope, scopeId, specializationId, metric, period, page]);
+  }, [scope, scopeId, specializationId, metric, activePeriod, page]);
 
   useEffect(() => {
     loadLeaderboard();
@@ -252,7 +267,7 @@ export default function Leaderboard() {
     if (!isStudent || !scope || (scope !== "global" && !scopeId)) return;
     if ((scope === "center" || scope === "global") && !specializationId) return;
 
-    const summaryPeriod = period === "all_time" ? "month" : period;
+    const summaryPeriod = activePeriod === "all_time" ? "month" : activePeriod;
     const q: LeaderboardSummaryQuery = {
       scope,
       scopeId: scope === "global" ? undefined : scopeId,
@@ -264,7 +279,7 @@ export default function Leaderboard() {
       .then(setSummary)
       .catch(() => setSummary(null))
       .finally(() => setSummaryLoading(false));
-  }, [isStudent, scope, scopeId, specializationId, period]);
+  }, [isStudent, scope, scopeId, specializationId, activePeriod]);
 
   // ---- Scope options ----
   function renderScopeSelector() {
@@ -410,8 +425,11 @@ export default function Leaderboard() {
 
         <Col xs={24} sm={4}>
           <Select
-            value={period}
-            onChange={(val: LeaderboardPeriod) => { setPeriod(val); setPage(1); }}
+            value={activePeriod}
+            onChange={(val: LeaderboardPeriod) => {
+              setMetricPeriods((prev) => ({ ...prev, [metric]: val }));
+              setPage(1);
+            }}
             className="w-full rounded-xl"
           >
             {Object.entries(PERIOD_LABELS)
