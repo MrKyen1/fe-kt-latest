@@ -42,7 +42,7 @@ function ChoiceFields({ type, passages }: { type: string; passages: Passage[] })
   return (
     <>
       {type === "reading_comprehension" && (
-        <Form.Item name="passageId" label="Bài đọc liên quan" rules={[{ required: true, message: "Chọn bài đọc!" }]}>
+        <Form.Item name="passageId" label="Bài đọc liên quan" rules={[{ required: true, message: "Vui lòng chọn bài đọc liên quan!" }]}>
           <Select placeholder="Chọn bài đọc..." className="rounded-xl">
             {passages.map((p) => (
               <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
@@ -65,7 +65,7 @@ function ChoiceFields({ type, passages }: { type: string; passages: Passage[] })
                   {String.fromCharCode(65 + idx)}
                 </div>
                 <div className="flex-1">
-                  <Form.Item {...restField} name={[name, "content"]} rules={[{ required: true, message: "Nhập nội dung!" }]} className="mb-1">
+                  <Form.Item {...restField} name={[name, "content"]} rules={[{ required: true, message: "Vui lòng nhập nội dung đáp án!" }]} className="mb-1">
                     <Input placeholder="Nội dung đáp án" className="rounded-lg" />
                   </Form.Item>
                   <Form.Item {...restField} name={[name, "explanation"]} className="mb-0">
@@ -91,7 +91,7 @@ function WordOrderingFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sắp xếp từ</span>
-      <Form.Item name="correctTokens" label="Các từ theo thứ tự đúng (cách nhau bởi dấu cách)" rules={[{ required: true }]}>
+      <Form.Item name="correctTokens" label="Các từ theo thứ tự đúng (cách nhau bởi dấu cách)" rules={[{ required: true, message: "Vui lòng nhập thứ tự từ đúng!" }]}>
         <Input placeholder="Ví dụ: I am a student" className="rounded-xl font-mono" />
       </Form.Item>
       <Row gutter={16}>
@@ -114,10 +114,10 @@ function SentenceRewriteFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình viết lại câu</span>
-      <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true }]}>
+      <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true, message: "Vui lòng nhập câu gốc!" }]}>
         <Input.TextArea placeholder="Câu gốc để học sinh viết lại..." rows={2} className="rounded-xl" />
       </Form.Item>
-      <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true }]}>
+      <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true, message: "Vui lòng nhập đáp án chấp nhận!" }]}>
         <Input.TextArea placeholder={"It is not warm enough to swim.\nSwimming is impossible due to the cold."} rows={3} className="rounded-xl font-mono" />
       </Form.Item>
       <Form.Item name="gradingMode" label="Chế độ chấm điểm">
@@ -134,13 +134,13 @@ function HintRewriteFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình viết lại có gợi ý</span>
-      <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true }]}>
+      <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true, message: "Vui lòng nhập câu gốc!" }]}>
         <Input.TextArea placeholder="Câu gốc..." rows={2} className="rounded-xl" />
       </Form.Item>
-      <Form.Item name="hintWord" label="Từ gợi ý (hint word)" rules={[{ required: true }]}>
+      <Form.Item name="hintWord" label="Từ gợi ý (hint word)" rules={[{ required: true, message: "Vui lòng nhập từ gợi ý!" }]}>
         <Input placeholder="Ví dụ: since" className="rounded-xl font-mono" />
       </Form.Item>
-      <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true }]}>
+      <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true, message: "Vui lòng nhập đáp án chấp nhận!" }]}>
         <Input.TextArea placeholder="She has learned English since 2020." rows={3} className="rounded-xl font-mono" />
       </Form.Item>
       <Row gutter={16}>
@@ -166,7 +166,7 @@ function ErrorCorrectionFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sửa lỗi</span>
-      <Form.Item name="correctSentence" label="Đáp án" rules={[{ required: true }]}>
+      <Form.Item name="correctSentence" label="Đáp án" rules={[{ required: true, message: "Vui lòng nhập đáp án sửa đúng!" }]}>
         <Input.TextArea placeholder="Câu đã sửa đúng..." rows={2} className="rounded-xl" />
       </Form.Item>
     </div>
@@ -200,11 +200,11 @@ function MatchingFields() {
             </div>
             {fields.map(({ key, name, ...restField }) => (
               <Space key={key} style={{ display: "flex" }} align="baseline">
-                <Form.Item {...restField} name={[name, "leftText"]} rules={[{ required: true }]}>
+                <Form.Item {...restField} name={[name, "leftText"]} rules={[{ required: true, message: "Vui lòng nhập vế trái!" }]}>
                   <Input placeholder="Cột trái" className="rounded-lg w-36" />
                 </Form.Item>
                 <span className="text-slate-400">↔</span>
-                <Form.Item {...restField} name={[name, "rightText"]} rules={[{ required: true }]}>
+                <Form.Item {...restField} name={[name, "rightText"]} rules={[{ required: true, message: "Vui lòng nhập vế phải!" }]}>
                   <Input placeholder="Cột phải" className="rounded-lg w-36" />
                 </Form.Item>
                 <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />
@@ -289,7 +289,7 @@ function MediaSection({
                         <Form.Item
                           {...restField}
                           name={[name, "mediaId"]}
-                          rules={[{ required: true, message: "Chọn tệp media!" }]}
+                          rules={[{ required: true, message: "Vui lòng chọn tệp media!" }]}
                           className="mb-0 flex-1 min-w-0"
                           style={{ marginBottom: 0 }}
                         >
@@ -317,7 +317,7 @@ function MediaSection({
                         <Form.Item
                           {...restField}
                           name={[name, "role"]}
-                          rules={[{ required: true, message: "Chọn vai trò!" }]}
+                          rules={[{ required: true, message: "Vui lòng chọn vai trò media!" }]}
                           className="mb-0 w-44 shrink-0"
                           style={{ marginBottom: 0 }}
                         >
@@ -432,6 +432,13 @@ export default function QuestionFormModal({
   availableRoles,
   onPreviewAsset,
 }: Props) {
+  const handleFinishFailed = (errorInfo: any) => {
+    if (errorInfo.errorFields && errorInfo.errorFields.length > 0) {
+      const firstError = errorInfo.errorFields[0];
+      form.scrollToField(firstError.name, { behavior: "smooth", block: "center", focus: true });
+    }
+  };
+
   return (
     <Modal
       title={
@@ -452,11 +459,18 @@ export default function QuestionFormModal({
       okText="Lưu lại"
       cancelText="Hủy"
     >
-      <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={onFinish}
+        onFinishFailed={handleFinishFailed}
+        scrollToFirstError={{ behavior: "smooth", block: "center", focus: true }}
+        className="pt-2"
+      >
         {/* Type & classification */}
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="type" label="Loại câu hỏi" rules={[{ required: true }]}>
+            <Form.Item name="type" label="Loại câu hỏi" rules={[{ required: true, message: "Vui lòng chọn loại câu hỏi!" }]}>
               <Select
                 className="rounded-xl"
                 disabled={isEditing}
@@ -515,7 +529,7 @@ export default function QuestionFormModal({
         <Form.Item
           name="prompt"
           label={currentType === "error_correction" ? "Đề bài" : "Nội dung câu hỏi (Đề bài)"}
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: "Vui lòng nhập nội dung câu hỏi (Đề bài)!" }]}
         >
           <Input.TextArea
             placeholder={
@@ -557,3 +571,4 @@ export default function QuestionFormModal({
     </Modal>
   );
 }
+

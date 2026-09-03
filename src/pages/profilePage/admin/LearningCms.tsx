@@ -13,7 +13,8 @@
 //   • Pure render helpers (→ sub-components)
 // ============================================================
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Badge,
   Button,
@@ -41,8 +42,8 @@ import {
 import { BookOpenIcon } from "lucide-react";
 
 import { learningCmsService } from "../../../services/learningCmsService";
-import { academicService }     from "../../../services/academicService";
-import { useAuth }             from "../../../contexts/AuthContext";
+import { academicService } from "../../../services/academicService";
+import { useAuth } from "../../../contexts/AuthContext";
 
 // ── Constants ────────────────────────────────────────────────
 import {
@@ -53,25 +54,25 @@ import {
 } from "./learningCms/constants";
 
 // ── Tab components ───────────────────────────────────────────
-import TaxonomyTab   from "./learningCms/components/TaxonomyTab";
-import MediaTab      from "./learningCms/components/MediaTab";
-import PassagesTab   from "./learningCms/components/PassagesTab";
-import QuestionsTab  from "./learningCms/components/QuestionsTab";
-import ExamsTab      from "./learningCms/components/ExamsTab";
+import TaxonomyTab from "./learningCms/components/TaxonomyTab";
+import MediaTab from "./learningCms/components/MediaTab";
+import PassagesTab from "./learningCms/components/PassagesTab";
+import QuestionsTab from "./learningCms/components/QuestionsTab";
+import ExamsTab from "./learningCms/components/ExamsTab";
 import CurriculumsTab from "./learningCms/components/CurriculumsTab";
 
 // ── Modal components ─────────────────────────────────────────
-import TaxonomyModal        from "./learningCms/components/modals/TaxonomyModal";
-import MediaUploadModal     from "./learningCms/components/modals/MediaUploadModal";
-import PassageFormModal     from "./learningCms/components/modals/PassageFormModal";
-import QuestionFormModal    from "./learningCms/components/modals/QuestionFormModal";
-import ExamFormModal        from "./learningCms/components/modals/ExamFormModal";
-import CurriculumFormModal  from "./learningCms/components/modals/CurriculumFormModal";
-import ExamVersionsModal    from "./learningCms/components/modals/ExamVersionsModal";
+import TaxonomyModal from "./learningCms/components/modals/TaxonomyModal";
+import MediaUploadModal from "./learningCms/components/modals/MediaUploadModal";
+import PassageFormModal from "./learningCms/components/modals/PassageFormModal";
+import QuestionFormModal from "./learningCms/components/modals/QuestionFormModal";
+import ExamFormModal from "./learningCms/components/modals/ExamFormModal";
+import CurriculumFormModal from "./learningCms/components/modals/CurriculumFormModal";
+import ExamVersionsModal from "./learningCms/components/modals/ExamVersionsModal";
 import QuestionVersionsModal from "./learningCms/components/modals/QuestionVersionsModal";
 import ManageQuestionsModal from "./learningCms/components/modals/ManageQuestionsModal";
-import ManageExamsModal     from "./learningCms/components/modals/ManageExamsModal";
-import MediaPreviewModal    from "./learningCms/components/modals/MediaPreviewModal";
+import ManageExamsModal from "./learningCms/components/modals/ManageExamsModal";
+import MediaPreviewModal from "./learningCms/components/modals/MediaPreviewModal";
 
 const { Title, Text } = Typography;
 
@@ -85,9 +86,9 @@ const ANT_THEME = {
   },
   components: {
     Table: {
-      headerBg:    "#f8fafc",
+      headerBg: "#f8fafc",
       headerColor: "#475569",
-      rowHoverBg:  "#f1f5f9",
+      rowHoverBg: "#f1f5f9",
     },
   },
 };
@@ -123,84 +124,157 @@ export default function LearningCms() {
   // ── Global loading ─────────────────────────────────────────
   const [loading, setLoading] = useState(false);
 
-  // ── Main / inner tab keys ──────────────────────────────────
-  const [activeTab, setActiveTab] = useState("taxonomy");
-  const [taxTab,    setTaxTab]    = useState("levels");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const rolePrefix = user?.role === "teacher" ? "teacher" : "admin";
+
+  const currentSubPath = useMemo(() => {
+    const cmsPath = location.pathname.split("/cms")[1] || "";
+    const parts = cmsPath.split("/").filter(Boolean);
+    let subjectId: string | undefined = undefined;
+    let tab = "taxonomy";
+    let taxTab = "levels";
+
+    if (parts[0] === "subjects" && parts[1]) {
+      subjectId = parts[1];
+      tab = parts[2] || "taxonomy";
+      if (tab === "taxonomy") {
+        taxTab = parts[3] || "levels";
+      }
+    } else {
+      tab = parts[0] || "taxonomy";
+      if (tab === "taxonomy") {
+        taxTab = parts[1] || "levels";
+      }
+    }
+
+    return { subjectId, tab, taxTab };
+  }, [location.pathname]);
+
+  const activeTab = currentSubPath.tab;
+  const taxTab = currentSubPath.taxTab;
+  const urlSubjectId = currentSubPath.subjectId;
 
   // ── Data states ────────────────────────────────────────────
-  const [levels,          setLevels]          = useState<any[]>([]);
-  const [skills,          setSkills]          = useState<any[]>([]);
-  const [topics,          setTopics]          = useState<any[]>([]);
-  const [tags,            setTags]            = useState<any[]>([]);
-  const [media,           setMedia]           = useState<any[]>([]);
-  const [passages,        setPassages]        = useState<any[]>([]);
-  const [questions,       setQuestions]       = useState<any[]>([]);
-  const [exams,           setExams]           = useState<any[]>([]);
-  const [curriculums,     setCurriculums]     = useState<any[]>([]);
+  const [levels, setLevels] = useState<any[]>([]);
+  const [skills, setSkills] = useState<any[]>([]);
+  const [topics, setTopics] = useState<any[]>([]);
+  const [tags, setTags] = useState<any[]>([]);
+  const [media, setMedia] = useState<any[]>([]);
+  const [passages, setPassages] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
+  const [curriculums, setCurriculums] = useState<any[]>([]);
   const [specializations, setSpecializations] = useState<any[]>([]);
-  const [selectedSpecializationId, setSelectedSpecializationId] = useState<string | undefined>(undefined);
+
+  const selectedSpecializationId = useMemo(() => {
+    if (urlSubjectId && specializations.some((s) => s.id === urlSubjectId)) {
+      return urlSubjectId;
+    }
+    return specializations[0]?.id || undefined;
+  }, [urlSubjectId, specializations]);
+
+  const subjectOptions = useMemo(() => {
+    return specializations.map((spec) => ({
+      value: spec.id,
+      label: spec.name,
+      code: spec.code,
+      searchValue: `${spec.name} ${spec.code || ""}`,
+    }));
+  }, [specializations]);
+
+  const handleSubjectChange = (newSubjectId: string) => {
+    navigate(`/${rolePrefix}/cms/subjects/${newSubjectId}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`);
+  };
+
+  const setActiveTab = (tab: string) => {
+    const sId = selectedSpecializationId || (specializations[0]?.id ?? "");
+    if (sId) {
+      if (tab === "taxonomy") {
+        navigate(`/${rolePrefix}/cms/subjects/${sId}/taxonomy/${taxTab}`);
+      } else {
+        navigate(`/${rolePrefix}/cms/subjects/${sId}/${tab}`);
+      }
+    } else {
+      if (tab === "taxonomy") {
+        navigate(`/${rolePrefix}/cms/taxonomy/${taxTab}`);
+      } else {
+        navigate(`/${rolePrefix}/cms/${tab}`);
+      }
+    }
+  };
+
+  const setTaxTab = (subTab: string) => {
+    const sId = selectedSpecializationId || (specializations[0]?.id ?? "");
+    if (sId) {
+      navigate(`/${rolePrefix}/cms/subjects/${sId}/taxonomy/${subTab}`);
+    } else {
+      navigate(`/${rolePrefix}/cms/taxonomy/${subTab}`);
+    }
+  };
 
   // ── Taxonomy search / filter ───────────────────────────────
-  const [taxSearch,         setTaxSearch]         = useState("");
+  const [taxSearch, setTaxSearch] = useState("");
   const [debouncedTaxSearch, setDebouncedTaxSearch] = useState("");
-  const [taxLoading,        setTaxLoading]        = useState(false);
-  const [filteredLevels,    setFilteredLevels]    = useState<any[]>([]);
-  const [filteredSkills,    setFilteredSkills]    = useState<any[]>([]);
-  const [filteredTopics,    setFilteredTopics]    = useState<any[]>([]);
-  const [filteredTags,      setFilteredTags]      = useState<any[]>([]);
+  const [taxLoading, setTaxLoading] = useState(false);
+  const [filteredLevels, setFilteredLevels] = useState<any[]>([]);
+  const [filteredSkills, setFilteredSkills] = useState<any[]>([]);
+  const [filteredTopics, setFilteredTopics] = useState<any[]>([]);
+  const [filteredTags, setFilteredTags] = useState<any[]>([]);
 
   // Refs for search synchronisation
-  const prevTabRef         = useRef(taxTab);
-  const isInitialMount     = useRef(true);
+  const prevTabRef = useRef(taxTab);
+  const isInitialMount = useRef(true);
   const lastFetchedSearchRef = useRef("");
 
   // ── Modal visibility ───────────────────────────────────────
-  const [previewVisible,            setPreviewVisible]            = useState(false);
-  const [previewAsset,              setPreviewAsset]              = useState<any>(null);
-  const [taxModalOpen,              setTaxModalOpen]              = useState(false);
-  const [mediaModalOpen,            setMediaModalOpen]            = useState(false);
-  const [passageModalOpen,          setPassageModalOpen]          = useState(false);
-  const [questionModalOpen,         setQuestionModalOpen]         = useState(false);
-  const [examModalOpen,             setExamModalOpen]             = useState(false);
-  const [examVersionsModalOpen,     setExamVersionsModalOpen]     = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<any>(null);
+  const [taxModalOpen, setTaxModalOpen] = useState(false);
+  const [mediaModalOpen, setMediaModalOpen] = useState(false);
+  const [passageModalOpen, setPassageModalOpen] = useState(false);
+  const [questionModalOpen, setQuestionModalOpen] = useState(false);
+  const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examVersionsModalOpen, setExamVersionsModalOpen] = useState(false);
   const [questionVersionsModalOpen, setQuestionVersionsModalOpen] = useState(false);
-  const [curriculumModalOpen,       setCurriculumModalOpen]       = useState(false);
-  const [manageQuestionsOpen,       setManageQuestionsOpen]       = useState(false);
-  const [manageExamsOpen,           setManageExamsOpen]           = useState(false);
+  const [curriculumModalOpen, setCurriculumModalOpen] = useState(false);
+  const [manageQuestionsOpen, setManageQuestionsOpen] = useState(false);
+  const [manageExamsOpen, setManageExamsOpen] = useState(false);
 
   // ── Editing / selected state ───────────────────────────────
-  const [editingItem,       setEditingItem]       = useState<any>(null);
-  const [selectedExam,      setSelectedExam]      = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [selectedExam, setSelectedExam] = useState<any>(null);
   const [selectedCurriculum, setSelectedCurriculum] = useState<any>(null);
   const [currentQuestionType, setCurrentQuestionType] = useState<string>("multiple_choice");
 
   // ── Version history ────────────────────────────────────────
-  const [examVersions,   setExamVersions]   = useState<any[]>([]);
-  const [viewingExam,    setViewingExam]    = useState<any>(null);
+  const [examVersions, setExamVersions] = useState<any[]>([]);
+  const [viewingExam, setViewingExam] = useState<any>(null);
   const [questionVersions, setQuestionVersions] = useState<any[]>([]);
-  const [viewingQuestion,  setViewingQuestion]  = useState<any>(null);
+  const [viewingQuestion, setViewingQuestion] = useState<any>(null);
 
   // ── Exam-question filter state (lifted for ManageQuestionsModal) ──
-  const [examQSearch,       setExamQSearch]       = useState("");
-  const [examQTypeFilter,   setExamQTypeFilter]   = useState<string | undefined>(undefined);
-  const [examQSkillFilter,  setExamQSkillFilter]  = useState<string | undefined>(undefined);
-  const [examQLevelFilter,  setExamQLevelFilter]  = useState<string | undefined>(undefined);
-  const [examQTopicFilter,  setExamQTopicFilter]  = useState<string | undefined>(undefined);
-  const [examQTagFilter,    setExamQTagFilter]    = useState<string | undefined>(undefined);
+  const [examQSearch, setExamQSearch] = useState("");
+  const [examQTypeFilter, setExamQTypeFilter] = useState<string | undefined>(undefined);
+  const [examQSkillFilter, setExamQSkillFilter] = useState<string | undefined>(undefined);
+  const [examQLevelFilter, setExamQLevelFilter] = useState<string | undefined>(undefined);
+  const [examQTopicFilter, setExamQTopicFilter] = useState<string | undefined>(undefined);
+  const [examQTagFilter, setExamQTagFilter] = useState<string | undefined>(undefined);
 
   // Cache of fully-fetched question details (for hover popover in ManageQuestionsModal)
   const [questionDetails, setQuestionDetails] = useState<Record<string, any>>({});
 
   // ── Media upload state ─────────────────────────────────────
-  const [uploadFile,    setUploadFile]    = useState<File | null>(null);
-  const [mediaAlt,      setMediaAlt]      = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [mediaAlt, setMediaAlt] = useState("");
   const [uploadLoading, setUploadLoading] = useState(false);
 
   // ── Form instances ─────────────────────────────────────────
-  const [taxForm]        = Form.useForm();
-  const [passageForm]    = Form.useForm();
-  const [questionForm]   = Form.useForm();
-  const [examForm]       = Form.useForm();
+  const [taxForm] = Form.useForm();
+  const [passageForm] = Form.useForm();
+  const [questionForm] = Form.useForm();
+  const [examForm] = Form.useForm();
   const [curriculumForm] = Form.useForm();
 
   // ── Taxonomy service router ────────────────────────────────
@@ -219,7 +293,7 @@ export default function LearningCms() {
       case "levels": return "Cấp độ";
       case "skills": return "Kỹ năng";
       case "topics": return "Chủ đề";
-      default:       return "Thẻ gắn";
+      default: return "Thẻ gắn";
     }
   };
 
@@ -228,7 +302,7 @@ export default function LearningCms() {
       case "levels": return filteredLevels;
       case "skills": return filteredSkills;
       case "topics": return filteredTopics;
-      default:       return filteredTags;
+      default: return filteredTags;
     }
   };
 
@@ -237,7 +311,7 @@ export default function LearningCms() {
       case "levels": return "Tìm kiếm Level (mã, tên)...";
       case "skills": return "Tìm kiếm kỹ năng (mã, tên)...";
       case "topics": return "Tìm kiếm chủ đề (mã, tên)...";
-      default:       return "Tìm kiếm thẻ gắn (mã, tên)...";
+      default: return "Tìm kiếm thẻ gắn (mã, tên)...";
     }
   };
 
@@ -335,10 +409,10 @@ export default function LearningCms() {
       const data = res.data ?? [];
 
       switch (tab) {
-        case "levels": setFilteredLevels(data);  break;
-        case "skills": setFilteredSkills(data);  break;
-        case "topics": setFilteredTopics(data);  break;
-        case "tags":   setFilteredTags(data);    break;
+        case "levels": setFilteredLevels(data); break;
+        case "skills": setFilteredSkills(data); break;
+        case "topics": setFilteredTopics(data); break;
+        case "tags": setFilteredTags(data); break;
       }
     } catch {
       message.error("Tải dữ liệu danh mục thất bại");
@@ -377,10 +451,10 @@ export default function LearningCms() {
         message.warning(`Một số API bị lỗi: ${failed.join(", ")}. Vui lòng kiểm tra backend.`);
       }
 
-      const levelsData   = get(0)?.data ?? [];
-      const skillsData   = get(1)?.data ?? [];
-      const topicsData   = get(2)?.data ?? [];
-      const tagsData     = get(3)?.data ?? [];
+      const levelsData = get(0)?.data ?? [];
+      const skillsData = get(1)?.data ?? [];
+      const topicsData = get(2)?.data ?? [];
+      const tagsData = get(3)?.data ?? [];
 
       setLevels(levelsData);
       setSkills(skillsData);
@@ -397,7 +471,7 @@ export default function LearningCms() {
         if (taxTab !== "levels") setFilteredLevels(levelsData);
         if (taxTab !== "skills") setFilteredSkills(skillsData);
         if (taxTab !== "topics") setFilteredTopics(topicsData);
-        if (taxTab !== "tags")   setFilteredTags(tagsData);
+        if (taxTab !== "tags") setFilteredTags(tagsData);
         loadTaxonomyData(taxTab, taxSearch);
       }
 
@@ -447,7 +521,9 @@ export default function LearningCms() {
           }
         }
         setSpecializations(specs ?? []);
-        if (specs?.length > 0) setSelectedSpecializationId(specs[0].id);
+        if (specs?.length > 0 && !urlSubjectId) {
+          navigate(`/${rolePrefix}/cms/subjects/${specs[0].id}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`, { replace: true });
+        }
       } catch {
         message.error("Tải danh sách môn học thất bại");
       }
@@ -530,13 +606,13 @@ export default function LearningCms() {
     } catch (error: any) {
       const err = error?.response?.data ?? error;
       if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
-        const itemId  = err.details?.id;
+        const itemId = err.details?.id;
         const taxName = getTaxName(taxTab);
         if (itemId) {
           Modal.confirm({
-            title:      `Khôi phục ${taxName}`,
-            content:    `"${values.name}" đã tồn tại nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại không?`,
-            okText:     "Khôi phục",
+            title: `Khôi phục ${taxName}`,
+            content: `"${values.name}" đã tồn tại nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại không?`,
+            okText: "Khôi phục",
             cancelText: "Hủy bỏ",
             onOk: async () => {
               try {
@@ -581,9 +657,9 @@ export default function LearningCms() {
 
   const handleMediaDelete = (record: any) => {
     Modal.confirm({
-      title:   "Xóa tệp phương tiện",
+      title: "Xóa tệp phương tiện",
       content: "Bạn có chắc chắn muốn xóa tệp này?",
-      okText:  "Xóa", cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -618,9 +694,9 @@ export default function LearningCms() {
 
   const handlePassageDelete = (record: any) => {
     Modal.confirm({
-      title:   "Xóa bài đọc",
+      title: "Xóa bài đọc",
       content: `Xóa bài đọc "${record.title}"?`,
-      okText:  "Xóa", cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -691,23 +767,23 @@ export default function LearningCms() {
       }
 
       const mediaIds = (fullRecord.media ?? []).map((m: any) => ({
-        mediaId:    m.mediaId ?? m.media?.id,
-        role:       m.role,
+        mediaId: m.mediaId ?? m.media?.id,
+        role: m.role,
         orderIndex: m.orderIndex,
       }));
 
       questionForm.setFieldsValue({
-        type:              fullRecord.type,
-        prompt:            fullRecord.type === "error_correction" && fullRecord.detail?.incorrectSentence
+        type: fullRecord.type,
+        prompt: fullRecord.type === "error_correction" && fullRecord.detail?.incorrectSentence
           ? fullRecord.detail.incorrectSentence
           : fullRecord.prompt,
-        instruction:       fullRecord.instruction,
-        explanation:       fullRecord.explanation,
+        instruction: fullRecord.instruction,
+        explanation: fullRecord.explanation,
         difficultyLevelId: fullRecord.difficultyLevelId,
-        skillId:           fullRecord.skillId,
-        topicId:           fullRecord.topicId,
-        tagIds:            (fullRecord.tags ?? []).map((t: any) => t.id),
-        options:           fullRecord.options ?? [],
+        skillId: fullRecord.skillId,
+        topicId: fullRecord.topicId,
+        tagIds: (fullRecord.tags ?? []).map((t: any) => t.id),
+        options: fullRecord.options ?? [],
         mediaIds,
         ...detailFields,
       });
@@ -719,9 +795,9 @@ export default function LearningCms() {
 
   const handleQuestionDelete = (record: any) => {
     Modal.confirm({
-      title:   "Xóa câu hỏi",
+      title: "Xóa câu hỏi",
       content: "Bạn có chắc chắn muốn xóa câu hỏi này?",
-      okText:  "Xóa", cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -739,35 +815,45 @@ export default function LearningCms() {
     const qType = values.type;
 
     if (CHOICE_TYPES.includes(qType)) {
-      const hasCorrect = (values.options ?? []).some((o: any) => o.isCorrect);
-      if (!hasCorrect) { message.error("Vui lòng chọn ít nhất một đáp án đúng cho câu hỏi."); return; }
+      const options = values.options ?? [];
+      if (options.length < 2) {
+        message.error({ content: "⚠️ Câu hỏi trắc nghiệm phải có ít nhất 2 phương án trả lời!", key: "question-form-validation-error" });
+        questionForm.scrollToField(["options"], { behavior: "smooth", block: "center" });
+        return;
+      }
+      const hasCorrect = options.some((o: any) => o.isCorrect);
+      if (!hasCorrect) {
+        message.error({ content: "⚠️ Vui lòng chọn ít nhất một đáp án đúng cho câu hỏi!", key: "question-form-validation-error" });
+        questionForm.scrollToField(["options", 0, "isCorrect"], { behavior: "smooth", block: "center", focus: true });
+        return;
+      }
     }
 
     try {
       const payload: any = {
-        type:              qType,
-        prompt:            values.prompt,
-        instruction:       values.instruction ?? editingItem?.instruction,
-        explanation:       values.explanation ?? editingItem?.explanation,
+        type: qType,
+        prompt: values.prompt,
+        instruction: values.instruction ?? editingItem?.instruction,
+        explanation: values.explanation ?? editingItem?.explanation,
         difficultyLevelId: values.difficultyLevelId,
-        skillId:           values.skillId,
-        topicId:           values.topicId,
-        tagIds:            values.tagIds ?? [],
-        status:            editingItem?.status ?? "draft",
+        skillId: values.skillId,
+        topicId: values.topicId,
+        tagIds: values.tagIds ?? [],
+        status: editingItem?.status ?? "draft",
         mediaIds: (values.mediaIds ?? [])
           .filter((m: any) => m?.mediaId && m?.role)
           .map((m: any, idx: number) => ({
-            mediaId:    m.mediaId,
-            role:       m.role,
+            mediaId: m.mediaId,
+            role: m.role,
             orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
           })),
       };
 
       if (CHOICE_TYPES.includes(qType)) {
         payload.options = (values.options ?? []).map((o: any, i: number) => ({
-          label:      String.fromCharCode(65 + i),
-          content:    o.content,
-          isCorrect:  !!o.isCorrect,
+          label: String.fromCharCode(65 + i),
+          content: o.content,
+          isCorrect: !!o.isCorrect,
           orderIndex: i,
           explanation: o.explanation,
         }));
@@ -775,19 +861,19 @@ export default function LearningCms() {
         if (qType === "reading_comprehension") payload.detail = { passageId: values.passageId };
       } else if (qType === "word_ordering") {
         payload.options = [];
-        payload.detail  = { correctTokens: (values.correctTokens ?? "").split(" ").filter(Boolean), caseSensitive: !!values.caseSensitive, allowPunctuationVariants: !!values.allowPunctuationVariants };
+        payload.detail = { correctTokens: (values.correctTokens ?? "").split(" ").filter(Boolean), caseSensitive: !!values.caseSensitive, allowPunctuationVariants: !!values.allowPunctuationVariants };
       } else if (qType === "sentence_rewrite") {
         payload.options = [];
-        payload.detail  = { sourceSentence: values.sourceSentence, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").filter(Boolean), gradingMode: values.gradingMode ?? "normalized" };
+        payload.detail = { sourceSentence: values.sourceSentence, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").filter(Boolean), gradingMode: values.gradingMode ?? "normalized" };
       } else if (qType === "hint_rewrite") {
         payload.options = [];
-        payload.detail  = { sourceSentence: values.sourceSentence, hintWord: values.hintWord, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").filter(Boolean), mustUseHint: !!values.mustUseHint, gradingMode: values.gradingMode ?? "normalized" };
+        payload.detail = { sourceSentence: values.sourceSentence, hintWord: values.hintWord, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").filter(Boolean), mustUseHint: !!values.mustUseHint, gradingMode: values.gradingMode ?? "normalized" };
       } else if (qType === "error_correction") {
         payload.options = [];
-        payload.detail  = { incorrectSentence: values.prompt, correctSentence: values.correctSentence, errorSpans: [] };
+        payload.detail = { incorrectSentence: values.prompt, correctSentence: values.correctSentence, errorSpans: [] };
       } else if (qType === "matching") {
         payload.options = [];
-        payload.detail  = { shuffleLeft: !!values.shuffleLeft, shuffleRight: !!values.shuffleRight, pairs: (values.pairs ?? []).map((p: any, i: number) => ({ leftText: p.leftText, rightText: p.rightText, orderIndex: i })) };
+        payload.detail = { shuffleLeft: !!values.shuffleLeft, shuffleRight: !!values.shuffleRight, pairs: (values.pairs ?? []).map((p: any, i: number) => ({ leftText: p.leftText, rightText: p.rightText, orderIndex: i })) };
       }
 
       if (editingItem) {
@@ -843,19 +929,20 @@ export default function LearningCms() {
   const handleExamEdit = (record: any) => {
     setEditingItem(record);
     examForm.setFieldsValue({
-      code:              record.code,
-      title:             record.title,
-      timeLimitMinutes:  record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) : undefined,
-      description:       record.description,
+      code: record.code,
+      title: record.title,
+      examType: record.examType ?? "practice",
+      timeLimitMinutes: record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) : undefined,
+      description: record.description,
     });
     setExamModalOpen(true);
   };
 
   const handleExamDelete = (record: any) => {
     Modal.confirm({
-      title:   "Xóa đề thi",
+      title: "Xóa đề thi",
       content: `Xóa đề thi "${record.title}"?`,
-      okText:  "Xóa", cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -873,11 +960,22 @@ export default function LearningCms() {
     try {
       const timeLimitSeconds = values.timeLimitMinutes ? values.timeLimitMinutes * 60 : undefined;
       if (editingItem) {
-        await learningCmsService.exams.update(editingItem.id, { title: values.title, timeLimitSeconds, description: values.description });
+        await learningCmsService.exams.update(editingItem.id, {
+          title: values.title,
+          examType: values.examType,
+          timeLimitSeconds,
+          description: values.description,
+        });
         message.success("Cập nhật đề thi thành công");
       } else {
         const { timeLimitMinutes, ...rest } = values;
-        await learningCmsService.exams.create({ ...rest, timeLimitSeconds, specializationId: selectedSpecializationId, status: "draft" });
+        await learningCmsService.exams.create({
+          ...rest,
+          examType: values.examType ?? "practice",
+          timeLimitSeconds,
+          specializationId: selectedSpecializationId,
+          status: "draft",
+        });
         message.success("Tạo đề thi thành công");
       }
       loadAllData();
@@ -936,7 +1034,7 @@ export default function LearningCms() {
 
     // Prefetch question details for hover popover
     const publishedQs = questions.filter((q) => q.status === "published");
-    const idsToFetch  = publishedQs.map((q) => q.id).filter((id) => !questionDetails[id]);
+    const idsToFetch = publishedQs.map((q) => q.id).filter((id) => !questionDetails[id]);
     if (idsToFetch.length > 0) {
       Promise.allSettled(idsToFetch.map((id) => learningCmsService.questions.get(id))).then((results) => {
         const updates: Record<string, any> = {};
@@ -961,6 +1059,20 @@ export default function LearningCms() {
       loadAllData();
     } catch (err: any) {
       message.error(extractErrorMsg(err, "Thêm câu hỏi thất bại"));
+    }
+  };
+
+  const handleBulkAttachQuestionsToExam = async (items: { questionId: string; orderIndex?: number }[]) => {
+    if (!selectedExam) return;
+    try {
+      await learningCmsService.exams.bulkAttachQuestions(selectedExam.id, { items });
+      message.success(`Đã thêm ${items.length} câu hỏi vào đề thi`);
+      const updated = await learningCmsService.exams.get(selectedExam.id);
+      setSelectedExam(updated);
+      loadAllData();
+    } catch (err: any) {
+      message.error(extractErrorMsg(err, "Gắn câu hỏi hàng loạt thất bại"));
+      throw err;
     }
   };
 
@@ -1028,9 +1140,9 @@ export default function LearningCms() {
 
   const handleCurriculumDelete = (record: any) => {
     Modal.confirm({
-      title:   "Xóa giáo trình",
+      title: "Xóa giáo trình",
       content: `Xóa giáo trình "${record.title}"?`,
-      okText:  "Xóa", cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -1254,27 +1366,47 @@ export default function LearningCms() {
                 </Text>
               </div>
 
+
+            </div>
+
+            {/* ── Tab section ───────────────────────────────── */}
+            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
               {/* Subject selector + quick stats */}
               <div className="flex flex-wrap items-center gap-4">
                 {specializations.length > 0 && (
-                  <div className="flex items-center gap-3 bg-gradient-to-r from-indigo-50 to-blue-50 border-2 border-indigo-200/80 rounded-2xl p-2.5 shadow-sm transition-all hover:border-indigo-400">
-                    <div className="flex items-center gap-1.5 px-2">
-                      <BookOpenIcon className="w-5 h-5 text-indigo-600 shrink-0" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 whitespace-nowrap">Môn học:</span>
+                  <div className="flex items-center gap-3 bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
+                    <div className="flex items-center gap-2.5 px-2">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-xs">
+                        <BookOpenIcon className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+                        Môn học:
+                      </span>
                     </div>
                     <Select
                       value={selectedSpecializationId}
-                      onChange={setSelectedSpecializationId}
+                      onChange={handleSubjectChange}
                       size="large"
-                      className="min-w-[210px] font-bold shadow-xs [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-indigo-200 [&_.ant-select-selector]:!bg-white"
+                      showSearch
+                      allowClear={false}
+                      filterOption={(input, option) =>
+                        (option?.searchValue ?? "").toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={subjectOptions}
+                      optionRender={(option) => (
+                        <div className="flex items-center justify-between gap-3 py-0.5">
+                          <span className="font-bold text-slate-800 text-sm">{option.data.label}</span>
+                          {option.data.code && (
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">
+                              {option.data.code}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      placeholder="Tìm & chọn môn học..."
+                      className="min-w-[240px] sm:min-w-[280px] font-semibold text-sm [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-slate-200 [&_.ant-select-selector]:!bg-white [&_.ant-select-selector]:!shadow-xs hover:[&_.ant-select-selector]:!border-indigo-400 [&_.ant-select-selector]:!h-10 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center"
                       popupMatchSelectWidth={false}
-                    >
-                      {specializations.map((spec) => (
-                        <Select.Option key={spec.id} value={spec.id}>
-                          <span className="font-semibold text-slate-800">{spec.name}</span>
-                        </Select.Option>
-                      ))}
-                    </Select>
+                    />
                   </div>
                 )}
 
@@ -1291,10 +1423,6 @@ export default function LearningCms() {
                   </Badge>
                 </div>
               </div>
-            </div>
-
-            {/* ── Tab section ───────────────────────────────── */}
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
               <Tabs
                 activeKey={activeTab}
                 onChange={setActiveTab}
@@ -1415,6 +1543,7 @@ export default function LearningCms() {
               onRemoveQuestion={handleRemoveQuestionFromExam}
               onReorder={handleReorderExamQuestions}
               onRepublish={handleRepublishFromManageModal}
+              onBulkAttach={handleBulkAttachQuestionsToExam}
             />
 
             <ManageExamsModal

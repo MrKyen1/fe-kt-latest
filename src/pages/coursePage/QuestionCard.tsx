@@ -17,6 +17,7 @@ interface QuestionCardProps {
   onNext?: () => void;
   isLastQuestion?: boolean;
   isReviewMode?: boolean;
+  isPracticeMode?: boolean;
 }
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
@@ -29,6 +30,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   onNext,
   isLastQuestion,
   isReviewMode,
+  isPracticeMode = true,
 }) => {
   const [regradeModalOpen, setRegradeModalOpen] = React.useState(false);
   const [regradeLoading, setRegradeLoading] = React.useState(false);
@@ -126,6 +128,53 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   // Helpers
   // =========================
 
+  const checkOptionIsCorrect = (
+    option: string | ExamOption,
+    correctAnswer: any
+  ): boolean => {
+    const norm = (s: any) => String(s ?? "").toLowerCase().trim();
+
+    if (correctAnswer !== undefined && correctAnswer !== null && correctAnswer !== "") {
+      if (typeof option === "string") {
+        return norm(option) === norm(correctAnswer);
+      }
+
+      const optId = norm(option.id);
+      const optLabel = norm(option.label);
+      const optContent = norm(option.content);
+
+      const matches = (val: any): boolean => {
+        const v = norm(val);
+        if (!v) return false;
+        return v === optId || v === optLabel || v === optContent;
+      };
+
+      if (matches(correctAnswer)) return true;
+
+      if (Array.isArray(correctAnswer)) {
+        return correctAnswer.some(matches);
+      }
+
+      if (typeof correctAnswer === "object" && correctAnswer !== null) {
+        if (Array.isArray((correctAnswer as any).selectedOptionIds)) {
+          return (correctAnswer as any).selectedOptionIds.some(matches);
+        }
+        if ((correctAnswer as any).text) {
+          return matches((correctAnswer as any).text);
+        }
+      }
+
+      return false;
+    }
+
+    // Fallback: check if option object itself has isCorrect === true
+    if (typeof option !== "string" && ((option as any).isCorrect === true || String((option as any).isCorrect) === "true")) {
+      return true;
+    }
+
+    return false;
+  };
+
   const getOptionValue = (option: string | ExamOption) =>
     typeof option === "string" ? option : option.id || option.content;
 
@@ -137,19 +186,55 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const formatCorrectAnswer = (
     answer?: string | string[] | Record<string, string>,
   ) => {
-    if (answer === undefined) return "";
-
-    if (Array.isArray(answer)) {
-      return answer.join(" ");
+    let targetAnswer = answer;
+    if (targetAnswer === undefined || targetAnswer === null || targetAnswer === "") {
+      const correctOpt = question.options?.find((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"));
+      if (correctOpt) {
+        if (typeof correctOpt === "string") return correctOpt;
+        return [correctOpt.label, correctOpt.content].filter(Boolean).join(". ");
+      }
+      return "";
     }
 
-    if (typeof answer === "object" && answer !== null) {
-      return Object.entries(answer)
+    if (question.options && question.options.length > 0) {
+      const norm = (s: any) => String(s ?? "").toLowerCase().trim();
+      const ansStr = norm(targetAnswer);
+
+      // 1. Match by option ID, label, or content
+      let matchedOpt = question.options.find((o: any) => {
+        const val = typeof o === "string" ? { content: o } : o;
+        return (
+          norm(val.id) === ansStr ||
+          norm(val.label) === ansStr ||
+          norm(val.content) === ansStr
+        );
+      });
+
+      // 2. Fallback to option with isCorrect === true
+      if (!matchedOpt) {
+        matchedOpt = question.options.find((o: any) => {
+          const val = typeof o === "string" ? { content: o } : o;
+          return val.isCorrect === true || String(val.isCorrect) === "true";
+        });
+      }
+
+      if (matchedOpt) {
+        if (typeof matchedOpt === "string") return matchedOpt;
+        return [matchedOpt.label, matchedOpt.content].filter(Boolean).join(". ");
+      }
+    }
+
+    if (Array.isArray(targetAnswer)) {
+      return targetAnswer.join(" ");
+    }
+
+    if (typeof targetAnswer === "object" && targetAnswer !== null) {
+      return Object.entries(targetAnswer)
         .map(([key, value]) => `${key}: ${value}`)
         .join(", ");
     }
 
-    return String(answer);
+    return String(targetAnswer);
   };
 
   const isAnswerEmpty = () => {
@@ -242,45 +327,47 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               const optionValue = getOptionValue(option);
               const optionLabel = getOptionLabel(option);
               const isSelected = currentAnswer === optionValue;
+              const isThisOptionCorrect = checkOptionIsCorrect(option, question.correctAnswer) || (showFeedback && isSelected && isCorrect === true);
 
               let containerClass =
-                "flex items-center p-4 border rounded-xl cursor-pointer transition-colors ";
+                "flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-colors ";
 
               let inputClass = "w-4 h-4 focus:ring-2 ";
 
               let textClass = "ml-4 text-sm ";
 
-              if (showFeedback && question.correctAnswer === optionValue) {
-                containerClass += "border-emerald-400 bg-emerald-50 border-2";
-
+              if (showFeedback && isThisOptionCorrect) {
+                containerClass += "border-emerald-500 bg-emerald-50 border-2";
                 textClass += "font-bold text-emerald-700";
-              } else if (showFeedback && isSelected && !isCorrect) {
+              } else if (showFeedback && isSelected && !isThisOptionCorrect) {
                 containerClass += "border-rose-400 bg-rose-50 border-2";
-
                 textClass += "font-bold text-rose-700";
               } else if (isSelected) {
-                containerClass += "border-emerald-400 bg-emerald-50 border-2";
-
-                textClass += "font-bold text-emerald-700";
+                containerClass += "border-indigo-500 bg-indigo-50/60 border-2";
+                textClass += "font-bold text-indigo-700";
               } else {
                 containerClass += "border-slate-200 bg-white hover:bg-slate-50";
-
                 textClass += "font-medium text-slate-700";
               }
 
               return (
                 <label key={`${optionValue}-${index}`} className={containerClass}>
-                  <input
-                    type="radio"
-                    name={`q-${question.id}`}
-                    value={optionValue}
-                    checked={isSelected}
-                    disabled={showFeedback}
-                    onChange={(e) => onAnswerChange(e.target.value)}
-                    className={inputClass}
-                  />
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      name={`q-${question.id}`}
+                      value={optionValue}
+                      checked={isSelected}
+                      disabled={showFeedback}
+                      onChange={(e) => onAnswerChange(e.target.value)}
+                      className={inputClass}
+                    />
 
-                  <span className={textClass}>{optionLabel}</span>
+                    <span className={textClass}>{optionLabel}</span>
+                  </div>
+                  {showFeedback && isThisOptionCorrect && (
+                    <span className="text-emerald-600 font-bold text-base ml-2">✓</span>
+                  )}
                 </label>
               );
             })}
@@ -443,6 +530,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     if (!showFeedback) return null;
     const user = tokenStorage.getUser();
     const hasManagePerm = user?.role?.permissions?.includes("learning.manage") || user?.role?.code === "admin" || user?.role?.code === "teacher";
+    const correctAnsText = formatCorrectAnswer(question.correctAnswer);
 
     return (
       <div
@@ -461,23 +549,22 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             {isCorrect ? "Tuyệt vời! Chính xác!" : "Giải thích chi tiết:"}
           </p>
 
-          <p
+          <div
             className={`text-[13px] mt-1.5 leading-relaxed ${
               isCorrect ? "text-emerald-700" : "text-rose-700"
             }`}
           >
-            {!isCorrect && question.correctAnswer !== undefined && (
-              <span className="block mb-2 text-[14px]">
-                <strong>Đáp án đúng:</strong>
-
-                <span className="bg-rose-100 px-2 py-0.5 rounded ml-2 text-rose-900 font-mono">
-                  {formatCorrectAnswer(question.correctAnswer)}
+            {!isCorrect && correctAnsText && (
+              <div className="mb-2 text-[14px] flex items-center gap-2">
+                <strong className="text-slate-700">Đáp án đúng:</strong>
+                <span className="bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-lg text-emerald-900 font-bold font-mono">
+                  {correctAnsText}
                 </span>
-              </span>
+              </div>
             )}
 
-            {question.explanation || (isCorrect ? "" : "Chưa có giải thích chi tiết cho câu hỏi này.")}
-          </p>
+            <p>{question.explanation || (isCorrect ? "" : "Chưa có giải thích chi tiết cho câu hỏi này.")}</p>
+          </div>
         </div>
         {isReviewMode && hasManagePerm && question.questionVersionId && (
           <Button
@@ -574,13 +661,36 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         <div />
 
         {!showFeedback ? (
-          <button
-            onClick={onSubmit}
-            disabled={isAnswerEmpty()}
-            className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:shadow-none"
-          >
-            Nộp câu trả lời
-          </button>
+          isPracticeMode ? (
+            <button
+              onClick={onSubmit}
+              disabled={isAnswerEmpty()}
+              className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:shadow-none"
+            >
+              Nộp câu trả lời
+            </button>
+          ) : (
+            <button
+              onClick={isLastQuestion ? onSubmit : onNext}
+              className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 flex items-center gap-2 transition-all group"
+            >
+              {isLastQuestion ? "NỘP BÀI THI" : "Câu tiếp theo"}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 transform group-hover:translate-x-1 transition-transform"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M14 5l7 7m0 0l-7 7m7-7H3"
+                />
+              </svg>
+            </button>
+          )
         ) : (
           <button
             onClick={onNext}

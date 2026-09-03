@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   Avatar,
   Button,
@@ -116,8 +117,22 @@ export default function CenterManagement() {
   const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
 
   // ================= UI STATE =================
+  const { centerId: paramCenterId } = useParams<{ centerId?: string }>();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [selectedCenterId, setSelectedCenterId] = useState<string | null>(null);
+  const [selectedCenterIdState, setSelectedCenterIdState] = useState<string | null>(null);
+
+  const selectedCenterId = paramCenterId || selectedCenterIdState;
+
+  const setSelectedCenterId = (id: string | null) => {
+    setSelectedCenterIdState(id);
+    if (id) {
+      navigate(`/admin/dashboard/centers/${id}`, { replace: true });
+    } else {
+      navigate(`/admin/dashboard`, { replace: true });
+    }
+  };
+
   const [subImagesFileList, setSubImagesFileList] = useState<UploadFile[]>([]);
 
   // Search state
@@ -204,13 +219,29 @@ export default function CenterManagement() {
       const uniqueTeachers = rawTeachers.filter(
         (teacher, index, self) => self.findIndex((t) => t.id === teacher.id) === index
       );
-      setTeachers(uniqueTeachers);
+      const enrichedTeachers = uniqueTeachers.map((t: any) => {
+        const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
+        const matchedClass = (classesData || []).find((c: any) => classIds.includes(c.id));
+        return {
+          ...t,
+          centerId: t.centerId || matchedClass?.centerId || t.teacherProfile?.centerId,
+        };
+      });
+      setTeachers(enrichedTeachers);
 
       const rawStudents = [...(activeStudents || []), ...(inactiveStudents || [])];
       const uniqueStudents = rawStudents.filter(
         (student, index, self) => self.findIndex((s) => s.id === student.id) === index
       );
-      setStudents(uniqueStudents);
+      const enrichedStudents = uniqueStudents.map((s: any) => {
+        const classIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
+        const matchedClass = (classesData || []).find((c: any) => classIds.includes(c.id));
+        return {
+          ...s,
+          centerId: s.centerId || matchedClass?.centerId || s.studentProfile?.centerId,
+        };
+      });
+      setStudents(enrichedStudents);
 
       const rawAdmins = [...(activeAdmins || []), ...(inactiveAdmins || [])];
       const uniqueAdmins = rawAdmins.filter(
@@ -240,7 +271,9 @@ export default function CenterManagement() {
     if (!record) return false;
     if (record.isActive === false) return false;
     if (record.endDate) {
-      return dayjs(record.endDate).isAfter(dayjs());
+      const endDateStr = dayjs(record.endDate).format("YYYY-MM-DD");
+      const todayStr = dayjs().format("YYYY-MM-DD");
+      return endDateStr > todayStr;
     }
     return true;
   };
@@ -707,6 +740,7 @@ export default function CenterManagement() {
           email: cleanEmail,
           phone: values.phone,
           dateOfBirth: formattedDob,
+          startDate: formattedStartDate,
           endDate: formattedEndDate,
           address: cleanAddress,
           citizenId: citizenIdVal,
@@ -1081,6 +1115,8 @@ export default function CenterManagement() {
   const teacherColumns = [
     {
       title: "Giáo viên",
+      width: 220,
+      fixed: "left" as const,
       render: (_: any, record: any) => (
         <div className="flex items-center gap-3">
           <Avatar className="bg-gradient-to-r from-indigo-500 to-indigo-600 font-semibold uppercase text-xs">
@@ -1095,6 +1131,8 @@ export default function CenterManagement() {
     },
     {
       title: "Chuyên môn",
+      width: 180,
+      fixed: "left" as const,
       render: (_: any, record: any) => {
         const specIds = record.teacherProfile?.specializationIds || record.teacherProfile?.specializations?.map((s: any) => s.id) || [];
         const specs = specializations.filter((s) => specIds.includes(s.id));
@@ -1112,6 +1150,8 @@ export default function CenterManagement() {
     },
     {
       title: "Lớp học phụ trách",
+      width: 180,
+      fixed: "left" as const,
       render: (_: any, record: any) => {
         const classIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
         const tClasses = classes.filter((c) => classIds.includes(c.id));
@@ -1129,6 +1169,7 @@ export default function CenterManagement() {
     },
     {
       title: "Kinh nghiệm",
+      width: 130,
       render: (_: any, record: any) => (
         <span className="text-slate-600 font-medium text-sm">
           {record.teacherProfile?.yearsOfExperience || 0} năm
@@ -1136,7 +1177,34 @@ export default function CenterManagement() {
       ),
     },
     {
+      title: "Thời gian dạy",
+      width: 180,
+      render: (_: any, record: any) => {
+        const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
+        const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
+        return (
+          <div className="text-xs space-y-1">
+            {start && (
+              <div className="flex items-center gap-1.5 text-emerald-600">
+                <CalendarOutlined className="text-[10px]" />
+                <span className="font-medium">Bắt đầu:</span> {start}
+              </div>
+            )}
+            {end ? (
+              <div className="flex items-center gap-1.5 text-orange-500">
+                <ClockCircleOutlined className="text-[10px]" />
+                <span className="font-medium">Kết thúc:</span> {end}
+              </div>
+            ) : (
+              <div className="text-slate-400 italic">Chưa có ngày kết thúc</div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       title: "Liên hệ",
+      width: 180,
       render: (_: any, record: any) => (
         <div className="text-xs text-slate-500 space-y-0.5">
           {record.email && <div>{record.email}</div>}
@@ -1147,6 +1215,7 @@ export default function CenterManagement() {
     },
     {
       title: "Trạng thái",
+      width: 140,
       render: (_: any, record: any) => {
         const active = isUserActive(record);
         const endDate = record.endDate ? dayjs(record.endDate) : null;
@@ -1188,6 +1257,8 @@ export default function CenterManagement() {
     },
     {
       title: "Thao tác",
+      width: 100,
+      fixed: "right" as const,
       align: "right" as const,
       render: (_: any, record: any) => (
         <Space size="small">
@@ -1222,6 +1293,8 @@ export default function CenterManagement() {
   const studentColumns = [
     {
       title: "Học sinh",
+      width: 220,
+      fixed: "left" as const,
       render: (_: any, record: any) => (
         <div className="flex items-center gap-3">
           <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs">
@@ -1236,6 +1309,8 @@ export default function CenterManagement() {
     },
     {
       title: "Lớp học tham gia",
+      width: 180,
+      fixed: "left" as const,
       render: (_: any, record: any) => {
         const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
         const sClasses = classes.filter((c) => classIds.includes(c.id));
@@ -1253,6 +1328,8 @@ export default function CenterManagement() {
     },
     {
       title: "Thời gian học",
+      width: 180,
+      fixed: "left" as const,
       render: (_: any, record: any) => {
         const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
         const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
@@ -1278,6 +1355,7 @@ export default function CenterManagement() {
     },
     {
       title: "Liên hệ",
+      width: 180,
       render: (_: any, record: any) => (
         <div className="text-xs text-slate-500 space-y-0.5">
           {record.email && <div>{record.email}</div>}
@@ -1288,18 +1366,19 @@ export default function CenterManagement() {
     },
     {
       title: "Trạng thái",
+      width: 140,
       render: (_: any, record: any) => {
         const active = isUserActive(record);
-        const endDate = record.endDate ? dayjs(record.endDate) : null;
-        const now = dayjs();
+        const endDateStr = record.endDate ? dayjs(record.endDate).format("YYYY-MM-DD") : null;
+        const todayStr = dayjs().format("YYYY-MM-DD");
 
         // Scheduled deactivation: endDate is in the future
-        const isScheduled = active && endDate && endDate.isAfter(now);
-        const daysLeft = isScheduled ? endDate.diff(now, "day") : 0;
+        const isScheduled = active && endDateStr && endDateStr > todayStr;
+        const daysLeft = isScheduled ? dayjs(record.endDate).diff(dayjs().startOf("day"), "day") : 0;
 
         if (!active) {
           return (
-            <Tooltip title={endDate ? `Ngày kết thúc: ${endDate.format("DD/MM/YYYY")}` : "Tài khoản đã bị vô hiệu hóa"}>
+            <Tooltip title={record.endDate ? `Ngày kết thúc: ${dayjs(record.endDate).format("DD/MM/YYYY")}` : "Tài khoản đã bị vô hiệu hóa"}>
               <Tag color="default" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500">
                 Đã nghỉ
               </Tag>
@@ -1309,7 +1388,7 @@ export default function CenterManagement() {
 
         if (isScheduled) {
           return (
-            <Tooltip title={`Sẽ ngừng hoạt động vào ${endDate!.format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
+            <Tooltip title={`Sẽ ngừng hoạt động vào ${dayjs(record.endDate).format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
               <div className="space-y-1">
                 <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
                   Đang hoạt động
@@ -1331,6 +1410,8 @@ export default function CenterManagement() {
     },
     {
       title: "Thao tác",
+      width: 100,
+      fixed: "right" as const,
       align: "right" as const,
       render: (_: any, record: any) => (
         <Space size="small">
@@ -1418,12 +1499,22 @@ export default function CenterManagement() {
 
   const centerTeachers = teachers.filter((t) => {
     const tClasses = t.teacherProfile?.classes || [];
-    return t.centerId === selectedCenterId || tClasses.some((c: any) => c.centerId === selectedCenterId);
+    const tClassIds = t.teacherProfile?.classIds || [];
+    return (
+      t.centerId === selectedCenterId ||
+      tClasses.some((c: any) => c.centerId === selectedCenterId) ||
+      tClassIds.some((cid: string) => centerClassesIds.includes(cid))
+    );
   });
 
   const centerStudents = students.filter((s) => {
     const sClasses = s.studentProfile?.classes || [];
-    return s.centerId === selectedCenterId || sClasses.some((c: any) => c.centerId === selectedCenterId);
+    const sClassIds = s.studentProfile?.classIds || [];
+    return (
+      s.centerId === selectedCenterId ||
+      sClasses.some((c: any) => c.centerId === selectedCenterId) ||
+      sClassIds.some((cid: string) => centerClassesIds.includes(cid))
+    );
   });
 
   const filteredTeachers = centerTeachers.filter((t) => {
@@ -2054,6 +2145,7 @@ export default function CenterManagement() {
                                   columns={teacherColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
+                                  scroll={{ x: "max-content" }}
                                   className="border border-slate-100 rounded-2xl overflow-hidden"
                                 />
                               </div>
@@ -2094,6 +2186,7 @@ export default function CenterManagement() {
                                   columns={studentColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy học sinh nào" }}
+                                  scroll={{ x: "max-content" }}
                                   className="border border-slate-100 rounded-2xl overflow-hidden"
                                 />
                               </div>
@@ -2498,9 +2591,10 @@ export default function CenterManagement() {
                     {/* Active status banner */}
                     {(() => {
                       const active = isUserActive(editingTeacher);
-                      const endDate = editingTeacher.endDate ? dayjs(editingTeacher.endDate) : null;
-                      const isScheduled = active && endDate && endDate.isAfter(dayjs());
-                      const daysLeft = isScheduled ? endDate.diff(dayjs(), "day") : 0;
+                      const endDateStr = editingTeacher.endDate ? dayjs(editingTeacher.endDate).format("YYYY-MM-DD") : null;
+                      const todayStr = dayjs().format("YYYY-MM-DD");
+                      const isScheduled = active && endDateStr && endDateStr > todayStr;
+                      const daysLeft = isScheduled ? dayjs(editingTeacher.endDate).diff(dayjs().startOf("day"), "day") : 0;
 
                       return (
                         <div className={`rounded-xl p-3 mb-4 text-sm flex items-center gap-2 ${!active
@@ -2512,10 +2606,10 @@ export default function CenterManagement() {
                           <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${!active ? "bg-slate-400" : isScheduled ? "bg-amber-400" : "bg-emerald-400"
                             }`} />
                           {!active && (
-                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){endDate && ` — kết thúc ngày ${endDate.format("DD/MM/YYYY")}`}</span>
+                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){editingTeacher.endDate && ` — kết thúc ngày ${dayjs(editingTeacher.endDate).format("DD/MM/YYYY")}`}</span>
                           )}
                           {active && isScheduled && (
-                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {endDate!.format("DD/MM/YYYY")})</span>
+                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {dayjs(editingTeacher.endDate).format("DD/MM/YYYY")})</span>
                           )}
                           {active && !isScheduled && (
                             <span>Tài khoản <strong>đang hoạt động</strong></span>
@@ -2910,9 +3004,10 @@ export default function CenterManagement() {
                     {/* Active status banner */}
                     {(() => {
                       const active = isUserActive(editingStudent);
-                      const endDate = editingStudent.endDate ? dayjs(editingStudent.endDate) : null;
-                      const isScheduled = active && endDate && endDate.isAfter(dayjs());
-                      const daysLeft = isScheduled ? endDate.diff(dayjs(), "day") : 0;
+                      const endDateStr = editingStudent.endDate ? dayjs(editingStudent.endDate).format("YYYY-MM-DD") : null;
+                      const todayStr = dayjs().format("YYYY-MM-DD");
+                      const isScheduled = active && endDateStr && endDateStr > todayStr;
+                      const daysLeft = isScheduled ? dayjs(editingStudent.endDate).diff(dayjs().startOf("day"), "day") : 0;
 
                       return (
                         <div className={`rounded-xl p-3 mb-4 text-sm flex items-center gap-2 ${!active
@@ -2924,10 +3019,10 @@ export default function CenterManagement() {
                           <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${!active ? "bg-slate-400" : isScheduled ? "bg-amber-400" : "bg-emerald-400"
                             }`} />
                           {!active && (
-                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){endDate && ` — kết thúc ngày ${endDate.format("DD/MM/YYYY")}`}</span>
+                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){editingStudent.endDate && ` — kết thúc ngày ${dayjs(editingStudent.endDate).format("DD/MM/YYYY")}`}</span>
                           )}
                           {active && isScheduled && (
-                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {endDate!.format("DD/MM/YYYY")})</span>
+                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {dayjs(editingStudent.endDate).format("DD/MM/YYYY")})</span>
                           )}
                           {active && !isScheduled && (
                             <span>Tài khoản <strong>đang hoạt động</strong></span>

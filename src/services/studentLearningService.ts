@@ -132,6 +132,24 @@ export const studentLearningService = {
     },
 
     /**
+     * Lưu đáp án tạm thời cho từng câu (chỉ dùng cho lượt thi đầu tiên - isInitialExamAttempt).
+     * Endpoint Backend: PUT /learning/student/attempts/:attemptId/answers/:questionId
+     */
+    async saveAnswer(attemptId: string, questionId: string, payload: SubmitAnswerRequest) {
+      return unwrapData(
+        await apiClient.put<ApiEnvelope<{
+          attemptId: string;
+          questionId: string;
+          answer: unknown;
+          answeredAt: string;
+        }>>(
+          `/learning/student/attempts/${attemptId}/answers/${questionId}`,
+          payload,
+        ),
+      );
+    },
+
+    /**
      * Nộp toàn bộ attempt (finish).
      * Body có thể rỗng {} hoặc gửi thêm answers[] cho câu chưa submit.
      */

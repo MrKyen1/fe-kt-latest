@@ -18,6 +18,7 @@ interface Exam {
   id: string;
   code?: string;
   title: string;
+  examType?: string;
   status: string;
   timeLimitSeconds?: number;
   hasUnpublishedChanges?: boolean;
@@ -26,20 +27,20 @@ interface Exam {
 
 interface Props {
   exams: Exam[];
-  onCreateClick:       () => void;
-  onEditClick:         (record: Exam) => void;
-  onDeleteClick:       (record: Exam) => void;
-  onToggleStatus:      (record: Exam) => void;
-  onRepublish:         (record: Exam) => void;
-  onConfigQuestions:   (record: Exam) => void;
-  onViewVersions:      (record: Exam) => void;
+  onCreateClick: () => void;
+  onEditClick: (record: Exam) => void;
+  onDeleteClick: (record: Exam) => void;
+  onToggleStatus: (record: Exam) => void;
+  onRepublish: (record: Exam) => void;
+  onConfigQuestions: (record: Exam) => void;
+  onViewVersions: (record: Exam) => void;
 }
 
 // ── Sub-renders ──────────────────────────────────────────────
 
 function ExamStatusCell({ exam, onToggle, onRepublish }: {
   exam: Exam;
-  onToggle:    (e: Exam) => void;
+  onToggle: (e: Exam) => void;
   onRepublish: (e: Exam) => void;
 }) {
   return (
@@ -64,7 +65,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
             onClick={() => onRepublish(exam)}
             className="text-[10px] p-0 h-auto font-bold text-indigo-600 hover:text-indigo-800"
           >
-            🚀 Xuất bản bản mới
+            Xuất bản bản mới
           </Button>
         </div>
       )}
@@ -75,12 +76,12 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
 // ── Columns ──────────────────────────────────────────────────
 
 function buildColumns(
-  onEdit:            (e: Exam) => void,
-  onDelete:          (e: Exam) => void,
-  onToggle:          (e: Exam) => void,
-  onRepublish:       (e: Exam) => void,
+  onEdit: (e: Exam) => void,
+  onDelete: (e: Exam) => void,
+  onToggle: (e: Exam) => void,
+  onRepublish: (e: Exam) => void,
   onConfigQuestions: (e: Exam) => void,
-  onViewVersions:    (e: Exam) => void,
+  onViewVersions: (e: Exam) => void,
 ) {
   return [
     {
@@ -96,6 +97,18 @@ function buildColumns(
               : "Không giới hạn"}
           </div>
         </div>
+      ),
+    },
+    {
+      title: "Loại đề",
+      dataIndex: "examType",
+      render: (val?: string) => (
+        <Tag
+          color={val === "exam" ? "purple" : "blue"}
+          className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
+        >
+          {val === "exam" ? "Đề kiểm tra" : "Đề ôn tập"}
+        </Tag>
       ),
     },
     {

@@ -267,8 +267,14 @@ export default function ExamList() {
       const attemptId = getAttemptId(attempt);
       if (!attemptId) throw new Error("Backend khong tra attemptId.");
       navigate(`/exam/${attemptId}`);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Khong the bat dau bai thi.");
+    } catch (err: any) {
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      if (is409) {
+        message.warning("Bài kiểm tra này đã được nộp.");
+      } else {
+        message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
+      }
     } finally {
       setStartingId(null);
     }
@@ -281,8 +287,14 @@ export default function ExamList() {
       const attemptId = getAttemptId(attempt);
       if (!attemptId) throw new Error("Backend không trả về attemptId.");
       navigate(`/exam/${attemptId}`);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
+    } catch (err: any) {
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      if (is409) {
+        message.warning("Bài kiểm tra này đã được nộp.");
+      } else {
+        message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
+      }
     } finally {
       setStartingId(null);
     }

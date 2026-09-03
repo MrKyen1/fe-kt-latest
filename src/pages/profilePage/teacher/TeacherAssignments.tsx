@@ -8,7 +8,6 @@ import {
   Empty,
   Form,
   Input,
-  InputNumber,
   Modal,
   Row,
   Select,
@@ -46,6 +45,7 @@ import { learningCmsService } from "../../../services/learningCmsService";
 import { academicService } from "../../../services/academicService";
 import { userService } from "../../../services/userService";
 import { useAuth } from "../../../contexts/AuthContext";
+import { getErrorMessage } from "../../../services/apiClient";
 
 const { Title, Text } = Typography;
 
@@ -70,8 +70,10 @@ const statusTag = (status: AssignmentStatus) => {
 };
 
 const maxAttemptsTag = (n?: number | null) => {
-  if (!n) return <Tag color="blue" className="rounded-full border-none text-xs">♾ Vĩnh viễn</Tag>;
-  return <Tag color="orange" className="rounded-full border-none text-xs">{n} lần</Tag>;
+  if (n === 1) {
+    return <Tag color="purple" className="rounded-full border-none text-xs font-semibold">📝 Kiểm tra (1 lần)</Tag>;
+  }
+  return <Tag color="blue" className="rounded-full border-none text-xs font-semibold">📘 Ôn tập (Làm lại tới khi 100%)</Tag>;
 };
 
 // ==================== EXAM ANALYTICS MODAL ====================
@@ -87,7 +89,7 @@ function ExamAnalyticsModal({
     teacherLearningService.examAssignments
       .analytics(assignmentId)
       .then(setData)
-      .catch(() => message.error("Không thể tải analytics"))
+      .catch((err) => message.error(getErrorMessage(err, "Không thể tải analytics"), 5))
       .finally(() => setLoading(false));
   }, [open, assignmentId]);
 
@@ -170,7 +172,7 @@ function CurriculumAnalyticsModal({
     teacherLearningService.curriculumAssignments
       .analytics(assignmentId)
       .then(setData)
-      .catch(() => message.error("Không thể tải analytics"))
+      .catch((err) => message.error(getErrorMessage(err, "Không thể tải analytics"), 5))
       .finally(() => setLoading(false));
   }, [open, assignmentId]);
 
@@ -213,6 +215,8 @@ function CurriculumAnalyticsModal({
 // ==================== MAIN COMPONENT ====================
 export default function TeacherAssignments() {
   const { user } = useAuth();
+  const userRoleCode = typeof user?.role === "object" ? (user?.role as any)?.code : user?.role;
+  const isTeacher = userRoleCode === "teacher";
   const [activeTab, setActiveTab] = useState("class-curriculum");
 
   // ---- Data ----
@@ -292,7 +296,7 @@ export default function TeacherAssignments() {
           return { data: [] };
         }
         const apiData = res.value;
-        if (name === "classes" && user?.role === "teacher") {
+        if (name === "classes" && isTeacher) {
           const teacherClassIds = (user.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? []).filter(Boolean);
           const teacherCenters = new Set([
             ...(user.teacherProfile?.classes?.map((c: any) => c.centerId || c.center?.id).filter(Boolean) ?? []),
@@ -328,8 +332,8 @@ export default function TeacherAssignments() {
       });
 
       setCurriculumAssignments(get(6, "curriculumAssignments")?.data ?? []);
-    } catch {
-      message.error("Tải dữ liệu thất bại");
+    } catch (err: any) {
+      message.error(getErrorMessage(err, "Tải dữ liệu thất bại"), 5);
     } finally {
       setLoading(false);
     }
@@ -344,7 +348,7 @@ export default function TeacherAssignments() {
    */
   const getStudentsForClass = (classId?: string) => {
     let list = allStudents;
-    if (user?.role === "teacher") {
+    if (isTeacher) {
       const teacherClassIds = (user.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? []).filter(Boolean);
       const teacherCenters = new Set([
         ...(user.teacherProfile?.classes?.map((c: any) => c.centerId || c.center?.id).filter(Boolean) ?? []),
@@ -399,7 +403,6 @@ export default function TeacherAssignments() {
           teacherLearningService.classCurriculums.create({
             classId: values.classId,
             curriculumId: cId,
-            maxAttempts: values.maxAttempts || undefined,
           })
         )
       );
@@ -423,8 +426,8 @@ export default function TeacherAssignments() {
       setClassCurriculumFormOpen(false);
       loadAll();
     } catch (err: any) {
-      const msg = err?.message || "Gắn giáo trình vào lớp thất bại";
-      message.error(msg);
+      const msg = getErrorMessage(err, "Gắn giáo trình vào lớp thất bại");
+      message.error(msg, 5);
     } finally {
       setSubmitting(false);
     }
@@ -442,8 +445,8 @@ export default function TeacherAssignments() {
           await teacherLearningService.classCurriculums.remove(id);
           message.success("Đã gỡ giáo trình khỏi lớp");
           loadAll();
-        } catch {
-          message.error("Gỡ thất bại");
+        } catch (err: any) {
+          message.error(getErrorMessage(err, "Gỡ thất bại"), 5);
         }
       },
     });
@@ -453,7 +456,8 @@ export default function TeacherAssignments() {
   const handleCreateExamAssignment = async (values: any) => {
     const examIds: string[] = Array.isArray(values.examIds) ? values.examIds : [values.examIds];
     if (!examIds.length) { message.warning("Vui lòng chọn ít nhất 1 bài thi!"); return; }
-    if (!values.classId && (!values.studentIds || !values.studentIds.length)) {
+    const rawStudentIds = Array.isArray(values.studentIds) ? values.studentIds.filter(Boolean) : [];
+    if (!values.classId && !rawStudentIds.length) {
       message.warning("Vui lòng chọn lớp học hoặc ít nhất 1 học sinh!");
       return;
     }
@@ -464,11 +468,19 @@ export default function TeacherAssignments() {
         examId,
         examVersionId: examVersions[examId] || undefined,
       }));
+
+      // Tự động xác định quy tắc làm bài:
+      // Nếu tất cả bài thi được chọn là Đề kiểm tra (examType === "exam") -> maxAttempts = 1
+      // Ngược lại (Đề ôn tập hoặc kết hợp) -> maxAttempts = undefined (Làm tới khi đúng 100%)
+      const selectedExamsObjs = examIds.map((id) => exams.find((e) => e.id === id)).filter(Boolean);
+      const isAllExamType = selectedExamsObjs.length > 0 && selectedExamsObjs.every((e) => e?.examType === "exam");
+      const calculatedMaxAttempts = isAllExamType ? 1 : undefined;
+
       await teacherLearningService.examAssignments.create({
         exams: examsPayload,
         classId: values.classId || undefined,
-        studentIds: values.studentIds?.length ? values.studentIds : undefined,
-        maxAttempts: values.maxAttempts || undefined,
+        studentIds: rawStudentIds.length ? Array.from(new Set(rawStudentIds)) : undefined,
+        maxAttempts: calculatedMaxAttempts,
         title: values.title || undefined,
         instructions: values.instructions || undefined,
       });
@@ -480,8 +492,8 @@ export default function TeacherAssignments() {
       setExamFormOpen(false);
       loadAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Giao bài thi thất bại";
-      message.error(msg);
+      const msg = getErrorMessage(err, "Giao bài thi thất bại");
+      message.error(msg, 5);
     } finally {
       setSubmitting(false);
     }
@@ -499,23 +511,25 @@ export default function TeacherAssignments() {
           await teacherLearningService.examAssignments.cancel(id);
           message.success("Đã huỷ assignment");
           loadAll();
-        } catch { message.error("Huỷ thất bại"); }
+        } catch (err: any) {
+          message.error(getErrorMessage(err, "Huỷ thất bại"), 5);
+        }
       },
     });
   };
 
   // ==================== CURRICULUM ASSIGNMENT HANDLERS ====================
   const handleCreateCurriculumAssignment = async (values: any) => {
-    if (!values.studentIds || !values.studentIds.length) {
+    const rawStudentIds = Array.isArray(values.studentIds) ? values.studentIds.filter(Boolean) : [];
+    if (!rawStudentIds.length) {
       message.warning("Vui lòng chọn ít nhất 1 học sinh!"); return;
     }
     try {
       setSubmitting(true);
       await teacherLearningService.curriculumAssignments.create({
         curriculumId: values.curriculumId,
-        studentIds: values.studentIds,
+        studentIds: Array.from(new Set(rawStudentIds)),
         classId: values.classId || undefined,
-        maxAttempts: values.maxAttempts || undefined,
         title: values.title || undefined,
         instructions: values.instructions || undefined,
       });
@@ -525,8 +539,8 @@ export default function TeacherAssignments() {
       setCurriculumFormOpen(false);
       loadAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Giao giáo trình thất bại";
-      message.error(msg);
+      const msg = getErrorMessage(err, "Giao giáo trình thất bại");
+      message.error(msg, 5);
     } finally {
       setSubmitting(false);
     }
@@ -544,7 +558,9 @@ export default function TeacherAssignments() {
           await teacherLearningService.curriculumAssignments.cancel(id);
           message.success("Đã huỷ assignment");
           loadAll();
-        } catch { message.error("Huỷ thất bại"); }
+        } catch (err: any) {
+          message.error(getErrorMessage(err, "Huỷ thất bại"), 5);
+        }
       },
     });
   };
@@ -939,9 +955,6 @@ export default function TeacherAssignments() {
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="maxAttempts" label={<span>Số lần làm tối đa <span className="text-slate-400 font-normal text-xs">(bỏ trống = vĩnh viễn)</span></span>}>
-            <InputNumber min={1} placeholder="Ví dụ: 3" className="rounded-xl w-full" />
-          </Form.Item>
           <Divider className="my-4" />
           <div className="flex justify-end gap-3">
             <Button onClick={() => setClassCurriculumFormOpen(false)} className="rounded-xl">Huỷ</Button>
@@ -976,6 +989,7 @@ export default function TeacherAssignments() {
             >
               {exams.map((e) => (
                 <Select.Option key={e.id} value={e.id}>
+                  {e.examType === "exam" ? "📝 [Kiểm tra] " : "📘 [Ôn tập] "}
                   {e.title || e.code} <span className="text-slate-400 text-xs ml-1">({e.code})</span>
                 </Select.Option>
               ))}
@@ -990,7 +1004,10 @@ export default function TeacherAssignments() {
                 const versions = examVersionsMap[examId] || [];
                 return (
                   <div key={examId} className="flex items-center justify-between gap-3 text-xs bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
-                    <span className="font-semibold text-slate-700 truncate max-w-[280px]">{exam?.title || exam?.code}</span>
+                    <span className="font-semibold text-slate-700 truncate max-w-[280px]">
+                      {exam?.examType === "exam" ? "📝 [Kiểm tra] " : "📘 [Ôn tập] "}
+                      {exam?.title || exam?.code}
+                    </span>
                     <Form.Item
                       name={["examVersions", examId]}
                       className="mb-0"
@@ -1011,39 +1028,38 @@ export default function TeacherAssignments() {
             </div>
           )}
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="classId" label={<span>Lớp học <span className="text-slate-400 font-normal text-xs">(tùy chọn)</span></span>}>
-                <Select showSearch placeholder="Chọn lớp học..." optionFilterProp="children" className="rounded-xl"
-                  allowClear
-                  onChange={(val) => {
-                    setSelectedClassForExam(val);
-                    examForm.setFieldValue("studentIds", []);
-                  }}
-                >
-                  {classes.map((c) => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="maxAttempts" label={<span>Số lần làm tối đa <span className="text-slate-400 font-normal text-xs">(bỏ trống = vĩnh viễn)</span></span>}>
-                <InputNumber min={1} placeholder="Ví dụ: 3" className="rounded-xl w-full" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="classId"
+            label={<span>Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp để lọc học sinh hoặc giao cho cả lớp)</span></span>}
+          >
+            <Select showSearch placeholder="Chọn lớp học..." optionFilterProp="children" className="rounded-xl"
+              allowClear
+              onChange={(val) => {
+                setSelectedClassForExam(val);
+                examForm.setFieldValue("studentIds", []);
+              }}
+            >
+              {classes.map((c) => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
+            </Select>
+          </Form.Item>
 
           <Form.Item
             name="studentIds"
-            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span></span>}
+            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ học sinh trong lớp)</span></span>}
+            extra={!selectedClassForExam ? (
+              <div className="text-amber-600 text-xs mt-1">
+                💡 <b>Mẹo:</b> Hãy chọn <b>Lớp học</b> trước để hệ thống tự động lọc đúng học sinh thuộc lớp bạn phụ trách.
+              </div>
+            ) : undefined}
           >
             <Select
               mode="multiple"
               showSearch
-              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : "Chọn học sinh cụ thể (tùy chọn)..."}
+              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForExam ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}
               optionFilterProp="label"
               className="rounded-xl"
               options={getStudentsForClass(selectedClassForExam).map((s) => ({
-                key: s.id,
+                key: s.studentProfile?.id || s.id,
                 value: s.studentProfile?.id || s.id,
                 label: `${s.fullName || s.code} @${s.code}`,
               }))}
@@ -1101,20 +1117,17 @@ export default function TeacherAssignments() {
             <Select
               mode="multiple"
               showSearch
-              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : "Chọn học sinh..."}
+              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForCurriculum ? "Chọn học sinh trong lớp..." : "Chọn học sinh...")}
               optionFilterProp="label"
               className="rounded-xl"
               options={getStudentsForClass(selectedClassForCurriculum).map((s) => ({
-                key: s.id,
+                key: s.studentProfile?.id || s.id,
                 value: s.studentProfile?.id || s.id,
                 label: `${s.fullName || s.code} @${s.code}`,
               }))}
             />
           </Form.Item>
 
-          <Form.Item name="maxAttempts" label={<span>Số lần làm tối đa <span className="text-slate-400 font-normal text-xs">(bỏ trống = vĩnh viễn)</span></span>}>
-            <InputNumber min={1} placeholder="Ví dụ: 5" className="rounded-xl w-full" />
-          </Form.Item>
           <Form.Item name="title" label="Tiêu đề (tùy chọn)">
             <Input placeholder="VD: Giáo trình A1 - Học kỳ 1" className="rounded-xl" />
           </Form.Item>

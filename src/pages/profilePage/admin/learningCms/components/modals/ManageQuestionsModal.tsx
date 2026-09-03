@@ -1,7 +1,34 @@
-import { Badge, Button, Card, Col, Empty, Input, List, Modal, Popover, Row, Select, Tag } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined, SendOutlined } from "@ant-design/icons";
+import { useState } from "react";
+import {
+  Badge,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Input,
+  InputNumber,
+  List,
+  Modal,
+  Popover,
+  Row,
+  Select,
+  Segmented,
+  Tag,
+  message,
+} from "antd";
+import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  SendOutlined,
+  SearchOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from "../../constants";
 import QuestionPopoverContent from "../QuestionPopoverContent";
+import { learningCmsService } from "../../../../../../services/learningCmsService";
+import { RandomQuestionCriteria } from "../../../../../../types/learning";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -75,6 +102,7 @@ interface Props {
   onRemoveQuestion: (questionId: string) => void;
   onReorder:        (index: number, direction: "up" | "down") => void;
   onRepublish:      () => void;
+  onBulkAttach?:    (items: { questionId: string; orderIndex?: number }[]) => Promise<void>;
 }
 
 // ── Filter helpers ────────────────────────────────────────────
@@ -88,29 +116,89 @@ function filterAvailableQuestions(
   levelFilter:  string | undefined,
   topicFilter:  string | undefined,
   tagFilter:    string | undefined,
+  tagsList:     TaxItem[],
+  questionDetailsCache: Record<string, any>,
 ): Question[] {
   const examIds = new Set(examQuestions.map((eq) => eq.questionId));
+  const targetTag = tagFilter ? tagsList.find((t) => t.id === tagFilter) : undefined;
+  const targetTagName = targetTag?.name?.trim().toLowerCase();
 
-  return allQuestions.filter((q) => {
+  return allQuestions.filter((q: any) => {
     if (q.status !== "published") return false;
     if (examIds.has(q.id)) return false;
+
+    const detail = questionDetailsCache[q.id] ?? q;
 
     if (search.trim()) {
       const query = search.trim().toLowerCase();
       const searchable = [
-        q.prompt,
-        q.instruction,
-        q.explanation,
-        ...(q.options ?? []).map((o) => o.content),
+        q.prompt, q.instruction, q.explanation,
+        detail.prompt, detail.instruction, detail.explanation,
+        ...(q.options ?? []).map((o: any) => o.content),
+        ...(detail.options ?? []).map((o: any) => o.content),
       ].filter(Boolean).join(" ").toLowerCase();
       if (!searchable.includes(query)) return false;
     }
 
-    if (typeFilter  && q.type                !== typeFilter)  return false;
-    if (skillFilter && q.skillId             !== skillFilter)  return false;
-    if (levelFilter && q.difficultyLevelId   !== levelFilter)  return false;
-    if (topicFilter && q.topicId             !== topicFilter)  return false;
-    if (tagFilter   && !(q.tagIds ?? []).includes(tagFilter)) return false;
+    if (typeFilter && (q.type ?? detail.type) !== typeFilter) return false;
+
+    if (skillFilter) {
+      const qSkillId = q.skillId ?? q.skill?.id ?? detail.skillId ?? detail.skill?.id;
+      if (qSkillId !== skillFilter) return false;
+    }
+
+    if (levelFilter) {
+      const qLevelId = q.difficultyLevelId ?? q.levelId ?? q.difficultyLevel?.id ?? q.level?.id ??
+                       detail.difficultyLevelId ?? detail.levelId ?? detail.difficultyLevel?.id ?? detail.level?.id;
+      if (qLevelId !== levelFilter) return false;
+    }
+
+    if (topicFilter) {
+      const qTopicId = q.topicId ?? q.topic?.id ?? detail.topicId ?? detail.topic?.id;
+      if (qTopicId !== topicFilter) return false;
+    }
+
+    if (tagFilter) {
+      const sources = [q, detail];
+      let hasTagMatch = false;
+
+      for (const src of sources) {
+        if (!src) continue;
+
+        const tagIds = src.tagIds;
+        if (Array.isArray(tagIds) && tagIds.includes(tagFilter)) {
+          hasTagMatch = true;
+          break;
+        }
+
+        const tagsArr = src.tags;
+        if (Array.isArray(tagsArr)) {
+          for (const t of tagsArr) {
+            if (!t) continue;
+            if (typeof t === "string") {
+              if (t === tagFilter || (targetTagName && t.trim().toLowerCase() === targetTagName)) {
+                hasTagMatch = true;
+                break;
+              }
+            } else if (typeof t === "object") {
+              const tid = t.id ?? t.tagId ?? t.tag?.id;
+              if (tid && tid === tagFilter) {
+                hasTagMatch = true;
+                break;
+              }
+              const tName = (t.name ?? t.tag?.name)?.trim().toLowerCase();
+              if (targetTagName && tName && tName === targetTagName) {
+                hasTagMatch = true;
+                break;
+              }
+            }
+          }
+        }
+        if (hasTagMatch) break;
+      }
+
+      if (!hasTagMatch) return false;
+    }
 
     return true;
   });
@@ -150,9 +238,46 @@ export default function ManageQuestionsModal({
   onAddQuestion,
   onRemoveQuestion,
   onReorder,
-  onRepublish,
+  onBulkAttach,
 }: Props) {
   const examQuestions = selectedExam?.questions ?? [];
+
+  // Tab mode: "manual" (manual pick from question bank) | "random" (random criteria & bulk attach)
+  const [tabMode, setTabMode] = useState<"manual" | "random">("manual");
+
+  // Random criteria state
+  interface CriteriaItem {
+    id: string;
+    count: number;
+    type?: string;
+    skillId?: string;
+    levelId?: string;
+    topicId?: string;
+    tagId?: string;
+  }
+
+  const [criteriaList, setCriteriaList] = useState<CriteriaItem[]>([
+    { id: "1", count: 5, type: undefined, skillId: undefined, levelId: undefined, topicId: undefined, tagId: undefined },
+  ]);
+  const [isRandomLoading, setIsRandomLoading] = useState(false);
+  const [isBulkAttaching, setIsBulkAttaching] = useState(false);
+  const [randomResult, setRandomResult] = useState<{
+    totalCount: number;
+    items: Array<{ questionId: string; orderIndex: number }>;
+    groups: Array<{
+      index: number;
+      filters: Record<string, unknown>;
+      requested: number;
+      returned: number;
+      questions: Array<{
+        orderIndex: number;
+        id: string;
+        prompt: string;
+        type: string;
+        options: unknown[];
+      }>;
+    }>;
+  } | null>(null);
 
   const hasActiveFilters = !!(
     examQSearch || examQTypeFilter || examQSkillFilter ||
@@ -168,7 +293,59 @@ export default function ManageQuestionsModal({
     examQLevelFilter,
     examQTopicFilter,
     examQTagFilter,
+    tags,
+    questionDetails,
   );
+
+  const handleFetchRandom = async () => {
+    try {
+      setIsRandomLoading(true);
+      const payloadCriteria: RandomQuestionCriteria[] = criteriaList.map((c) => ({
+        count: c.count || 1,
+        type: (c.type as any) || undefined,
+        skillId: c.skillId || undefined,
+        levelId: c.levelId || undefined,
+        topicId: c.topicId || undefined,
+        tagId: c.tagId || undefined,
+      }));
+
+      const res = await learningCmsService.exams.randomQuestions({ criteria: payloadCriteria });
+      setRandomResult(res);
+      if (res.totalCount === 0) {
+        message.warning("Không tìm thấy câu hỏi nào phù hợp với tiêu chí đã chọn");
+      } else {
+        message.success(`Đã lấy ngẫu nhiên ${res.totalCount} câu hỏi (Preview)`);
+      }
+    } catch (err: any) {
+      message.error(err?.message || "Lỗi khi lấy câu hỏi ngẫu nhiên");
+    } finally {
+      setIsRandomLoading(false);
+    }
+  };
+
+  const handleBulkAttach = async () => {
+    if (!selectedExam || !randomResult || randomResult.items.length === 0) return;
+    try {
+      setIsBulkAttaching(true);
+      const startIdx = examQuestions.length;
+      const items = randomResult.items.map((item, idx) => ({
+        questionId: item.questionId,
+        orderIndex: startIdx + idx,
+      }));
+
+      if (onBulkAttach) {
+        await onBulkAttach(items);
+      } else {
+        await learningCmsService.exams.bulkAttachQuestions(selectedExam.id, { items });
+        message.success(`Đã thêm ${items.length} câu hỏi vào đề thi thành công!`);
+      }
+      setRandomResult(null);
+    } catch (err: any) {
+      message.error(err?.message || "Lỗi khi gắn câu hỏi hàng loạt");
+    } finally {
+      setIsBulkAttaching(false);
+    }
+  };
 
   return (
     <Modal
@@ -274,112 +451,355 @@ export default function ManageQuestionsModal({
           </Card>
         </Col>
 
-        {/* Right: available questions */}
+        {/* Right: available questions or random generator */}
         <Col span={12}>
           <Card
             title={
               <div className="flex items-center justify-between">
-                <span>Ngân hàng câu hỏi (đã duyệt)</span>
-                <Badge count={available.length} color="green" />
+                <Segmented
+                  options={[
+                    { label: "Chọn thủ công", value: "manual" },
+                    { label: "🎲 Tạo ngẫu nhiên (Criteria)", value: "random" },
+                  ]}
+                  value={tabMode}
+                  onChange={(v) => setTabMode(v as "manual" | "random")}
+                  size="small"
+                />
+                {tabMode === "manual" && <Badge count={available.length} color="green" />}
+                {tabMode === "random" && randomResult && (
+                  <Badge count={randomResult.totalCount} color="purple" overflowCount={999} />
+                )}
               </div>
             }
             className="rounded-2xl border-slate-100 shadow-sm"
             size="small"
             styles={{ body: { paddingTop: 8 } }}
           >
-            {/* Filter panel */}
-            <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden">
-              <div className="px-3 pt-3 pb-2">
-                <Input
-                  placeholder="🔍  Tìm theo đề bài, đáp án, giải thích..."
-                  value={examQSearch}
-                  onChange={(e) => onExamQSearch(e.target.value)}
-                  allowClear
-                  size="small"
-                  style={{ borderRadius: 8, border: "1px solid #e0e7ff", background: "#fff", fontSize: 12 }}
-                />
-              </div>
+            {tabMode === "manual" ? (
+              <>
+                {/* Filter panel */}
+                <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden">
+                  <div className="px-3 pt-3 pb-2">
+                    <Input
+                      placeholder="🔍  Tìm theo đề bài, đáp án, giải thích..."
+                      value={examQSearch}
+                      onChange={(e) => onExamQSearch(e.target.value)}
+                      allowClear
+                      size="small"
+                      style={{ borderRadius: 8, border: "1px solid #e0e7ff", background: "#fff", fontSize: 12 }}
+                    />
+                  </div>
 
-              <div className="mx-3 border-t border-slate-100" />
+                  <div className="mx-3 border-t border-slate-100" />
 
-              <div className="px-3 py-2 grid grid-cols-2 gap-1.5">
-                <Select placeholder="📋 Loại câu hỏi" value={examQTypeFilter} onChange={onExamQTypeFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                  {QUESTION_TYPES.map((qt) => <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>)}
-                </Select>
-                <Select placeholder="💡 Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                  {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
-                </Select>
-                <Select placeholder="🎯 Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                  {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
-                </Select>
-                <Select placeholder="📁 Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                  {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-                </Select>
-                <Select placeholder="🏷 Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false}>
-                  {tags.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-                </Select>
-              </div>
+                  <div className="px-3 py-2 grid grid-cols-2 gap-1.5">
+                    <Select placeholder="📋 Loại câu hỏi" value={examQTypeFilter} onChange={onExamQTypeFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                      {QUESTION_TYPES.map((qt) => <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>)}
+                    </Select>
+                    <Select placeholder="💡 Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                      {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
+                    </Select>
+                    <Select placeholder="🎯 Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                      {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
+                    </Select>
+                    <Select placeholder="📁 Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                      {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
+                    </Select>
+                    <Select placeholder="🏷 Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false}>
+                      {tags.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
+                    </Select>
+                  </div>
 
-              {hasActiveFilters && (
-                <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
-                  <span className="text-[11px] text-indigo-600">
-                    🔎 Tìm thấy <strong>{available.length}</strong> câu hỏi
-                  </span>
-                  <button
-                    onClick={onResetFilters}
-                    className="text-[11px] text-indigo-500 hover:text-indigo-700 underline underline-offset-2 bg-transparent border-none cursor-pointer p-0 font-medium"
-                  >
-                    Xóa bộ lọc
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Question list */}
-            <List
-              style={{ maxHeight: 340, overflowY: "auto" }}
-              dataSource={available}
-              renderItem={(q: Question) => (
-                <List.Item
-                  actions={[
-                    <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => onAddQuestion(q.id)}>
-                      Thêm
-                    </Button>,
-                  ]}
-                >
-                  <Popover
-                    content={<QuestionPopoverContent question={questionDetails[q.id] ?? q} skills={skills} levels={levels} topics={topics} tags={tags} />}
-                    title={<div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>}
-                    trigger="hover"
-                    placement="left"
-                    mouseEnterDelay={0.15}
-                    overlayStyle={{ maxWidth: 380 }}
-                  >
-                    <div className="cursor-pointer flex-1 pr-2 min-w-0">
-                      <List.Item.Meta
-                        title={
-                          <div className="text-xs font-semibold line-clamp-1 text-slate-800" dangerouslySetInnerHTML={{ __html: q.prompt ?? "" }} />
-                        }
-                        description={
-                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none m-0">
-                              {QUESTION_TYPE_LABELS[q.type]}
-                            </Tag>
-                            {q.difficultyLevelId && (
-                              <span className="text-[10px] text-slate-400">• {levels.find((l) => l.id === q.difficultyLevelId)?.name}</span>
-                            )}
-                            {q.skillId && (
-                              <span className="text-[10px] text-slate-400">• {skills.find((s) => s.id === q.skillId)?.name}</span>
-                            )}
-                          </div>
-                        }
-                      />
+                  {hasActiveFilters && (
+                    <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
+                      <span className="text-[11px] text-indigo-600">
+                        🔎 Tìm thấy <strong>{available.length}</strong> câu hỏi
+                      </span>
+                      <button
+                        onClick={onResetFilters}
+                        className="text-[11px] text-indigo-500 hover:text-indigo-700 underline underline-offset-2 bg-transparent border-none cursor-pointer p-0 font-medium"
+                      >
+                        Xóa bộ lọc
+                      </button>
                     </div>
-                  </Popover>
-                </List.Item>
-              )}
-              locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" imageStyle={{ height: 40 }} /> }}
-            />
+                  )}
+                </div>
+
+                {/* Question list */}
+                <List
+                  style={{ maxHeight: 340, overflowY: "auto" }}
+                  dataSource={available}
+                  renderItem={(q: Question) => (
+                    <List.Item
+                      actions={[
+                        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => onAddQuestion(q.id)}>
+                          Thêm
+                        </Button>,
+                      ]}
+                    >
+                      <Popover
+                        content={<QuestionPopoverContent question={questionDetails[q.id] ?? q} skills={skills} levels={levels} topics={topics} tags={tags} />}
+                        title={<div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>}
+                        trigger="hover"
+                        placement="left"
+                        mouseEnterDelay={0.15}
+                        overlayStyle={{ maxWidth: 380 }}
+                      >
+                        <div className="cursor-pointer flex-1 pr-2 min-w-0">
+                          <List.Item.Meta
+                            title={
+                              <div className="text-xs font-semibold line-clamp-1 text-slate-800" dangerouslySetInnerHTML={{ __html: q.prompt ?? "" }} />
+                            }
+                            description={
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none m-0">
+                                  {QUESTION_TYPE_LABELS[q.type]}
+                                </Tag>
+                                {q.difficultyLevelId && (
+                                  <span className="text-[10px] text-slate-400">• {levels.find((l) => l.id === q.difficultyLevelId)?.name}</span>
+                                )}
+                                {q.skillId && (
+                                  <span className="text-[10px] text-slate-400">• {skills.find((s) => s.id === q.skillId)?.name}</span>
+                                )}
+                              </div>
+                            }
+                          />
+                        </div>
+                      </Popover>
+                    </List.Item>
+                  )}
+                  locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" imageStyle={{ height: 40 }} /> }}
+                />
+              </>
+            ) : (
+              <div style={{ maxHeight: 460, overflowY: "auto" }} className="pr-1 space-y-3">
+                {/* Random Criteria configuration */}
+                <div className="space-y-2">
+                  {criteriaList.map((crit, idx) => (
+                    <div key={crit.id} className="p-2.5 rounded-xl border border-indigo-100 bg-slate-50 relative">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-indigo-700">
+                          Nhóm {idx + 1} {criteriaList.length > 1 && `(Tiêu chí ${idx + 1})`}
+                        </span>
+                        {criteriaList.length > 1 && (
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => setCriteriaList((prev) => prev.filter((item) => item.id !== crit.id))}
+                          />
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <div className="text-[11px] text-slate-500 mb-0.5">Số lượng câu:</div>
+                          <InputNumber
+                            min={1}
+                            max={50}
+                            value={crit.count}
+                            onChange={(val) => {
+                              setCriteriaList((prev) =>
+                                prev.map((item) => (item.id === crit.id ? { ...item, count: val || 1 } : item))
+                              );
+                            }}
+                            size="small"
+                            style={{ width: "100%" }}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-slate-500 mb-0.5">Loại câu hỏi:</div>
+                          <Select
+                            placeholder="Tất cả"
+                            value={crit.type}
+                            onChange={(v) => {
+                              setCriteriaList((prev) =>
+                                prev.map((item) => (item.id === crit.id ? { ...item, type: v } : item))
+                              );
+                            }}
+                            allowClear
+                            size="small"
+                            style={{ width: "100%" }}
+                          >
+                            {QUESTION_TYPES.map((qt) => (
+                              <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-slate-500 mb-0.5">Kỹ năng:</div>
+                          <Select
+                            placeholder="Tất cả"
+                            value={crit.skillId}
+                            onChange={(v) => {
+                              setCriteriaList((prev) =>
+                                prev.map((item) => (item.id === crit.id ? { ...item, skillId: v } : item))
+                              );
+                            }}
+                            allowClear
+                            size="small"
+                            style={{ width: "100%" }}
+                          >
+                            {skills.map((s) => (
+                              <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-slate-500 mb-0.5">Cấp độ:</div>
+                          <Select
+                            placeholder="Tất cả"
+                            value={crit.levelId}
+                            onChange={(v) => {
+                              setCriteriaList((prev) =>
+                                prev.map((item) => (item.id === crit.id ? { ...item, levelId: v } : item))
+                              );
+                            }}
+                            allowClear
+                            size="small"
+                            style={{ width: "100%" }}
+                          >
+                            {levels.map((l) => (
+                              <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-slate-500 mb-0.5">Chủ đề:</div>
+                          <Select
+                            placeholder="Tất cả"
+                            value={crit.topicId}
+                            onChange={(v) => {
+                              setCriteriaList((prev) =>
+                                prev.map((item) => (item.id === crit.id ? { ...item, topicId: v } : item))
+                              );
+                            }}
+                            allowClear
+                            size="small"
+                            style={{ width: "100%" }}
+                          >
+                            {topics.map((t) => (
+                              <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-slate-500 mb-0.5">Thẻ gắn (Tag):</div>
+                          <Select
+                            placeholder="Tất cả"
+                            value={crit.tagId}
+                            onChange={(v) => {
+                              setCriteriaList((prev) =>
+                                prev.map((item) => (item.id === crit.id ? { ...item, tagId: v } : item))
+                              );
+                            }}
+                            allowClear
+                            size="small"
+                            style={{ width: "100%" }}
+                          >
+                            {tags.map((t) => (
+                              <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex justify-between items-center gap-2 pt-1">
+                    <Button
+                      type="dashed"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        setCriteriaList((prev) => [
+                          ...prev,
+                          { id: Date.now().toString(), count: 5, type: undefined, skillId: undefined, levelId: undefined, topicId: undefined, tagId: undefined },
+                        ]);
+                      }}
+                      className="text-xs"
+                    >
+                      Thêm nhóm tiêu chí
+                    </Button>
+
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<SearchOutlined />}
+                      loading={isRandomLoading}
+                      onClick={handleFetchRandom}
+                      className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      Xem trước (Preview)
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Preview list */}
+                {randomResult && (
+                  <div className="mt-3 p-3 rounded-xl border border-purple-200 bg-purple-50/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-bold text-purple-900">
+                        📋 Kết quả Preview: {randomResult.totalCount} câu hỏi
+                      </div>
+                      <Button
+                        type="primary"
+                        size="small"
+                        icon={<ThunderboltOutlined />}
+                        loading={isBulkAttaching}
+                        disabled={randomResult.totalCount === 0}
+                        onClick={handleBulkAttach}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-xs font-bold"
+                      >
+                        Gắn {randomResult.totalCount} câu vào đề (Bulk Attach)
+                      </Button>
+                    </div>
+
+                    <List
+                      size="small"
+                      style={{ maxHeight: 180, overflowY: "auto" }}
+                      dataSource={randomResult.items}
+                      renderItem={(item, index) => {
+                        const q = allQuestions.find((allQ) => allQ.id === item.questionId);
+                        let prompt = q?.prompt;
+                        let type = q?.type;
+                        if (!prompt) {
+                          for (const grp of randomResult.groups || []) {
+                            const matched = grp.questions?.find((gq) => gq.id === item.questionId);
+                            if (matched) {
+                              prompt = matched.prompt;
+                              type = matched.type;
+                              break;
+                            }
+                          }
+                        }
+
+                        return (
+                          <List.Item className="py-1 px-2 bg-white rounded-lg mb-1 border border-purple-100">
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {index + 1}
+                                </span>
+                                <div
+                                  className="text-xs text-slate-800 line-clamp-1"
+                                  dangerouslySetInnerHTML={{ __html: prompt || `Câu hỏi #${item.questionId}` }}
+                                />
+                              </div>
+                              {type && (
+                                <Tag color={QUESTION_TYPE_COLORS[type]} className="text-[9px] border-none m-0 shrink-0">
+                                  {QUESTION_TYPE_LABELS[type]}
+                                </Tag>
+                              )}
+                            </div>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
         </Col>
       </Row>

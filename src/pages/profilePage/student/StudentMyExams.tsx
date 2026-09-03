@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -18,6 +18,9 @@ import {
   Badge,
   Statistic,
   Tooltip,
+  Input,
+  Select,
+  Radio,
 } from "antd";
 
 import {
@@ -29,6 +32,9 @@ import {
   ClockCircleOutlined,
   ArrowRightOutlined,
   ReloadOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  TrophyOutlined,
 } from "@ant-design/icons";
 
 import { studentLearningService } from "../../../services/studentLearningService";
@@ -99,24 +105,32 @@ function AttemptHistoryModal({
         ? <Progress percent={Math.round(parseFloat(r.percentage))} size="small" strokeColor={percentColor(r.percentage)} format={(p) => `${p}%`} />
         : <span className="text-slate-400">—</span>,
     },
-    { title: "Thời gian làm", render: (_: any, r: any) => <span className="text-sm text-slate-500">{formatTime(r.durationSeconds)}</span> },
-    { title: "Ngày nộp", render: (_: any, r: any) => <span className="text-xs text-slate-400">{formatDate(r.submittedAt)}</span> },
     {
-      title: "Chi tiết", align: "right" as const,
+      title: "Ngày làm",
       render: (_: any, r: any) => (
-        <Button type="link" size="small" icon={<ArrowRightOutlined />}
-          onClick={() => { onClose(); navigate(`/exam/${r.id}`); }}
-          className="text-indigo-600 font-medium">
-          {r.status === "submitted" ? "Xem đáp án" : "Tiếp tục"}
+        <span className="text-xs text-slate-500">
+          {formatDate(r.createdAt || r.submittedAt || r.updatedAt)}
+        </span>
+      ),
+    },
+    {
+      title: "", width: 100,
+      render: (_: any, r: any) => (
+        <Button size="small" type="link" onClick={() => { onClose(); navigate(`/exam/${r.id}`); }} className="text-xs font-semibold p-0 text-indigo-600">
+          {r.status === "submitted" ? "Xem bài làm" : "Tiếp tục làm"}
         </Button>
       ),
     },
   ];
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null}
-      title={<div className="flex items-center gap-2 text-indigo-700 font-bold"><HistoryOutlined /><span>Lịch sử làm bài: {title || "Bài thi"}</span></div>}
-      width={800}
+    <Modal
+      title={<div className="font-bold text-base text-slate-800">📜 Lịch sử làm bài: {title}</div>}
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={680}
+      className="rounded-2xl overflow-hidden"
     >
       {loading ? (
         <div className="flex justify-center py-10"><Spin size="large" /></div>
@@ -139,7 +153,6 @@ export default function StudentMyExams() {
   const [examAssignments, setExamAssignments] = useState<any[]>([]);
 
   // ---- Curriculum assignments (giáo trình) ----
-  // Mỗi item: { curriculumId, enrollmentId, curriculum, accessType, progressPercentage, exams[] }
   const [curriculumItems, setCurriculumItems] = useState<any[]>([]);
 
   // ---- Starting exam ----
@@ -149,6 +162,11 @@ export default function StudentMyExams() {
   const [historyAssignmentStudentId, setHistoryAssignmentStudentId] = useState<string | null>(null);
   const [historyExamId, setHistoryExamId] = useState<string | null>(null);
   const [historyTitle, setHistoryTitle] = useState<string | undefined>(undefined);
+
+  // ---- Search and Filter state for Assigned Exams ----
+  const [searchText, setSearchText] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "exam" | "practice">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending">("all");
 
   useEffect(() => { loadAll(); }, []);
 
@@ -165,7 +183,6 @@ export default function StudentMyExams() {
       if (examRes.status === "fulfilled" && examRes.value?.data) {
         const summaryList = examRes.value.data as any[];
 
-        // Fetch detail for each exam assignment to get progress and details
         const enriched = await Promise.allSettled(
           summaryList.map(async (item: any) => {
             try {
@@ -178,98 +195,46 @@ export default function StudentMyExams() {
         );
 
         setExamAssignments(
-          enriched.map((r) => {
-            if (r.status !== "fulfilled" || !r.value) return null;
-            const row = r.value;
-            const exams: any[] = row.exams || [];
-            const exam = row.exam || row.assignment?.exam;
-            const resolvedExams = exams.length > 0 ? exams : (exam ? [{
-              examId: exam.id,
-              exam,
-              attemptsCount: row.summary?.attemptsCount ?? 0,
-              bestPercentage: row.summary?.bestPercentage,
-              status: (row.summary?.attemptsCount ?? 0) > 0 ? "in_progress" : "assigned"
-            }] : []);
-
-            const completedCount = resolvedExams.filter((ep: any) => {
-              const attemptsCount = ep.attemptsCount ?? 0;
-              const bestPct = ep.bestPercentage;
-              const isCompleted = ep.status === "completed" || parseFloat(bestPct ?? "0") >= 100 || attemptsCount > 0;
-              return isCompleted;
-            }).length;
-            const totalExamsCount = resolvedExams.length;
-            const progressPercentage = totalExamsCount > 0 ? ((completedCount / totalExamsCount) * 100).toFixed(2) : "100.00";
-
-            return {
-              ...row,
-              completedExamsCount: completedCount,
-              totalExamsCount,
-              progressPercentage,
-            };
-          }).filter(Boolean)
+          enriched.map((r: any) => (r.status === "fulfilled" ? r.value : null)).filter(Boolean)
         );
-      } else {
-        setExamAssignments([]);
       }
 
-      // --- Curriculum assignments ---
-      // Backend returns: { curriculumId, enrollmentId, curriculum, accessType, ... }
-      // We then fetch detail for each to get the exam list
+      // --- Curriculum items ---
       if (curriculumRes.status === "fulfilled" && curriculumRes.value?.data) {
-        const summaryList = curriculumRes.value.data as any[];
-
-        // Fetch detail for each curriculum to get exam progress
-        const enriched = await Promise.allSettled(
-          summaryList.map(async (item: any) => {
-            const cId = item.curriculumId;
-            if (!cId) return item;
+        const cList = curriculumRes.value.data as any[];
+        const enrichedC = await Promise.allSettled(
+          cList.map(async (item: any) => {
             try {
-              const detail = await studentLearningService.curriculums.get(cId);
+              const detail = await studentLearningService.curriculums.get(item.curriculumId);
               return { ...item, ...detail };
             } catch {
               return item;
             }
           })
         );
-
         setCurriculumItems(
-          enriched.map((r) => {
-            if (r.status !== "fulfilled" || !r.value) return null;
-            const item = r.value;
-            const exams: any[] = item.exams ?? [];
-            const requiredExams = exams.filter((ep: any) => ep.isRequired ?? ep.curriculumExam?.isRequired ?? true);
-            const completedCount = requiredExams.filter((ep: any) => {
-              const isCompleted = ep.status === "completed" || ep.completedAt != null || (ep.attemptsCount ?? 0) > 0;
-              return isCompleted;
-            }).length;
-            const totalRequired = requiredExams.length;
-            const progressPercentage = totalRequired > 0 ? ((completedCount / totalRequired) * 100).toFixed(2) : "100.00";
-
-            return {
-              ...item,
-              completedExamsCount: completedCount,
-              totalRequiredExamsCount: totalRequired,
-              progressPercentage,
-            };
-          }).filter(Boolean)
+          enrichedC.map((r: any) => (r.status === "fulfilled" ? r.value : null)).filter(Boolean)
         );
-      } else {
-        setCurriculumItems([]);
       }
-    } catch {
-      message.error("Tải dữ liệu thất bại");
+    } catch (err) {
+      console.error("Failed to load student exams data:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // ---- Start exam assignment attempt ----
   const handleStartExam = async (assignmentStudentId: string, examId: string) => {
+    const key = `${assignmentStudentId}:${examId}`;
     try {
-      setStartingId(`${assignmentStudentId}:${examId}`);
-      const attempt = await studentLearningService.examAssignments.startAttempt(assignmentStudentId, examId);
-      const attemptId = (attempt as any)?.id;
-      if (!attemptId) throw new Error("Backend không trả về attemptId.");
+      setStartingId(key);
+      const res = await studentLearningService.examAssignments.startAttempt(
+        assignmentStudentId,
+        examId
+      );
+      const attemptId = res?.id;
+      if (!attemptId) {
+        throw new Error("Không thể khởi tạo lượt làm bài.");
+      }
       navigate(`/exam/${attemptId}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
@@ -278,14 +243,18 @@ export default function StudentMyExams() {
     }
   };
 
-  // ---- Start curriculum exam attempt ----
   const handleStartCurriculumExam = async (curriculumId: string, examId: string) => {
     const key = `${curriculumId}:${examId}`;
     try {
       setStartingId(key);
-      const attempt = await studentLearningService.curriculums.startAttempt(curriculumId, examId);
-      const attemptId = (attempt as any)?.id;
-      if (!attemptId) throw new Error("Backend không trả về attemptId.");
+      const res = await studentLearningService.curriculums.startAttempt(
+        curriculumId,
+        examId
+      );
+      const attemptId = res?.id;
+      if (!attemptId) {
+        throw new Error("Không thể khởi tạo lượt làm bài trong lộ trình.");
+      }
       navigate(`/exam/${attemptId}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
@@ -293,6 +262,106 @@ export default function StudentMyExams() {
       setStartingId(null);
     }
   };
+
+  // ==================== FLATTENED ASSIGNED EXAMS LIST ====================
+  const allAssignedExamItems = useMemo(() => {
+    const list: any[] = [];
+
+    examAssignments.forEach((row: any) => {
+      const assignmentStudentId = row.id;
+      const cls = row.class || row.assignment?.class;
+      const assignmentTitle = row.assignment?.title || "Bài thi được giao";
+      const className = cls?.name;
+      const exams: any[] = row.exams || [];
+      const exam = row.exam || row.assignment?.exam;
+      const resolvedExams = exams.length > 0 ? exams : (exam ? [{
+        examId: exam.id,
+        exam,
+        attemptsCount: row.summary?.attemptsCount ?? 0,
+        bestPercentage: row.summary?.bestPercentage,
+        status: (row.summary?.attemptsCount ?? 0) > 0 ? "in_progress" : "assigned"
+      }] : []);
+
+      resolvedExams.forEach((ep: any, idx: number) => {
+        const currentExam = ep.exam;
+        const examId = ep.examId || currentExam?.id;
+        const examTitle = currentExam?.title || currentExam?.code || `Bài thi ${idx + 1}`;
+        const attemptsCount = ep.attemptsCount ?? 0;
+        const attemptsList = row.attempts || [];
+        const examAttempts = attemptsList.filter((att: any) => att.examId === examId && att.status === "submitted");
+        const bestAttempt = examAttempts.reduce((best: any, current: any) => {
+          return (!best || parseFloat(current.percentage) > parseFloat(best.percentage)) ? current : best;
+        }, null);
+
+        const bestPct = ep.bestPercentage || bestAttempt?.percentage;
+        const bestScore = bestAttempt?.score;
+        const examType = currentExam?.examType ?? ep.examType ?? "practice";
+        const isExamType = examType === "exam";
+        const maxAttempts = ep.maxAttempts ?? row.maxAttempts ?? row.assignment?.maxAttempts;
+
+        const pctVal = parseFloat(bestPct ?? "0");
+        const mastered = ep.mastered ?? bestAttempt?.mastered ?? (pctVal >= 100);
+        const requiresRemediation = ep.requiresRemediation ?? bestAttempt?.requiresRemediation ?? (!mastered && attemptsCount >= 1 && isExamType);
+
+        const isPracticeCompleted = !isExamType && (ep.status === "completed" || ep.status === "finished" || pctVal >= 100 || mastered);
+        const isExamCompleted = isExamType && (mastered || (!requiresRemediation && (ep.status === "completed" || ep.status === "finished" || attemptsCount >= (maxAttempts || 1))));
+        const isCompleted = isExamType ? isExamCompleted : isPracticeCompleted;
+
+        list.push({
+          id: `${assignmentStudentId}_${examId}_${idx}`,
+          assignmentStudentId,
+          examId,
+          examTitle,
+          assignmentTitle,
+          className,
+          examType,
+          isExamType,
+          currentExam,
+          timeLimitSeconds: currentExam?.timeLimitSeconds,
+          maxAttempts,
+          attemptsCount,
+          bestPct,
+          bestScore,
+          bestPctVal: pctVal,
+          mastered,
+          requiresRemediation,
+          isCompleted,
+          isPracticeCompleted,
+        });
+      });
+    });
+
+    return list;
+  }, [examAssignments]);
+
+  const filteredAssignedExams = useMemo(() => {
+    return allAssignedExamItems.filter((item: any) => {
+      // 1. Search text filter
+      if (searchText.trim()) {
+        const query = searchText.toLowerCase().trim();
+        const matchesTitle = item.examTitle.toLowerCase().includes(query);
+        const matchesAssignment = item.assignmentTitle.toLowerCase().includes(query);
+        const matchesClass = item.className ? item.className.toLowerCase().includes(query) : false;
+        if (!matchesTitle && !matchesAssignment && !matchesClass) {
+          return false;
+        }
+      }
+
+      // 2. Type filter
+      if (filterType === "exam" && !item.isExamType) return false;
+      if (filterType === "practice" && item.isExamType) return false;
+
+      // 3. Status filter
+      if (filterStatus === "completed" && !item.isCompleted) return false;
+      if (filterStatus === "pending" && item.isCompleted) return false;
+
+      return true;
+    });
+  }, [allAssignedExamItems, searchText, filterType, filterStatus]);
+
+  const totalAssignedCount = allAssignedExamItems.length;
+  const completedAssignedCount = allAssignedExamItems.filter((x) => x.isCompleted).length;
+  const pendingAssignedCount = totalAssignedCount - completedAssignedCount;
 
   // ==================== EXAM ASSIGNMENTS RENDER ====================
   const renderExamAssignments = () => {
@@ -307,159 +376,239 @@ export default function StudentMyExams() {
     }
 
     return (
-      <div className="space-y-6">
-        {examAssignments.map((row: any) => {
-          const assignmentStudentId = row.id; // student-level assignment record
-          const cls = row.class || row.assignment?.class;
+      <div className="space-y-5">
+        {/* Top Filter and Search Bar */}
+        <Card className="rounded-2xl border border-slate-200/80 shadow-sm bg-white p-2">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Search Box */}
+            <div className="flex-1 min-w-[240px]">
+              <Input
+                placeholder="Tìm kiếm theo tên bài thi, mã đề hoặc lớp học..."
+                prefix={<SearchOutlined className="text-slate-400 mr-1" />}
+                allowClear
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="rounded-xl h-10 border-slate-200 hover:border-indigo-400 focus:border-indigo-500 text-sm"
+              />
+            </div>
 
-          // Get list of exams in this assignment
-          const exams: any[] = row.exams || [];
+            {/* Filter controls */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Type Filter */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                <button
+                  onClick={() => setFilterType("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "all" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  Tất cả loại ({totalAssignedCount})
+                </button>
+                <button
+                  onClick={() => setFilterType("exam")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "exam" ? "bg-white text-purple-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  📝 Kiểm tra
+                </button>
+                <button
+                  onClick={() => setFilterType("practice")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "practice" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  📘 Ôn tập
+                </button>
+              </div>
 
-          // If no exams array (e.g. legacy/pre-enriched fallback), fallback to single exam
-          const exam = row.exam || row.assignment?.exam;
-          const resolvedExams = exams.length > 0 ? exams : (exam ? [{
-            examId: exam.id,
-            exam,
-            attemptsCount: row.summary?.attemptsCount ?? 0,
-            bestPercentage: row.summary?.bestPercentage,
-            status: (row.summary?.attemptsCount ?? 0) > 0 ? "in_progress" : "assigned"
-          }] : []);
+              {/* Status Filter */}
+              <Select
+                value={filterStatus}
+                onChange={(val) => setFilterStatus(val)}
+                className="w-40 h-10 font-semibold"
+                dropdownClassName="rounded-xl"
+                options={[
+                  { value: "all", label: "Tất cả trạng thái" },
+                  { value: "pending", label: "⚡ Chưa làm / Ôn tập" },
+                  { value: "completed", label: "✓ Đã hoàn thành" },
+                ]}
+              />
+            </div>
+          </div>
 
-          const title = row.assignment?.title || "Bài thi được giao";
-          const progressPct = parseFloat(row.progressPercentage ?? "0");
-          const completedCount = row.completedExamsCount ?? 0;
-          const totalExamsCount = row.totalExamsCount ?? resolvedExams.length;
+          {/* Quick Summary Bar */}
+          <div className="flex items-center gap-6 mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+              Tổng số bài: <strong className="text-slate-800 font-bold">{totalAssignedCount}</strong>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Đã hoàn thành: <strong className="text-emerald-600 font-bold">{completedAssignedCount}</strong>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              Cần ôn tập / Chưa làm: <strong className="text-amber-600 font-bold">{pendingAssignedCount}</strong>
+            </span>
+          </div>
+        </Card>
 
-          return (
-            <Card key={row.id}
-              className="rounded-2xl border border-slate-100 hover:border-indigo-200 transition-colors overflow-hidden"
-              style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
-              bodyStyle={{ padding: 0 }}
-            >
-              {/* Header */}
-              <div className="px-6 py-5 bg-slate-50 border-b border-slate-100">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
-                      <FileTextOutlined style={{ color: "white", fontSize: 20 }} />
+        {/* Flat List View */}
+        {filteredAssignedExams.length === 0 ? (
+          <div className="py-12 bg-white rounded-2xl border border-slate-100 text-center">
+            <Empty description={<span className="text-slate-400 font-medium">Không tìm thấy bài thi nào phù hợp với bộ lọc.</span>} />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredAssignedExams.map((item: any) => {
+              const isStarting = startingId === `${item.assignmentStudentId}:${item.examId}`;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border transition-all duration-200 ${item.isCompleted
+                    ? "bg-emerald-50/40 border-emerald-100 hover:border-emerald-300"
+                    : "bg-white border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-200"}`}
+                >
+                  {/* Left info */}
+                  <div className="flex items-start gap-3.5">
+                    <div
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg shrink-0 shadow-sm ${item.isCompleted
+                        ? "bg-emerald-500 text-white"
+                        : item.isExamType
+                        ? "bg-purple-100 text-purple-600 border border-purple-200"
+                        : "bg-blue-100 text-blue-600 border border-blue-200"}`}
+                    >
+                      {item.isCompleted ? <CheckCircleOutlined /> : item.isExamType ? <FileTextOutlined /> : <BookOutlined />}
                     </div>
-                    <div>
-                      <div className="font-bold text-slate-800 text-base mb-1">{title}</div>
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                        {cls && <Tag color="blue" className="rounded-full border-none text-xs">{cls.name}</Tag>}
-                        <span className="text-xs text-slate-400">
-                          Đã hoàn thành {completedCount}/{totalExamsCount} bài
+
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-slate-800 text-base hover:text-indigo-600 transition cursor-pointer"
+                          onClick={() => {
+                            if (item.isCompleted) {
+                              setHistoryAssignmentStudentId(item.assignmentStudentId);
+                              setHistoryExamId(item.examId);
+                              setHistoryTitle(item.examTitle);
+                            } else {
+                              handleStartExam(item.assignmentStudentId, item.examId);
+                            }
+                          }}
+                        >
+                          {item.examTitle}
                         </span>
+                        <Tag color={item.isExamType ? "purple" : "blue"} className="rounded-full border-none text-[10px] font-bold px-2 py-0.5 m-0">
+                          {item.isExamType ? "📝 Kiểm tra" : "📘 Ôn tập"}
+                        </Tag>
+                        {item.className && (
+                          <Tag color="cyan" className="rounded-full border-none text-[10px] font-semibold px-2 py-0.5 m-0">
+                            Lớp: {item.className}
+                          </Tag>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                        <span className="text-slate-400 font-medium">{item.assignmentTitle}</span>
+                        {item.timeLimitSeconds ? (
+                          <span className="flex items-center gap-1 text-slate-600 font-semibold">
+                            <ClockCircleOutlined /> {Math.ceil(item.timeLimitSeconds / 60)} phút
+                          </span>
+                        ) : null}
+                        {item.maxAttempts ? (
+                          <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0">Tối đa {item.maxAttempts} lần</Tag>
+                        ) : (
+                          <Tag color="blue" className="rounded-full border-none text-[10px] px-2 m-0">♾ Không giới hạn</Tag>
+                        )}
+                        {item.attemptsCount > 0 && (
+                          <span className="text-slate-400">{item.attemptsCount} lần đã làm</span>
+                        )}
+                      </div>
+
+                      {/* Status badge */}
+                      <div className="pt-1 flex items-center gap-2">
+                        {item.isExamType ? (
+                          item.mastered ? (
+                            <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              ✓ Đã đạt (100%)
+                            </Tag>
+                          ) : item.requiresRemediation ? (
+                            <Tag color="volcano" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              ⚡ Cần ôn tập ({item.bestPctVal.toFixed(0)}%)
+                            </Tag>
+                          ) : item.isCompleted ? (
+                            <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              ✓ Đã nộp bài
+                            </Tag>
+                          ) : item.attemptsCount > 0 ? (
+                            <Tag color="orange" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              Đang làm bài
+                            </Tag>
+                          ) : (
+                            <Tag color="default" className="rounded-full border-none text-xs px-2.5 py-0.5">
+                              Chưa làm bài
+                            </Tag>
+                          )
+                        ) : (
+                          item.isCompleted ? (
+                            <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              ✓ Đã hoàn thành (100%)
+                            </Tag>
+                          ) : item.attemptsCount > 0 ? (
+                            <Tag color="orange" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              ⚡ Đang ôn tập ({item.bestPctVal.toFixed(0)}%)
+                            </Tag>
+                          ) : (
+                            <Tag color="default" className="rounded-full border-none text-xs px-2.5 py-0.5">
+                              Chưa ôn tập
+                            </Tag>
+                          )
+                        )}
                       </div>
                     </div>
                   </div>
-                  {totalExamsCount > 0 && (
-                    <div className="text-center">
-                      <div className="text-xs text-indigo-600 font-medium">Tiến độ</div>
-                      <div className="text-lg font-bold text-indigo-700">{Math.round(progressPct)}%</div>
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              {/* Exam list */}
-              {resolvedExams.length > 0 && (
-                <div className="p-4 space-y-2">
-                  {resolvedExams.map((ep: any, idx: number) => {
-                    const currentExam = ep.exam;
-                    const examId = ep.examId || currentExam?.id;
-                    const examTitle = currentExam?.title || currentExam?.code || `Bài thi ${idx + 1}`;
-                    const attemptsCount = ep.attemptsCount ?? 0;
+                  {/* Right Action buttons */}
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    {item.attemptsCount > 0 && (
+                      <Tooltip title="Xem lịch sử các lần làm">
+                        <Button
+                          size="small"
+                          icon={<HistoryOutlined />}
+                          onClick={() => {
+                            setHistoryAssignmentStudentId(item.assignmentStudentId);
+                            setHistoryExamId(item.examId);
+                            setHistoryTitle(item.examTitle);
+                          }}
+                          className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 text-xs h-9 px-3 font-semibold"
+                        >
+                          Lịch sử
+                        </Button>
+                      </Tooltip>
+                    )}
 
-                    // Find the best attempt in the assignment's attempts list (if populated)
-                    const attemptsList = row.attempts || [];
-                    const examAttempts = attemptsList.filter((att: any) => att.examId === examId && att.status === "submitted");
-                    const bestAttempt = examAttempts.reduce((best: any, current: any) => {
-                      return (!best || parseFloat(current.percentage) > parseFloat(best.percentage)) ? current : best;
-                    }, null);
-
-                    const bestPct = ep.bestPercentage || bestAttempt?.percentage;
-                    const bestScore = bestAttempt?.score;
-
-                    const maxAttempts = ep.maxAttempts ?? row.maxAttempts ?? row.assignment?.maxAttempts;
-                    const isCompleted = ep.status === "completed" || parseFloat(bestPct ?? "0") >= 100 || attemptsCount > 0;
-                    const isStarting = startingId === `${assignmentStudentId}:${examId}`;
-                    const isExhausted = maxAttempts && attemptsCount >= maxAttempts;
-
-                    return (
-                      <div key={examId || idx}
-                        className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-colors ${isCompleted
-                          ? "bg-emerald-50/50 border border-emerald-100"
-                          : "bg-slate-50/50 border border-slate-100 hover:bg-slate-100/50"}`}
+                    <Tooltip title={item.isCompleted ? "Xem lại lịch sử làm bài" : undefined}>
+                      <Button
+                        size="small"
+                        type={item.isCompleted ? "default" : "primary"}
+                        icon={item.isCompleted ? <HistoryOutlined /> : <PlayCircleOutlined />}
+                        loading={isStarting}
+                        onClick={() => {
+                          if (item.isCompleted) {
+                            setHistoryAssignmentStudentId(item.assignmentStudentId);
+                            setHistoryExamId(item.examId);
+                            setHistoryTitle(item.examTitle);
+                          } else {
+                            handleStartExam(item.assignmentStudentId, item.examId);
+                          }
+                        }}
+                        className={`rounded-xl font-bold text-xs h-9 px-4 transition ${item.isCompleted
+                          ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                          : "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20"}`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${isCompleted
-                            ? "bg-emerald-500 text-white"
-                            : "bg-white border border-slate-200 text-slate-600"}`}>
-                            {isCompleted ? <CheckCircleOutlined /> : idx + 1}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-800 text-sm">{examTitle}</div>
-                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              {currentExam?.timeLimitSeconds ? (
-                                <span className="text-slate-500 text-xs flex items-center gap-1">
-                                  <ClockCircleOutlined /> {Math.ceil(currentExam.timeLimitSeconds / 60)} phút
-                                </span>
-                              ) : null}
-                              {maxAttempts ? (
-                                <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0">Tối đa {maxAttempts} lần</Tag>
-                              ) : (
-                                <Tag color="blue" className="rounded-full border-none text-[10px] px-2 m-0">♾ Không giới hạn</Tag>
-                              )}
-                              {attemptsCount > 0 && (
-                                <span className="text-slate-400 text-xs">{attemptsCount} lần đã làm</span>
-                              )}
-                              {bestPct && (
-                                <span className="text-xs font-semibold" style={{ color: percentColor(bestPct) }}>
-                                  Tốt nhất: {bestScore !== undefined ? `${bestScore}` : ""} ({parseFloat(bestPct).toFixed(1)}%)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {attemptsCount > 0 && (
-                            <Tooltip title="Xem lịch sử làm bài">
-                              <Button size="small" icon={<HistoryOutlined />}
-                                onClick={() => {
-                                  setHistoryAssignmentStudentId(assignmentStudentId);
-                                  setHistoryExamId(examId);
-                                  setHistoryTitle(examTitle);
-                                }}
-                                className="rounded-lg border-slate-200 text-slate-600 hover:indigo-600 text-xs h-8 px-2"
-                              />
-                            </Tooltip>
-                          )}
-                          <Tooltip title={isExhausted ? "Đã hết lượt làm bài" : undefined}>
-                            <Button size="small"
-                              type={isCompleted ? "default" : "primary"}
-                              icon={isCompleted ? <ReloadOutlined /> : <PlayCircleOutlined />}
-                              loading={isStarting}
-                              disabled={isExhausted}
-                              onClick={() => handleStartExam(assignmentStudentId, examId)}
-                              className={`rounded-lg font-semibold text-xs h-8 px-3 ${isCompleted
-                                ? "border-emerald-200 text-emerald-600 hover:border-emerald-400"
-                                : "shadow-sm shadow-indigo-500/20"}`}
-                            >
-                              {isExhausted ? "Hết lượt" : isCompleted ? "Làm lại" : "Làm bài"}
-                            </Button>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        {item.isCompleted ? "Xem bài làm" : item.requiresRemediation ? "Ôn tập câu sai" : item.attemptsCount > 0 ? "Làm tiếp" : "Làm bài"}
+                      </Button>
+                    </Tooltip>
+                  </div>
                 </div>
-              )}
-            </Card>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
@@ -542,13 +691,18 @@ export default function StudentMyExams() {
                       const examId = ep.examId || exam?.id;
                       const examTitle = exam?.title || exam?.code || `Bài thi ${idx + 1}`;
                       const isRequired = ep.isRequired ?? ep.curriculumExam?.isRequired ?? true;
-                      const attemptsCount = ep.attemptsCount ?? 0;
-                      const isCompleted = ep.status === "completed" || ep.completedAt != null || attemptsCount > 0;
-                      const bestScore = ep.bestScore;
-                      const bestPct = ep.bestPercentage;
+                      const examType = exam?.examType ?? ep.examType ?? "practice";
+                      const isExamType = examType === "exam";
+                      const bestPctVal = parseFloat(bestPct ?? "0");
+                      const isPracticeMode = !isExamType;
+                      const isMastered = ep.mastered ?? (bestPctVal >= 100);
+                      const requiresRemediation = ep.requiresRemediation ?? (!isMastered && attemptsCount >= 1 && isExamType);
+                      const isPracticeCompleted = isPracticeMode && (ep.status === "completed" || ep.status === "finished" || ep.completedAt != null || bestPctVal >= 100 || isMastered);
+                      const isExamCompleted = isExamType && (isMastered || (!requiresRemediation && (ep.status === "completed" || ep.status === "finished" || ep.completedAt != null || attemptsCount >= (maxAttempts || 1))));
+                      const isCompleted = isExamType ? isExamCompleted : isPracticeCompleted;
                       const startKey = `${curriculumId}:${examId}`;
                       const isStarting = startingId === startKey;
-                      const isExhausted = maxAttempts && attemptsCount >= maxAttempts;
+                      const isExhausted = (isExamType && !requiresRemediation && attemptsCount >= 1) || (maxAttempts && attemptsCount >= maxAttempts);
 
                       return (
                         <div key={examId || idx}
@@ -565,16 +719,51 @@ export default function StudentMyExams() {
                             <div>
                               <div className="font-semibold text-slate-800 text-sm">{examTitle}</div>
                               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                <Tag color={isExamType ? "purple" : "blue"} className="rounded-full border-none text-[10px] px-2 m-0 font-semibold">
+                                  {isExamType ? "📝 Kiểm tra" : "📘 Ôn tập"}
+                                </Tag>
                                 {isRequired
                                   ? <Tag color="red" className="rounded-full border-none text-[10px] px-2 m-0">Bắt buộc</Tag>
                                   : <Tag color="default" className="rounded-full border-none text-[10px] px-2 m-0">Tuỳ chọn</Tag>}
                                 {attemptsCount > 0 && (
                                   <span className="text-slate-400 text-xs">{attemptsCount} lần đã làm</span>
                                 )}
-                                {bestScore && (
-                                  <span className="text-xs font-medium" style={{ color: percentColor(bestPct) }}>
-                                    Tốt nhất: {bestScore} ({parseFloat(bestPct ?? "0").toFixed(1)}%)
-                                  </span>
+                                {isPracticeMode ? (
+                                  isPracticeCompleted ? (
+                                    <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
+                                      ✓ Đã hoàn thành (100%)
+                                    </Tag>
+                                  ) : attemptsCount > 0 ? (
+                                    <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
+                                      ⚡ Đang ôn tập ({bestPctVal.toFixed(0)}%)
+                                    </Tag>
+                                  ) : (
+                                    <Tag color="default" className="rounded-full border-none text-[10px] px-2 m-0">
+                                      Chưa ôn tập
+                                    </Tag>
+                                  )
+                                ) : (
+                                  isMastered ? (
+                                    <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
+                                      ✓ Đã đạt (100%)
+                                    </Tag>
+                                  ) : requiresRemediation ? (
+                                    <Tag color="volcano" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
+                                      ⚡ Cần ôn tập ({bestPctVal.toFixed(0)}%)
+                                    </Tag>
+                                  ) : isExamCompleted ? (
+                                    <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
+                                      ✓ Đã nộp bài
+                                    </Tag>
+                                  ) : attemptsCount > 0 ? (
+                                    <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
+                                      Đang làm bài
+                                    </Tag>
+                                  ) : (
+                                    <Tag color="default" className="rounded-full border-none text-[10px] px-2 m-0">
+                                      Chưa làm bài
+                                    </Tag>
+                                  )
                                 )}
                               </div>
                             </div>
@@ -593,18 +782,26 @@ export default function StudentMyExams() {
                                 />
                               </Tooltip>
                             )}
-                            <Tooltip title={isExhausted ? "Đã hết lượt làm bài" : undefined}>
+                            <Tooltip title={isCompleted ? "Xem lại lịch sử bài làm" : isExhausted ? "Đã hết lượt làm bài" : undefined}>
                               <Button size="small"
                                 type={isCompleted ? "default" : "primary"}
-                                icon={isCompleted ? <ReloadOutlined /> : <PlayCircleOutlined />}
+                                icon={isCompleted ? <HistoryOutlined /> : <PlayCircleOutlined />}
                                 loading={isStarting}
-                                disabled={isExhausted}
-                                onClick={() => handleStartCurriculumExam(curriculumId, examId)}
+                                disabled={isExamType ? false : isExhausted}
+                                onClick={() => {
+                                  if (isCompleted && item.enrollmentId) {
+                                    setHistoryAssignmentStudentId(item.enrollmentId);
+                                    setHistoryExamId(examId);
+                                    setHistoryTitle(examTitle);
+                                  } else {
+                                    handleStartCurriculumExam(curriculumId, examId);
+                                  }
+                                }}
                                 className={`rounded-lg font-semibold text-xs h-8 px-3 ${isCompleted
                                   ? "border-emerald-200 text-emerald-600 hover:border-emerald-400"
                                   : "shadow-sm shadow-indigo-500/20"}`}
                               >
-                                {isExhausted ? "Hết lượt" : isCompleted ? "Làm lại" : "Làm bài"}
+                                {isCompleted ? "Xem bài làm" : requiresRemediation ? "Ôn tập câu sai" : attemptsCount > 0 ? "Làm tiếp" : "Làm bài"}
                               </Button>
                             </Tooltip>
                           </div>

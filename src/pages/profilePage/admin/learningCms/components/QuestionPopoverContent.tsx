@@ -79,10 +79,18 @@ function getCorrectAnswerText(question: Question): string | null {
 export default function QuestionPopoverContent({ question, skills, levels, topics, tags }: Props) {
   if (!question) return null;
 
-  const skill = skills.find((s) => s.id === question.skillId);
-  const level = levels.find((l) => l.id === question.difficultyLevelId);
-  const topic = topics.find((t) => t.id === question.topicId);
-  const qTags = (question.tagIds ?? [])
+  const skill = skills.find((s) => s.id === (question.skillId ?? (question as any).skill?.id));
+  const level = levels.find((l) => l.id === (question.difficultyLevelId ?? (question as any).levelId ?? (question as any).difficultyLevel?.id ?? (question as any).level?.id));
+  const topic = topics.find((t) => t.id === (question.topicId ?? (question as any).topic?.id));
+
+  const qTagIds = [
+    ...(question.tagIds ?? []),
+    ...(Array.isArray((question as any).tags)
+      ? (question as any).tags.map((t: any) => (typeof t === "string" ? t : t?.id))
+      : []),
+  ].filter(Boolean);
+
+  const qTags = Array.from(new Set(qTagIds))
     .map((tid) => tags.find((t) => t.id === tid))
     .filter(Boolean) as TaxonomyItem[];
 

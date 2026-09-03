@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Layout from "./components/Layout";
 import ExamLayout from "./pages/coursePage/ExamLayout";
@@ -17,6 +17,14 @@ const Login = lazy(() => import("./pages/loginPage/Login"));
 const Register = lazy(() => import("./pages/loginPage/Register"));
 const ForgotPassword = lazy(() => import("./pages/loginPage/ForgotPassword"));
 const Profile = lazy(() => import("./pages/profilePage/Profile"));
+const UserProfile = lazy(() => import("./pages/profilePage/userProfile"));
+const AdminDashboard = lazy(() => import("./pages/profilePage/admin/AdminDashboard"));
+const LearningCms = lazy(() => import("./pages/profilePage/admin/LearningCms"));
+const RbacManagement = lazy(() => import("./pages/profilePage/admin/RbacManagement"));
+const AdminAboutUs = lazy(() => import("./pages/profilePage/admin/AdminAboutUs"));
+const TeacherAssignments = lazy(() => import("./pages/profilePage/teacher/TeacherAssignments"));
+const StudentMyExams = lazy(() => import("./pages/profilePage/student/StudentMyExams"));
+const Leaderboard = lazy(() => import("./pages/profilePage/Leaderboard"));
 
 export default function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -65,6 +73,8 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            
+            {/* Legacy Profile Route */}
             <Route
               path="profile"
               element={
@@ -73,6 +83,57 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
+            {/* Admin Dedicated Nested Routes */}
+            <Route
+              path="admin"
+              element={
+                <ProtectedRoute roles={["admin"]}>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="profile" element={<UserProfile />} />
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="dashboard/centers/:centerId" element={<AdminDashboard />} />
+              <Route path="cms/*" element={<LearningCms />} />
+              <Route path="ranking" element={<Leaderboard />} />
+              <Route path="rbac/*" element={<RbacManagement />} />
+              <Route path="about" element={<AdminAboutUs />} />
+            </Route>
+
+            {/* Teacher Dedicated Nested Routes */}
+            <Route
+              path="teacher"
+              element={
+                <ProtectedRoute roles={["teacher"]}>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/teacher/profile" replace />} />
+              <Route path="profile" element={<UserProfile />} />
+              <Route path="cms/*" element={<LearningCms />} />
+              <Route path="assignments" element={<TeacherAssignments />} />
+              <Route path="assignments/:classId" element={<TeacherAssignments />} />
+              <Route path="ranking" element={<Leaderboard />} />
+            </Route>
+
+            {/* Student Dedicated Nested Routes */}
+            <Route
+              path="student"
+              element={
+                <ProtectedRoute roles={["student"]}>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/student/profile" replace />} />
+              <Route path="profile" element={<UserProfile />} />
+              <Route path="my-exams" element={<StudentMyExams />} />
+              <Route path="ranking" element={<Leaderboard />} />
+            </Route>
           </Route>
 
           <Route path="/exam/:examId" element={<ExamLayout />}>

@@ -95,6 +95,7 @@ function findMockQuestion(prompt: string, type: string) {
 
 export function parseBackendAnswer(type: string, ansObj: any): any {
   if (!ansObj) return undefined;
+  if (typeof ansObj === "string") return ansObj;
 
   switch (type) {
     case "multiple_choice":
@@ -104,33 +105,35 @@ export function parseBackendAnswer(type: string, ansObj: any): any {
     case "multiple-choice":
     case "listening":
     case "true-false":
-      return ansObj.selectedOptionIds?.[0];
+      if (Array.isArray(ansObj)) return ansObj[0];
+      return ansObj.selectedOptionIds?.[0] || ansObj.value || ansObj.id || ansObj.text || ansObj;
 
     case "word_ordering":
     case "word-ordering":
-      return ansObj.tokens || [];
+      if (Array.isArray(ansObj)) return ansObj;
+      return ansObj.tokens || ansObj.words || [];
 
     case "sentence_rewrite":
     case "hint_rewrite":
     case "fill-in-the-blank":
-      return ansObj.text || "";
+      if (Array.isArray(ansObj)) return ansObj[0] || "";
+      return ansObj.text || ansObj.acceptedAnswers?.[0] || ansObj.value || "";
 
     case "error_correction":
-      return ansObj.correctedSentence || "";
+      return ansObj.correctedSentence || ansObj.text || ansObj;
 
     case "matching": {
       const pairsObj: Record<string, string> = {};
-      if (Array.isArray(ansObj.pairs)) {
-        ansObj.pairs.forEach((p: any) => {
-          if (p.leftItemId) {
-            pairsObj[p.leftItemId] = p.rightItemId;
-          }
-        });
-      }
-      return pairsObj;
+      const pairs = Array.isArray(ansObj.pairs) ? ansObj.pairs : (Array.isArray(ansObj) ? ansObj : []);
+      pairs.forEach((p: any) => {
+        if (p.leftItemId) {
+          pairsObj[p.leftItemId] = p.rightItemId;
+        }
+      });
+      return Object.keys(pairsObj).length > 0 ? pairsObj : ansObj;
     }
   }
-  return undefined;
+  return ansObj;
 }
 
 function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
@@ -153,15 +156,43 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
       const attemptContent = [snapshot.instruction, snapshot.prompt].filter(Boolean).join("\n\n");
       const mockQuestion = findMockQuestion(attemptContent, answer.questionType);
 
+      const snapshotCorrectOpt = snapshot.options?.find(
+        (o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true")
+      );
+      const snapshotCorrectId = snapshotCorrectOpt ? (snapshotCorrectOpt.id || snapshotCorrectOpt.label || snapshotCorrectOpt.content) : undefined;
+
+      const rawDetailCorrect = (detail as any).correctOptionId ||
+        (Array.isArray((detail as any).correctOptionIds) ? (detail as any).correctOptionIds[0] : undefined) ||
+        (detail as any).correctAnswer ||
+        (detail as any).correctTokens ||
+        (detail as any).acceptedAnswers?.[0];
+
+      const backendCorrectAnswer =
+        parseBackendAnswer(answer.questionType, answer.correctAnswer) ??
+        parseBackendAnswer(answer.questionType, (snapshot as any).correctAnswer) ??
+        parseBackendAnswer(answer.questionType, rawDetailCorrect) ??
+        snapshotCorrectId ??
+        mockQuestion?.correctAnswer;
+
       let options =
         answer.questionType === "word_ordering"
           ? ((detail.correctTokens as string[] | undefined) || (detail.tokens as string[] | undefined) || [])
-          : snapshot.options?.map((option) => ({
-              id: option.id,
-              label: option.label,
-              content: option.content,
-              orderIndex: option.orderIndex,
-            }));
+          : snapshot.options?.map((option) => {
+              const optionId = option.id || option.content;
+              const isOptCorrect =
+                (option as any).isCorrect === true ||
+                String((option as any).isCorrect) === "true" ||
+                (detail as any).correctOptionId === optionId ||
+                (Array.isArray((detail as any).correctOptionIds) && (detail as any).correctOptionIds.includes(optionId)) ||
+                (backendCorrectAnswer !== undefined && (String(backendCorrectAnswer) === String(optionId) || String(backendCorrectAnswer) === String(option.label)));
+              return {
+                id: option.id,
+                label: option.label,
+                content: option.content,
+                orderIndex: option.orderIndex,
+                isCorrect: isOptCorrect,
+              };
+            });
 
       if ((!options || options.length === 0) && mockQuestion?.options) {
         options = mockQuestion.options;
@@ -188,7 +219,6 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         rightItems = mockQuestion.rightItems.map((item: string) => ({ id: item, text: item }));
       }
 
-      const backendCorrectAnswer = parseBackendAnswer(answer.questionType, answer.correctAnswer);
       const backendExplanation = answer.feedback?.explanation || answer.question?.feedback?.explanation || answer.question?.explanation;
 
       return {
@@ -201,10 +231,11 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         options,
         leftItems,
         rightItems,
-        correctAnswer: backendCorrectAnswer !== undefined ? backendCorrectAnswer : mockQuestion?.correctAnswer,
+        correctAnswer: backendCorrectAnswer,
         explanation: backendExplanation || mockQuestion?.explanation || "",
         userAnswer: parseBackendAnswer(answer.questionType, answer.answer),
         isCorrect: answer.isCorrect,
+        answeredAt: (answer as any).answeredAt,
         sourceSentence: detail.sourceSentence || mockQuestion?.sourceSentence,
         incorrectSentence: detail.incorrectSentence || mockQuestion?.incorrectSentence,
         hintWord: detail.hintWord || mockQuestion?.hintWord,
@@ -215,6 +246,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     id: attempt.id,
     title: attempt.exam?.title || "Bai thi",
     timeLimit: attempt.timeLimitSecondsSnapshot || attempt.exam?.timeLimitSeconds || 0,
+    examType: (attempt as any).examType || (attempt as any).examTypeSnapshot || attempt.exam?.examType || "practice",
     status: attempt.status,
     score: attempt.score,
     maxScore: attempt.maxScore,
@@ -225,6 +257,13 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     curriculumAssignmentStudentId: attempt.curriculumAssignmentStudentId,
     source: attempt.source,
     curriculumId: (attempt as any).curriculumId,
+    expiresAt: attempt.expiresAt,
+    attemptPhase: attempt.attemptPhase,
+    taskStatus: attempt.taskStatus,
+    mastered: attempt.mastered,
+    requiresRemediation: attempt.requiresRemediation,
+    remainingQuestionCount: attempt.remainingQuestionCount,
+    firstAttemptResult: attempt.firstAttemptResult,
   } as any;
 }
 
@@ -273,28 +312,32 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
           }
         }
 
-        // Fetch detailed question content for reading_comprehension questions to retrieve the passage
+        // Fetch detailed question content for all questions to retrieve correct options, passages & explanations
         if (attempt?.answers) {
           await Promise.allSettled(
             attempt.answers.map(async (answer) => {
-              if (
-                (answer.questionType === "reading_comprehension" ||
-                 answer.questionType === "reading-comprehension") &&
-                answer.questionId
-              ) {
+              if (answer.questionId) {
                 try {
                   const fullQuestion = await learningCmsService.questions.get(answer.questionId);
-                  if (fullQuestion && fullQuestion.detail) {
+                  if (fullQuestion) {
                     if (!answer.question) {
                       answer.question = {} as any;
                     }
-                    answer.question.detail = {
-                      ...answer.question.detail,
-                      ...fullQuestion.detail,
-                    };
+                    if (fullQuestion.options && fullQuestion.options.length > 0) {
+                      answer.question.options = fullQuestion.options as any;
+                    }
+                    if (fullQuestion.explanation) {
+                      answer.question.explanation = fullQuestion.explanation;
+                    }
+                    if (fullQuestion.detail) {
+                      answer.question.detail = {
+                        ...answer.question.detail,
+                        ...fullQuestion.detail,
+                      };
+                    }
                   }
                 } catch (qErr) {
-                  console.error("Failed to fetch detailed reading comprehension question:", qErr);
+                  console.error("Failed to fetch detailed question:", qErr);
                 }
               }
             })
@@ -305,9 +348,14 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
           setExamData(mapAttemptToExamData(attempt));
           setError(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (active) {
-          setError(err instanceof Error ? err.message : "Khong the tai du lieu bai thi.");
+          const msg = err instanceof Error ? err.message : "Không thể tải dữ liệu bài thi.";
+          setError(
+            msg.includes("trùng") || msg.includes("ràng buộc") || msg.includes("Conflict")
+              ? "Lượt làm bài này đã được nộp hoặc xảy ra xung đột dữ liệu. Vui lòng quay lại danh sách đề thi để bắt đầu lượt mới."
+              : msg
+          );
         }
       } finally {
         if (active) setIsLoading(false);
@@ -331,10 +379,21 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
   if (error || !examData) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-        <div className="text-center text-red-500">
-          <BugOutlined className="text-4xl mb-4" />
-          <p>{error || "Loi tai bai thi"}</p>
-        </div>
+        <Result
+          status="warning"
+          title="Không thể tải bài thi"
+          subTitle={error || "Lượt làm bài này đã hoàn thành hoặc không còn tồn tại."}
+          extra={[
+            <Button
+              key="back"
+              type="primary"
+              onClick={() => window.history.back()}
+              className="rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700"
+            >
+              Quay lại danh sách bài thi
+            </Button>,
+          ]}
+        />
       </div>
     );
   }

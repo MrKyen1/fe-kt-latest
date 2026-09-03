@@ -1,14 +1,14 @@
-import { Form, Input, InputNumber, Modal } from "antd";
+import { Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { BookOutlined } from "@ant-design/icons";
 
 // ── Types ────────────────────────────────────────────────────
 
 interface Props {
-  open:      boolean;
-  onCancel:  () => void;
-  form:      FormInstance;
-  onFinish:  (values: any) => void;
+  open: boolean;
+  onCancel: () => void;
+  form: FormInstance;
+  onFinish: (values: any) => void;
   isEditing: boolean;
 }
 
@@ -44,6 +44,22 @@ export default function ExamFormModal({ open, onCancel, form, onFinish, isEditin
 
         <Form.Item name="title" label="Tiêu đề đề thi" rules={[{ required: true }]}>
           <Input placeholder="Ví dụ: Đề kiểm tra giữa kỳ 1" className="rounded-xl" />
+        </Form.Item>
+
+        <Form.Item
+          name="examType"
+          label="Loại đề thi"
+          initialValue="practice"
+          rules={[{ required: true, message: "Vui lòng chọn loại đề thi!" }]}
+        >
+          <Select className="rounded-xl">
+            <Select.Option value="practice">
+              Đề ôn tập (Làm nhiều lần cho tới khi đúng hết 100%)
+            </Select.Option>
+            <Select.Option value="exam">
+              Đề kiểm tra (Làm 1 lần duy nhất)
+            </Select.Option>
+          </Select>
         </Form.Item>
 
         <Form.Item

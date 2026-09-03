@@ -128,6 +128,7 @@ export interface RandomQuestionCriteria {
   skillId?: string;
   topicId?: string;
   type?: QuestionType;
+  tagId?: string;
 }
 
 export interface RandomQuestionsRequest {

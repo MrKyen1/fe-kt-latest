@@ -52,11 +52,19 @@ export interface ExamData {
   id: string;
   title: string;
   timeLimit: number; // in seconds
+  examType?: "practice" | "exam";
   status?: "in_progress" | "submitted";
   score?: string;
   maxScore?: string;
   percentage?: string;
   questions: ExamQuestion[];
+  expiresAt?: string | null;
+  attemptPhase?: "initial" | "remediation";
+  taskStatus?: "in_progress" | "mastered" | "remediation_required";
+  mastered?: boolean;
+  requiresRemediation?: boolean;
+  remainingQuestionCount?: number;
+  firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
 }
 
 export interface ExamState {

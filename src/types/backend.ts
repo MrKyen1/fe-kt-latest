@@ -302,6 +302,7 @@ export interface Exam {
   title: string;
   description?: string;
   timeLimitSeconds?: number;
+  examType?: "practice" | "exam";
   /** ID của version được publish hiện tại */
   currentVersionId?: string;
   /** true khi exam đã sửa sau publish, cần republish */
@@ -514,6 +515,13 @@ export interface Attempt {
   cumulativeCorrectCount?: number;
   gradingStatus?: string;
   answers?: AttemptAnswer[];
+  attemptPhase?: "initial" | "remediation";
+  expiresAt?: string | null;
+  firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
+  remainingQuestionCount?: number;
+  mastered?: boolean;
+  requiresRemediation?: boolean;
+  taskStatus?: "in_progress" | "mastered" | "remediation_required";
 }
 
 export interface ExamAssignmentAnalytics {

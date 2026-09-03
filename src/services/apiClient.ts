@@ -146,6 +146,21 @@ export function normalizeApiError(error: unknown) {
   return new ApiError("Unknown API error");
 }
 
+export function getErrorMessage(error: unknown, fallback = "Đã có lỗi xảy ra"): string {
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  const anyErr = error as any;
+  if (anyErr?.response?.data?.message) {
+    const msg = anyErr.response.data.message;
+    return Array.isArray(msg) ? msg.join(", ") : String(msg);
+  }
+  if (anyErr?.message) {
+    const msg = anyErr.message;
+    return Array.isArray(msg) ? msg.join(", ") : String(msg);
+  }
+  return fallback;
+}
+
 export function unwrapData<T>(response: AxiosResponse<ApiEnvelope<T>>) {
   return response.data.data;
 }

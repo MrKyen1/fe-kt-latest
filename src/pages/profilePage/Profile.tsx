@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation, useNavigate, useOutlet } from "react-router-dom";
 
 
 import {
@@ -281,11 +281,35 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
 
 export default function Profile() {
   const { user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const menuKey = searchParams.get("tab") || "profile";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const outlet = useOutlet();
+  const [searchParams] = useSearchParams();
+
+  const rolePrefix = useMemo(() => {
+    if (user?.role === "student") return "student";
+    if (user?.role === "teacher") return "teacher";
+    return "admin";
+  }, [user?.role]);
+
+  const menuKey = useMemo(() => {
+    const pathSegments = location.pathname.split("/").filter(Boolean);
+    if (pathSegments.length >= 2 && (pathSegments[0] === "admin" || pathSegments[0] === "teacher" || pathSegments[0] === "student")) {
+      return pathSegments[1];
+    }
+    return searchParams.get("tab") || (rolePrefix === "admin" ? "dashboard" : "profile");
+  }, [location.pathname, searchParams, rolePrefix]);
+
+  useEffect(() => {
+    if (location.pathname === "/profile") {
+      const tabParam = searchParams.get("tab");
+      const defaultTab = tabParam || (rolePrefix === "admin" ? "dashboard" : "profile");
+      navigate(`/${rolePrefix}/${defaultTab}`, { replace: true });
+    }
+  }, [location.pathname, searchParams, rolePrefix, navigate]);
 
   const handleTabChange = (key: string) => {
-    setSearchParams({ tab: key });
+    navigate(`/${rolePrefix}/${key}`);
   };
 
   const [students, setStudents] = useState<Student[]>([]);
@@ -501,6 +525,7 @@ export default function Profile() {
   };
 
   const renderContent = () => {
+    if (outlet) return outlet;
     if (user?.role === "student") return renderStudentContent();
     if (user?.role === "teacher") return renderTeacherContent();
     return renderAdminContent();

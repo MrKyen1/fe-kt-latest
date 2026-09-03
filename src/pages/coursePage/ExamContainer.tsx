@@ -20,9 +20,7 @@ type AnswerValue = string | string[] | Record<string, string>;
 // checkIsCorrect được giữ lại chỉ dùng để hiển thị optimistic UI trước khi BE trả kết quả.
 // Kết quả thực tế luôn lấy từ response của submitAnswer API.
 const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean => {
-  if (answer === undefined || answer === null) return false;
-  const correct = question.correctAnswer;
-  if (correct === undefined || correct === null) return false;
+  if (answer === undefined || answer === null || answer === "") return false;
 
   const normalizeText = (text: any): string => {
     if (typeof text !== "string") return "";
@@ -33,6 +31,10 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
       .replace(/\s+/g, " ");
   };
 
+  const norm = (text: any): string => normalizeText(text);
+  const ansStr = norm(answer);
+  const correct = question.correctAnswer;
+
   switch (question.type) {
     case "multiple_choice":
     case "audio_choice":
@@ -41,7 +43,48 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
     case "multiple-choice":
     case "listening":
     case "true-false": {
-      return normalizeText(answer) === normalizeText(correct);
+      const options: any[] = question.options || [];
+
+      // 1. Check if selected option object itself has isCorrect === true
+      const ansOpt = options.find((o: any) => {
+        const val = typeof o === "string" ? { content: o } : o;
+        return (
+          norm(val.id) === ansStr ||
+          norm(val.label) === ansStr ||
+          norm(val.content) === ansStr
+        );
+      });
+
+      if (ansOpt && (ansOpt.isCorrect === true || String((ansOpt as any).isCorrect) === "true")) {
+        return true;
+      }
+
+      // 2. Check if question.correctAnswer matches answer or ansOpt
+      if (correct !== undefined && correct !== null && correct !== "") {
+        const corrStr = norm(correct);
+        if (ansStr === corrStr) return true;
+        if (ansOpt) {
+          if (norm(ansOpt.id) === corrStr || norm(ansOpt.label) === corrStr || norm(ansOpt.content) === corrStr) {
+            return true;
+          }
+        }
+        if (typeof correct === "object" && Array.isArray((correct as any).selectedOptionIds)) {
+          const ids = (correct as any).selectedOptionIds.map(norm);
+          if (ids.includes(ansStr) || (ansOpt && (ids.includes(norm(ansOpt.id)) || ids.includes(norm(ansOpt.label)) || ids.includes(norm(ansOpt.content))))) {
+            return true;
+          }
+        }
+      }
+
+      // 3. Fallback: match against any option in options list that has isCorrect: true
+      const correctOpt = options.find((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"));
+      if (correctOpt && ansOpt) {
+        if (ansOpt === correctOpt || (ansOpt.id && ansOpt.id === correctOpt.id) || (ansOpt.content && norm(ansOpt.content) === norm(correctOpt.content))) {
+          return true;
+        }
+      }
+
+      return false;
     }
 
     case "word_ordering":
@@ -121,13 +164,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
     const initial: Record<string, AnswerValue> = {};
-    if (examData.status === "submitted") {
-      examData.questions.forEach((q) => {
-        if ((q as any).userAnswer !== undefined) {
-          initial[q.id] = (q as any).userAnswer;
-        }
-      });
-    }
+    // Load userAnswer cho cả submitted và in_progress (câu đã làm từ phiên trước)
+    examData.questions.forEach((q) => {
+      if ((q as any).userAnswer !== undefined) {
+        initial[q.id] = (q as any).userAnswer;
+      }
+    });
     return initial;
   });
 
@@ -135,34 +177,47 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     Record<string, "correct" | "wrong">
   >(() => {
     const initial: Record<string, "correct" | "wrong"> = {};
-    if (examData.status === "submitted") {
+    // Init cho cả submitted và in_progress (câu đã được chấm từ phiên trước)
+    // Không check status, chỉ cần question có isCorrect thì là đã trả lời rồi
+    examData.questions.forEach((q) => {
+      if ((q as any).isCorrect !== undefined) {
+        initial[q.id] = (q as any).isCorrect ? "correct" : "wrong";
+      }
+    });
+    return initial;
+  });
+
+  const isPracticeMode = examData.examType !== "exam";
+  const isInitialExam =
+    !isPracticeMode &&
+    (examData.attemptPhase === "initial" ||
+      (examData as any).attemptNumber === 1 ||
+      !(examData as any).attemptNumber);
+
+  // Track which questions have been answered and locked.
+  // Trong lượt thi đầu của bài kiểm tra (isInitialExam), học sinh KHÔNG bị khóa câu hỏi và được đổi/sửa đáp án tự do.
+  const [lockedQuestions, setLockedQuestions] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    if (!isInitialExam) {
       examData.questions.forEach((q) => {
-        if ((q as any).isCorrect !== undefined) {
-          initial[q.id] = (q as any).isCorrect ? "correct" : "wrong";
+        if ((q as any).answeredAt || (q as any).userAnswer !== undefined) {
+          initial[q.id] = true;
         }
       });
     }
     return initial;
   });
 
-  // Track which questions have been answered (answeredAt != null) — these are locked on BE.
-  const [lockedQuestions, setLockedQuestions] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    if (examData.status === "submitted") {
-      examData.questions.forEach((q) => {
-        if ((q as any).answeredAt) initial[q.id] = true;
-      });
-    } else {
-      // Restore locked state from attempt answers (in_progress resume)
-      examData.questions.forEach((q) => {
-        if ((q as any).answeredAt) initial[q.id] = true;
-      });
-    }
-    return initial;
-  });
-
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(examData.timeLimit);
+  const [timeRemaining, setTimeRemaining] = useState<number>(() => {
+    if (examData.expiresAt) {
+      const expiresMs = new Date(examData.expiresAt).getTime();
+      const nowMs = Date.now();
+      const diffSec = Math.floor((expiresMs - nowMs) / 1000);
+      return Math.max(0, diffSec);
+    }
+    return examData.timeLimit || 0;
+  });
   const [showFeedback, setShowFeedback] = useState(() => examData.status === "submitted");
   const [isCorrect, setIsCorrect] = useState(false);
   const [isExamComplete, setIsExamComplete] = useState(false);
@@ -204,7 +259,30 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return initial;
   });
 
-  const rawQuestion = examData.questions[currentIndex];
+  // Backend startAttempt filters practice questions automatically.
+  // activeQuestions are directly examData.questions returned from BE.
+  const activeQuestions = examData.questions;
+
+  // Current mastered count in this attempt
+  const currentMasteredCount = useMemo(() => {
+    let count = 0;
+    examData.questions.forEach((q) => {
+      if (questionResults[q.id] === "correct" || (q as any).isCorrect === true) {
+        count++;
+      }
+    });
+    return count;
+  }, [examData.questions, questionResults]);
+
+  const isPracticeCompleted100 =
+    isPracticeMode &&
+    !isReviewMode &&
+    (examData.questions.length === 0 || (currentMasteredCount === examData.questions.length && examData.questions.length > 0));
+
+  const totalQuestions = activeQuestions.length;
+  const safeIndex = currentIndex >= totalQuestions ? 0 : currentIndex;
+  const rawQuestion = activeQuestions[safeIndex] || examData.questions[0];
+
   const currentQuestion = useMemo(() => {
     if (!rawQuestion) return rawQuestion;
     return {
@@ -213,42 +291,41 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       explanation: explanations[rawQuestion.id] !== undefined ? explanations[rawQuestion.id] : rawQuestion.explanation,
     };
   }, [rawQuestion, correctAnswers, explanations]);
-  const totalQuestions = examData.questions.length;
-  const progressPercent = (currentIndex / totalQuestions) * 100;
 
-  const handleBackClick = () => {
-    if (isReviewMode) {
-      navigate(-1);
-      return;
-    }
-    Modal.confirm({
-      title: "Quay lại khóa học",
-      content:
-        "Bạn chắc chắn muốn quay lại? Tiến độ làm bài sẽ không được lưu.",
-      style: {
-        top: 200,
-      },
-      okText: "Quay lại",
-      okType: "danger",
-      cancelText: "Tiếp tục",
-      onOk() {
-        navigate(-1);
-      },
-    });
-  };
+  const progressPercent = totalQuestions > 0 ? (currentMasteredCount / totalQuestions) * 100 : 100;
 
   // Timer logic
   useEffect(() => {
-    if (isReviewMode) return;
+    if (isReviewMode || isExamComplete) return;
+    if (examData.timeLimit <= 0 && !examData.expiresAt) return;
+
     if (timeRemaining <= 0) {
       handleFinish();
       return;
     }
+
     const timer = setInterval(() => {
-      setTimeRemaining((prev) => prev - 1);
+      setTimeRemaining((prev) => {
+        if (examData.expiresAt) {
+          const diffSec = Math.floor((new Date(examData.expiresAt).getTime() - Date.now()) / 1000);
+          if (diffSec <= 0) {
+            clearInterval(timer);
+            handleFinish();
+            return 0;
+          }
+          return diffSec;
+        }
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleFinish();
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
+
     return () => clearInterval(timer);
-  }, [timeRemaining, isReviewMode]);
+  }, [timeRemaining, isReviewMode, isExamComplete, examData.expiresAt, examData.timeLimit]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -257,18 +334,40 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   };
 
   useEffect(() => {
+    // Trong chế độ Xem lại đáp án (isReviewMode), LUÔN hiển thị feedback
+    if (isReviewMode) {
+      setShowFeedback(true);
+      const status = questionResults[currentQuestion.id];
+      const userAns = userAnswers[currentQuestion.id];
+      const isCorr = status ? status === "correct" : checkIsCorrect(currentQuestion, userAns);
+      setIsCorrect(isCorr);
+      return;
+    }
+
+    // Trong đề thi (exam mode), không hiện feedback trong khi làm bài
+    if (!isPracticeMode) {
+      setShowFeedback(false);
+      return;
+    }
+
     const status = questionResults[currentQuestion.id];
     if (status) {
       setShowFeedback(true);
       setIsCorrect(status === "correct");
+    } else if (lockedQuestions[currentQuestion.id]) {
+      const userAns = userAnswers[currentQuestion.id];
+      const isCorr = checkIsCorrect(currentQuestion, userAns);
+      setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: isCorr ? "correct" : "wrong" }));
+      setIsCorrect(isCorr);
+      setShowFeedback(true);
     } else {
       setShowFeedback(false);
     }
-  }, [currentQuestion.id, questionResults]);
+  }, [currentQuestion, questionResults, lockedQuestions, userAnswers, isPracticeMode, isReviewMode]);
 
   const handleAnswerChange = (answer: AnswerValue) => {
-    // Không cho sửa câu đã bị khóa (answeredAt != null)
-    if (lockedQuestions[currentQuestion.id]) return;
+    if (isReviewMode) return;
+    if (!isInitialExam && lockedQuestions[currentQuestion.id]) return;
     setUserAnswers((prev) => ({
       ...prev,
       [currentQuestion.id]: answer,
@@ -276,14 +375,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   };
 
   /**
-   * handleSubmit: Gọi API submit từng câu lên backend.
-   * BE chấm ngị và trả isCorrect, correctAnswer, feedback.
-   * Sau đó lock câu (đã có answeredAt).
+   * handleSubmit: Gọi API submit từng câu lên backend (Chỉ dùng cho Đề Ôn tập - practice mode).
    */
   const handleSubmit = useCallback(async () => {
+    if (!isPracticeMode) return;
     if (isSubmittingAnswer) return;
     if (lockedQuestions[currentQuestion.id]) {
-      // Câu đã bị khóa trước đó (resume), chỉ show feedback đã có sẵn
       const existingResult = questionResults[currentQuestion.id];
       if (existingResult) {
         setIsCorrect(existingResult === "correct");
@@ -299,14 +396,22 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
     try {
       setIsSubmittingAnswer(true);
+      console.log(`[ExamContainer Debug] Submitting answer for question ${currentQuestion.id}:`, {
+        attemptId: examData.id,
+        questionId: currentQuestion.id,
+        backendPayload,
+      });
+
       const result = await studentLearningService.attempts.submitAnswer(
         examData.id,
         currentQuestion.id,
         { answer: backendPayload },
       );
 
-      const beIsCorrect = result.isCorrect ?? false;
-      const status = beIsCorrect ? "correct" : "wrong";
+      console.log(`[ExamContainer Debug] BE submitAnswer result for ${currentQuestion.id}:`, result);
+
+      const calculatedIsCorrect = result.isCorrect ?? false;
+      const status = calculatedIsCorrect ? "correct" : "wrong";
 
       const parsedCorrectAnswer = parseBackendAnswer(currentQuestion.type, result.correctAnswer);
       const backendExplanation =
@@ -323,17 +428,45 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
       setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
       setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
-      setIsCorrect(beIsCorrect);
+      setIsCorrect(calculatedIsCorrect);
       setShowFeedback(true);
     } catch (err: any) {
-      if (err?.response?.status === 409) {
-        // Câu đã được submit trước, lock lại
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("trùng") || err.message.includes("ràng buộc") || err.message.includes("lock") || err.message.includes("already")));
+
+      if (is409) {
         setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
         const existingResult = questionResults[currentQuestion.id];
         if (existingResult) {
           setIsCorrect(existingResult === "correct");
           setShowFeedback(true);
+          return;
         }
+
+        // Ưu tiên lấy kết quả chấm chính xác từ Backend bằng cách re-fetch attempt
+        try {
+          const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+          const freshAns = freshAttempt?.answers?.find((a: any) => a.questionId === currentQuestion.id);
+          if (freshAns && freshAns.isCorrect !== undefined && freshAns.isCorrect !== null) {
+            const status: "correct" | "wrong" = freshAns.isCorrect ? "correct" : "wrong";
+            const parsedCorr = parseBackendAnswer(currentQuestion.type, freshAns.correctAnswer);
+            if (parsedCorr !== undefined) {
+              setCorrectAnswers((prev) => ({ ...prev, [currentQuestion.id]: parsedCorr }));
+            }
+            setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
+            setIsCorrect(freshAns.isCorrect);
+            setShowFeedback(true);
+            return;
+          }
+        } catch (fErr) {
+          console.warn("Failed to refetch fresh attempt answer on 409", fErr);
+        }
+
+        const userAns = answer || userAnswers[currentQuestion.id];
+        const calculated = checkIsCorrect(currentQuestion, userAns);
+        setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: calculated ? "correct" : "wrong" }));
+        setIsCorrect(calculated);
+        setShowFeedback(true);
       } else {
         Modal.error({
           title: "Không thể submit câu trả lời",
@@ -343,10 +476,48 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     } finally {
       setIsSubmittingAnswer(false);
     }
-  }, [currentQuestion, userAnswers, isSubmittingAnswer, lockedQuestions, questionResults, examData.id]);
+  }, [currentQuestion, userAnswers, isSubmittingAnswer, lockedQuestions, questionResults, examData.id, isPracticeMode]);
 
+  const handleSelectQuestion = async (idx: number) => {
+    if (idx === currentIndex) return;
+    if (isReviewMode) {
+      setCurrentIndex(idx);
+      return;
+    }
+    if (showFeedback && isPracticeMode) return;
 
-  const handleNext = () => {
+    if (!isPracticeMode) {
+      const currentAns = userAnswers[currentQuestion.id];
+      if (isAnswerProvided(currentAns)) {
+        try {
+          const backendPayload = toBackendAnswer(currentQuestion, currentAns);
+          if (isInitialExam) {
+            await studentLearningService.attempts.saveAnswer(
+              examData.id,
+              currentQuestion.id,
+              { answer: backendPayload }
+            );
+          } else {
+            if (!lockedQuestions[currentQuestion.id]) {
+              await studentLearningService.attempts.submitAnswer(
+                examData.id,
+                currentQuestion.id,
+                { answer: backendPayload }
+              );
+              setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to auto-save answer on select question", err);
+        }
+      }
+    }
+
+    setShowFeedback(false);
+    setCurrentIndex(idx);
+  };
+
+  const handleNext = async () => {
     if (isReviewMode) {
       if (currentIndex < totalQuestions - 1) {
         setCurrentIndex((prev) => prev + 1);
@@ -355,11 +526,42 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       }
       return;
     }
+
+    // Trong đề kiểm tra (exam mode), lưu đáp án lên backend khi chuyển câu
+    if (!isPracticeMode) {
+      const currentAns = userAnswers[currentQuestion.id];
+      if (isAnswerProvided(currentAns)) {
+        try {
+          const backendPayload = toBackendAnswer(currentQuestion, currentAns);
+          if (isInitialExam) {
+            // Lượt 1: Dùng saveAnswer (PUT) để học sinh vẫn có thể quay lại sửa đáp án
+            await studentLearningService.attempts.saveAnswer(
+              examData.id,
+              currentQuestion.id,
+              { answer: backendPayload }
+            );
+          } else {
+            // Lượt ôn tập / remediation: submit và khóa từng câu
+            if (!lockedQuestions[currentQuestion.id]) {
+              await studentLearningService.attempts.submitAnswer(
+                examData.id,
+                currentQuestion.id,
+                { answer: backendPayload }
+              );
+              setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to auto-save answer on next", err);
+        }
+      }
+    }
+
     setShowFeedback(false);
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex((prev) => prev + 1);
     } else {
-      handleFinish();
+      await handleFinish();
     }
   };
 
@@ -380,29 +582,94 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       case "reading_comprehension":
       case "multiple-choice":
       case "listening":
-      case "true-false":
-        return { selectedOptionIds: [String(answer)] };
+      case "true-false": {
+        const options: any[] = question.options || [];
+        const ansStr = String(answer);
+        const selectedOpt = options.find((o: any) => {
+          return String(o.id) === ansStr || String(o.label) === ansStr || String(o.content) === ansStr;
+        });
+
+        const selectedId = selectedOpt?.id ? String(selectedOpt.id) : ansStr;
+
+        const idsArray = Array.isArray(answer)
+          ? answer.map((a) => {
+              const opt = options.find((o: any) => String(o.id) === String(a) || String(o.label) === String(a) || String(o.content) === String(a));
+              return opt?.id ? String(opt.id) : String(a);
+            })
+          : [selectedId];
+
+        const payload = {
+          selectedOptionIds: idsArray,
+          selectedOptionId: selectedId,
+          optionId: selectedId,
+          value: selectedId,
+          text: selectedOpt?.content || ansStr,
+        };
+
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, {
+          questionId: question.id,
+          userAnswer: answer,
+          selectedId,
+          idsArray,
+          payload,
+        });
+
+        return payload;
+      }
       case "word_ordering":
-      case "word-ordering":
-        return { tokens: Array.isArray(answer) ? answer : [] };
+      case "word-ordering": {
+        const tokens = Array.isArray(answer) ? answer : [String(answer)];
+        const payload = {
+          tokens: tokens,
+          words: tokens,
+          text: tokens.join(" "),
+          value: tokens,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
       case "sentence_rewrite":
       case "hint_rewrite":
-      case "fill-in-the-blank":
-        return { text: String(answer ?? "") };
-      case "error_correction":
-        return { correctedSentence: String(answer ?? "") };
-      case "matching":
-        return {
-          pairs:
-            answer && typeof answer === "object" && !Array.isArray(answer)
-              ? Object.entries(answer).map(([leftItemId, rightItemId]) => ({
-                leftItemId,
-                rightItemId,
-              }))
-              : [],
+      case "fill-in-the-blank": {
+        const textStr = String(answer ?? "").trim();
+        const payload = {
+          text: textStr,
+          value: textStr,
+          answer: textStr,
         };
-      default:
-        return answer ?? {};
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      case "error_correction": {
+        const textStr = String(answer ?? "").trim();
+        const payload = {
+          correctedSentence: textStr,
+          text: textStr,
+          value: textStr,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      case "matching": {
+        const pairs =
+          answer && typeof answer === "object" && !Array.isArray(answer)
+            ? Object.entries(answer).map(([leftItemId, rightItemId]) => ({
+              leftItemId: String(leftItemId),
+              rightItemId: String(rightItemId),
+            }))
+            : [];
+        const payload = {
+          pairs: pairs,
+          matches: pairs,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      default: {
+        const payload = answer ?? {};
+        console.log(`[ExamContainer Debug] toBackendAnswer (default:${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
     }
   };
 
@@ -411,16 +678,138 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
     try {
       setIsSubmitting(true);
-      // Body có thể rỗng — BE tự finish attempt, tính điểm cộng dồn.
-      const result = (await studentLearningService.attempts.submit(examData.id, {
-        answers: [],
-      })) as { score?: string; maxScore?: string; percentage?: string; displayResult?: string };
+
+      const isInitialExam = !isPracticeMode && ((examData as any).attemptNumber === 1 || !(examData as any).attemptNumber);
+
+      const newResults: Record<string, "correct" | "wrong"> = {};
+      const newCorrects: Record<string, any> = {};
+      const newExplanations: Record<string, string> = {};
+
+      const formattedAnswersPayload = examData.questions
+        .map((q) => {
+          const userAns = userAnswers[q.id];
+          if (!isAnswerProvided(userAns)) return null;
+          return {
+            questionId: q.id,
+            answer: toBackendAnswer(q, userAns),
+          };
+        })
+        .filter(Boolean) as { questionId: string; answer: any }[];
+
+      console.log(`[ExamContainer Debug] handleFinish starting (isInitialExam: ${isInitialExam}):`, formattedAnswersPayload);
+
+      let result: any = null;
+
+      if (isInitialExam) {
+        // Cho lượt thi kiểm tra lần đầu, gọi submitAttempt duy nhất 1 lần với full answers payload
+        try {
+          result = await studentLearningService.attempts.submit(examData.id, {
+            answers: formattedAnswersPayload,
+          });
+          console.log(`[ExamContainer Debug] BE submit attempt response:`, result);
+        } catch (error: any) {
+          console.error(`[ExamContainer Debug] BE submit attempt error:`, error);
+          const statusCode = error?.statusCode ?? error?.body?.statusCode ?? error?.response?.status;
+          const is409 = statusCode === 409 || (typeof error?.message === "string" && (error.message.includes("trùng") || error.message.includes("ràng buộc") || error.message.includes("submitted")));
+          if (!is409) throw error;
+        }
+      } else {
+        // Cho lượt ôn tập hoặc làm lại, submit các câu chưa được gửi
+        const submitPromises = examData.questions.map(async (q) => {
+          const ans = userAnswers[q.id];
+          if (isAnswerProvided(ans) && !lockedQuestions[q.id]) {
+            try {
+              const backendPayload = toBackendAnswer(q, ans);
+              const res = await studentLearningService.attempts.submitAnswer(
+                examData.id,
+                q.id,
+                { answer: backendPayload }
+              );
+              setLockedQuestions((prev) => ({ ...prev, [q.id]: true }));
+              if (res) {
+                if (res.isCorrect !== undefined && res.isCorrect !== null) {
+                  newResults[q.id] = res.isCorrect ? "correct" : "wrong";
+                }
+              }
+            } catch (submitErr: any) {
+              // Bỏ qua lỗi 409 nếu câu đã nộp hoặc attempt đã finalized
+            }
+          }
+        });
+        await Promise.allSettled(submitPromises);
+
+        try {
+          result = await studentLearningService.attempts.submit(examData.id, { answers: [] });
+        } catch (err: any) {
+          // Bỏ qua 409 nếu Backend đã tự động finalize khi submit câu cuối cùng
+        }
+      }
+
+      // Re-fetch attempt detail từ backend để lấy kết quả chính xác 100%
+      const mergedResults: Record<string, "correct" | "wrong"> = { ...questionResults, ...newResults };
+
+      try {
+        const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+        console.log(`[ExamContainer Debug] BE freshAttempt response:`, freshAttempt);
+
+        const rawScore = freshAttempt?.score ?? result?.score;
+        const rawMaxScore = freshAttempt?.maxScore ?? result?.maxScore;
+        const rawPercentage = freshAttempt?.percentage ?? result?.percentage;
+
+        if (freshAttempt?.answers && Array.isArray(freshAttempt.answers)) {
+          freshAttempt.answers.forEach((ans: any) => {
+            if (ans.isCorrect !== undefined && ans.isCorrect !== null) {
+              mergedResults[ans.questionId] = ans.isCorrect ? "correct" : "wrong";
+            }
+            let parsedCorr = parseBackendAnswer(ans.questionType, ans.correctAnswer);
+            if (parsedCorr === undefined) {
+              const qInExam = examData.questions.find((q) => q.id === ans.questionId);
+              if (qInExam && qInExam.correctAnswer !== undefined) {
+                parsedCorr = qInExam.correctAnswer;
+              }
+            }
+            if (parsedCorr !== undefined) {
+              newCorrects[ans.questionId] = parsedCorr;
+            }
+            const expl = ans.feedback?.explanation || ans.question?.feedback?.explanation || ans.question?.explanation;
+            if (expl) {
+              newExplanations[ans.questionId] = expl;
+            }
+          });
+
+          setQuestionResults({ ...mergedResults });
+          setCorrectAnswers((prev) => ({ ...prev, ...newCorrects }));
+          setExplanations((prev) => ({ ...prev, ...newExplanations }));
+        }
+
+        const finalScoreStr = rawScore !== undefined && rawScore !== null ? String(rawScore) : "0.00";
+        const finalMaxScoreStr = rawMaxScore !== undefined && rawMaxScore !== null ? String(rawMaxScore) : String(examData.questions.length);
+        const finalPercentageStr = rawPercentage !== undefined && rawPercentage !== null ? String(rawPercentage) : "0.00";
+
+        const isMastered = freshAttempt?.mastered ?? (Number(finalScoreStr) >= Number(finalMaxScoreStr));
+        const remCount = freshAttempt?.remainingQuestionCount ?? Math.max(0, Number(finalMaxScoreStr) - Number(finalScoreStr));
+
+        result = {
+          ...result,
+          ...freshAttempt,
+          score: finalScoreStr,
+          maxScore: finalMaxScoreStr,
+          percentage: finalPercentageStr,
+          displayResult: freshAttempt?.displayResult || `${finalScoreStr} / ${finalMaxScoreStr}`,
+          mastered: isMastered,
+          remainingQuestionCount: remCount,
+          cumulativeCorrectCount: Number(finalScoreStr),
+          totalQuestions: Number(finalMaxScoreStr),
+        };
+      } catch (e) {
+        console.warn("Failed to fetch fresh attempt result", e);
+      }
 
       setSubmitResult(result);
       setIsExamComplete(true);
       setIsReviewMode(false);
       setShowFeedback(false);
-    } catch (error) {
+    } catch (error: any) {
       Modal.error({
         title: "Không thể nộp bài",
         content: error instanceof Error ? error.message : "Vui lòng thử lại sau.",
@@ -432,7 +821,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const getQuestionStatus = (question: typeof currentQuestion) => {
     const answer = userAnswers[question.id];
-    if (questionResults[question.id]) {
+    if ((isPracticeMode || isReviewMode) && questionResults[question.id]) {
       return questionResults[question.id];
     }
     if (!isAnswerProvided(answer)) {
@@ -453,9 +842,44 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }).length;
   const totalUnanswered = totalQuestions - totalAnswered;
 
-  const shouldShowFeedback = showFeedback || isReviewMode;
+  const shouldShowFeedback = isPracticeMode || isReviewMode ? showFeedback : false;
 
-  const handleReview = () => {
+  const handleReview = async () => {
+    try {
+      const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+      if (freshAttempt?.answers) {
+        const newResults: Record<string, "correct" | "wrong"> = {};
+        const newCorrects: Record<string, any> = {};
+        const newExplanations: Record<string, string> = {};
+
+        freshAttempt.answers.forEach((ans: any) => {
+          if (ans.isCorrect !== undefined && ans.isCorrect !== null) {
+            newResults[ans.questionId] = ans.isCorrect ? "correct" : "wrong";
+          }
+          let parsedCorr = parseBackendAnswer(ans.questionType, ans.correctAnswer);
+          if (parsedCorr === undefined) {
+            const qInExam = examData.questions.find((q) => q.id === ans.questionId);
+            if (qInExam && qInExam.correctAnswer !== undefined) {
+              parsedCorr = qInExam.correctAnswer;
+            }
+          }
+          if (parsedCorr !== undefined) {
+            newCorrects[ans.questionId] = parsedCorr;
+          }
+          const expl = ans.feedback?.explanation || ans.question?.feedback?.explanation || ans.question?.explanation;
+          if (expl) {
+            newExplanations[ans.questionId] = expl;
+          }
+        });
+
+        setQuestionResults((prev) => ({ ...prev, ...newResults }));
+        setCorrectAnswers((prev) => ({ ...prev, ...newCorrects }));
+        setExplanations((prev) => ({ ...prev, ...newExplanations }));
+      }
+    } catch (e) {
+      console.warn("Failed to fetch fresh attempt for review", e);
+    }
+
     setIsExamComplete(false);
     setIsReviewMode(true);
     setShowFeedback(true);
@@ -518,10 +942,19 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       navigate(`/exam/${attemptId}`, { replace: true });
       window.location.reload();
     } catch (err: any) {
-      Modal.error({
-        title: "Không thể bắt đầu làm lại",
-        content: err instanceof Error ? err.message : "Vui lòng thử lại sau.",
-      });
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      if (is409) {
+        Modal.warning({
+          title: "Không thể tạo lượt làm mới",
+          content: "Đề kiểm tra này đã được nộp và không cho phép làm lại.",
+        });
+      } else {
+        Modal.error({
+          title: "Không thể bắt đầu làm lại",
+          content: err instanceof Error ? err.message : "Vui lòng thử lại sau.",
+        });
+      }
     } finally {
       setIsRetrying(false);
     }
@@ -537,6 +970,77 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     setIsReviewMode(false);
     setCurrentIndex(0);
   };
+
+  const handleBackClick = () => {
+    if (isReviewMode) {
+      navigate(-1);
+      return;
+    }
+    Modal.confirm({
+      title: "Quay lại khóa học",
+      content:
+        "Bạn chắc chắn muốn quay lại? Tiến độ làm bài sẽ không được lưu.",
+      style: {
+        top: 200,
+      },
+      okText: "Quay lại",
+      okType: "danger",
+      cancelText: "Tiếp tục",
+      onOk() {
+        navigate(-1);
+      },
+    });
+  };
+
+  if (isPracticeCompleted100 && !isReviewMode) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 md:p-10 flex items-center justify-center transition-colors">
+        <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-8 md:p-10 text-center border border-slate-200 dark:border-slate-700">
+          <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-6 shadow-inner">
+            🏆
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-slate-100 mb-3">
+            Hoàn thành 100% Đề Ôn Tập!
+          </h1>
+          <p className="text-slate-600 dark:text-slate-300 mb-8 max-w-md mx-auto leading-relaxed">
+            Tuyệt vời! Bạn đã trả lời chính xác toàn bộ <strong>{examData.questions.length} / {examData.questions.length}</strong> câu hỏi trong đề ôn tập này.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4 mb-8 text-left">
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+              <span className="text-xs uppercase font-bold text-emerald-700 dark:text-emerald-300 block mb-1">Số câu hoàn thành</span>
+              <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{examData.questions.length} / {examData.questions.length}</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
+              <span className="text-xs uppercase font-bold text-indigo-700 dark:text-indigo-300 block mb-1">Tỷ lệ chính xác</span>
+              <span className="text-2xl font-black text-indigo-700 dark:text-indigo-300">100%</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="px-6 py-3.5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-200 transition"
+            >
+              Quay lại bài học
+            </button>
+            <button
+              onClick={handleReview}
+              className="px-6 py-3.5 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition"
+            >
+              Xem lại tất cả đáp án
+            </button>
+            <button
+              onClick={handleResetExam}
+              className="px-6 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition"
+            >
+              Ôn tập lại từ đầu
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isExamComplete && !isReviewMode) {
     return (
@@ -599,7 +1103,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={() => navigate(-1)}
                 className="px-6 py-4 rounded-3xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 font-semibold hover:bg-slate-200 transition"
@@ -607,12 +1111,26 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 Quay lại
               </button>
               <button
-                onClick={handleRetryNewAttempt}
-                disabled={isRetrying}
-                className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                onClick={handleReview}
+                className="px-6 py-4 rounded-3xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
               >
-                {isRetrying ? "Đang tạo lượt làm mới..." : "Làm lại attempt mới"}
+                Xem lại đáp án
               </button>
+              {examData.examType !== "exam" && (
+                <button
+                  onClick={handleRetryNewAttempt}
+                  disabled={isRetrying}
+                  className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {isRetrying
+                    ? "Đang tạo lượt mới..."
+                    : (submitResult as any)?.mastered
+                    ? "Ôn tập lại bài này"
+                    : (submitResult as any)?.remainingQuestionCount > 0
+                    ? `Làm tiếp (còn ${(submitResult as any)?.remainingQuestionCount} câu chưa đúng)`
+                    : "Làm tiếp / Làm lại"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -710,10 +1228,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             <div className="mb-6">
               <div className="flex justify-between items-end mb-2">
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Tiến độ làm bài
+                  {isPracticeMode && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
                 </span>
                 <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                  {currentIndex + 1}/{totalQuestions}
+                  {isPracticeMode && !isReviewMode
+                    ? `${currentMasteredCount}/${examData.questions.length}`
+                    : `${currentIndex + 1}/${totalQuestions}`}
                 </span>
               </div>
               <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
@@ -725,10 +1245,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             </div>
 
             <div className="mb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Danh sách câu hỏi
+              {isPracticeMode && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
             </div>
             <div className="grid grid-cols-5 gap-2">
-              {examData.questions.map((q, idx) => {
+              {activeQuestions.map((q, idx) => {
+                const originalIdx = examData.questions.findIndex((item) => item.id === q.id);
+                const questionNumber = originalIdx >= 0 ? originalIdx + 1 : idx + 1;
                 const isCurrent = idx === currentIndex;
                 const isSelected =
                   !!userAnswers[q.id] &&
@@ -749,16 +1271,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     itemClass +=
                       " bg-rose-500 text-white border-rose-500 dark:bg-rose-600 dark:border-rose-600";
                   } else if (isSelected) {
-                    // 🟦 Câu hiện tại + chưa chấm + ĐÃ CHỌN
                     itemClass +=
                       " bg-blue-700 text-white border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-700";
                   } else {
-                    // 🔵 Câu hiện tại + chưa chấm + CHƯA CHỌN
                     itemClass +=
                       " border-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400";
                   }
                 }
-
                 // =======================
                 // KHÔNG PHẢI CÂU HIỆN TẠI
                 // =======================
@@ -781,9 +1300,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                   <div
                     key={q.id}
                     className={itemClass}
-                    onClick={() => (isReviewMode || !showFeedback) && setCurrentIndex(idx)}
+                    onClick={() => handleSelectQuestion(idx)}
                   >
-                    {idx + 1}
+                    {questionNumber}
                   </div>
                 );
               })}
@@ -836,12 +1355,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     question={currentQuestion}
                     currentAnswer={userAnswers[currentQuestion.id]}
                     onAnswerChange={handleAnswerChange}
-                    onSubmit={handleSubmit}
-                    isCorrect={isCorrect}
+                    onSubmit={isPracticeMode ? handleSubmit : handleFinish}
+                    isCorrect={isReviewMode ? (questionResults[currentQuestion.id] === "correct" || (currentQuestion as any).isCorrect) : isCorrect}
                     showFeedback={shouldShowFeedback}
                     onNext={handleNext}
                     isLastQuestion={currentIndex === totalQuestions - 1}
                     isReviewMode={isReviewMode}
+                    isPracticeMode={isPracticeMode}
                   />
                 </motion.div>
               </AnimatePresence>
