@@ -1,6 +1,7 @@
 import { Modal } from "antd";
 import { SoundOutlined } from "@ant-design/icons";
 import { resolveMediaUrl } from "../../../../../../services/apiClient";
+import { AppImage } from "../../../../../../components/AppImagePreview";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -36,16 +37,20 @@ export default function MediaPreviewModal({ open, asset, onCancel }: Props) {
       onCancel={onCancel}
       centered
       destroyOnClose
+      className="rounded-2xl"
     >
       {asset && (
         <div className="flex flex-col items-center justify-center p-4">
           {isImage ? (
-            <img
-              src={resolveMediaUrl(asset.url)}
-              alt={asset.altText}
-              style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
-              className="rounded-lg shadow-sm"
-            />
+            <div className="rounded-xl overflow-hidden shadow-sm">
+              <AppImage
+                src={asset.url}
+                alt={asset.altText}
+                style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
+                className="rounded-xl"
+                maskText="Phóng to ảnh"
+              />
+            </div>
           ) : isAudio ? (
             <div className="w-full text-center space-y-4">
               <div className="text-6xl text-indigo-500">

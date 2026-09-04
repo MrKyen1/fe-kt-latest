@@ -39,6 +39,7 @@ import {
   ReloadOutlined,
   InfinityOutlined,
 } from "@ant-design/icons";
+import { ClipboardList, Info } from "lucide-react";
 
 import { teacherLearningService, ClassCurriculum } from "../../../services/teacherLearningService";
 import { learningCmsService } from "../../../services/learningCmsService";
@@ -65,15 +66,15 @@ interface StudentOption {
 // ==================== STATUS TAG ====================
 const statusTag = (status: AssignmentStatus) => {
   if (status === "active")
-    return <Tag color="success" className="rounded-full border-none text-xs font-semibold px-3">✓ Đang hoạt động</Tag>;
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold px-3">Đang hoạt động</Tag>;
   return <Tag color="default" className="rounded-full border-none text-xs font-semibold px-3">Đã huỷ</Tag>;
 };
 
 const maxAttemptsTag = (n?: number | null) => {
   if (n === 1) {
-    return <Tag color="purple" className="rounded-full border-none text-xs font-semibold">📝 Kiểm tra (1 lần)</Tag>;
+    return <Tag color="purple" className="rounded-full border-none text-xs font-semibold">Kiểm tra (1 lần)</Tag>;
   }
-  return <Tag color="blue" className="rounded-full border-none text-xs font-semibold">📘 Ôn tập (Làm lại tới khi 100%)</Tag>;
+  return <Tag color="blue" className="rounded-full border-none text-xs font-semibold">Ôn tập (Làm lại tới khi 100%)</Tag>;
 };
 
 // ==================== EXAM ANALYTICS MODAL ====================
@@ -789,8 +790,9 @@ export default function TeacherAssignments() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
               <div>
-                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
-                  📋 Quản lý Giao bài
+                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight flex items-center gap-2">
+                  <ClipboardList size={26} className="text-indigo-600" />
+                  Quản lý Giao bài
                 </Title>
                 <Text className="text-slate-500 text-sm">
                   Gắn giáo trình vào lớp, giao bài thi hoặc giáo trình cho học sinh cụ thể
@@ -989,7 +991,7 @@ export default function TeacherAssignments() {
             >
               {exams.map((e) => (
                 <Select.Option key={e.id} value={e.id}>
-                  {e.examType === "exam" ? "📝 [Kiểm tra] " : "📘 [Ôn tập] "}
+                  {e.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}
                   {e.title || e.code} <span className="text-slate-400 text-xs ml-1">({e.code})</span>
                 </Select.Option>
               ))}
@@ -1005,7 +1007,7 @@ export default function TeacherAssignments() {
                 return (
                   <div key={examId} className="flex items-center justify-between gap-3 text-xs bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
                     <span className="font-semibold text-slate-700 truncate max-w-[280px]">
-                      {exam?.examType === "exam" ? "📝 [Kiểm tra] " : "📘 [Ôn tập] "}
+                      {exam?.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}
                       {exam?.title || exam?.code}
                     </span>
                     <Form.Item
@@ -1017,7 +1019,7 @@ export default function TeacherAssignments() {
                         <Select.Option value="">Bản mới nhất (Latest)</Select.Option>
                         {versions.map((v: any) => (
                           <Select.Option key={v.id} value={v.id}>
-                            Phiên bản {v.versionNumber} ({v.questionCount} câu) {v.isCurrent ? "★" : ""}
+                            Phiên bản {v.versionNumber} ({v.questionCount} câu){v.isCurrent ? " (Hiện tại)" : ""}
                           </Select.Option>
                         ))}
                       </Select>
@@ -1047,8 +1049,9 @@ export default function TeacherAssignments() {
             name="studentIds"
             label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ học sinh trong lớp)</span></span>}
             extra={!selectedClassForExam ? (
-              <div className="text-amber-600 text-xs mt-1">
-                💡 <b>Mẹo:</b> Hãy chọn <b>Lớp học</b> trước để hệ thống tự động lọc đúng học sinh thuộc lớp bạn phụ trách.
+              <div className="text-amber-600 text-xs mt-1 flex items-center gap-1.5">
+                <Info size={13} className="shrink-0" />
+                <span><b>Mẹo:</b> Hãy chọn <b>Lớp học</b> trước để hệ thống tự động lọc đúng học sinh thuộc lớp bạn phụ trách.</span>
               </div>
             ) : undefined}
           >

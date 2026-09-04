@@ -42,7 +42,7 @@ const Footer = memo(function Footer() {
             <Title level={4} className=" mb-6">
               Thông tin liên hệ
             </Title>
-            <Space direction="vertical" size="middle" className="w-full">
+            <Space orientation="vertical" size="middle" className="w-full">
               <div className="flex items-start gap-3">
                 <MapPin className="text-blue-500 mt-1 shrink-0" size={20} />
                 <Text className="text-slate-400">

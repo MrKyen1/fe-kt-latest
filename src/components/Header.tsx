@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Layout, Menu, Button, Dropdown, MenuProps, Avatar, Badge, Popover, Spin, Tag } from "antd";
 import { UserOutlined, LogoutOutlined, BellOutlined } from "@ant-design/icons";
 import { useEffect, useState, memo } from "react";
+import { Bell, Inbox, PenTool, BookOpen } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { resolveMediaUrl } from "../services/apiClient";
 import { studentLearningService } from "../services/studentLearningService";
@@ -30,7 +31,7 @@ function NotificationPopoverContent({
   if (!assignments || assignments.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400" style={{ width: 300 }}>
-        <span className="text-3xl mb-2">🎉</span>
+        <Inbox className="w-8 h-8 text-slate-300 mb-2 stroke-[1.5]" />
         <span className="text-xs font-medium">Bạn chưa có bài thi mới nào!</span>
       </div>
     );
@@ -39,7 +40,10 @@ function NotificationPopoverContent({
   return (
     <div style={{ width: 330 }} className="font-sans">
       <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-        <span className="font-bold text-slate-800 text-sm">🔔 Thông báo bài thi mới</span>
+        <span className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+          <Bell size={15} className="text-indigo-600" />
+          Thông báo bài thi mới
+        </span>
         <Tag color="indigo" className="m-0 rounded-full text-[10px] font-bold">
           {assignments.length} cần làm
         </Tag>
@@ -58,7 +62,7 @@ function NotificationPopoverContent({
               className="p-2.5 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all cursor-pointer flex gap-2.5 items-start group"
             >
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isExam ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"}`}>
-                {isExam ? "📝" : "📘"}
+                {isExam ? <PenTool size={15} /> : <BookOpen size={15} />}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -102,7 +106,8 @@ function NotificationPopoverContent({
 const Header = memo(function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isLoggedIn, logout } = useAuth();
+  const { user, isLoggedIn, logout, hasRole } = useAuth();
+  const isStudent = hasRole("student");
   const [current, setCurrent] = useState(location.pathname);
 
   // Notifications state
@@ -115,7 +120,10 @@ const Header = memo(function Header() {
   }, [location]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || !isStudent) {
+      setNotifications([]);
+      return;
+    }
 
     let isMounted = true;
     setLoadingNotifs(true);
@@ -140,7 +148,7 @@ const Header = memo(function Header() {
       });
 
     return () => { isMounted = false; };
-  }, [isLoggedIn, location.pathname]);
+  }, [isLoggedIn, isStudent, location.pathname]);
 
   const handleMenuClick = (e: any) => {
     if (e.key === "/") {
@@ -223,32 +231,34 @@ const Header = memo(function Header() {
       <div className="flex items-center gap-4">
         {isLoggedIn ? (
           <div className="flex items-center gap-3">
-            {/* Notification Bell Badge & Popover */}
-            <Popover
-              open={notifOpen}
-              onOpenChange={setNotifOpen}
-              content={
-                <NotificationPopoverContent
-                  assignments={notifications}
-                  loading={loadingNotifs}
-                  onNavigate={(path) => {
-                    setNotifOpen(false);
-                    navigate(path);
-                  }}
-                />
-              }
-              trigger="click"
-              placement="bottomRight"
-            >
-              <Badge count={notifications.length} overflowCount={99} className="mr-1">
-                <Button
-                  type="text"
-                  shape="circle"
-                  icon={<BellOutlined className="text-lg text-slate-600 hover:text-indigo-600" />}
-                  className="flex items-center justify-center hover:bg-indigo-50 transition-colors"
-                />
-              </Badge>
-            </Popover>
+            {/* Notification Bell Badge & Popover (Student only) */}
+            {isStudent && (
+              <Popover
+                open={notifOpen}
+                onOpenChange={setNotifOpen}
+                content={
+                  <NotificationPopoverContent
+                    assignments={notifications}
+                    loading={loadingNotifs}
+                    onNavigate={(path) => {
+                      setNotifOpen(false);
+                      navigate(path);
+                    }}
+                  />
+                }
+                trigger="click"
+                placement="bottomRight"
+              >
+                <Badge count={notifications.length} overflowCount={99} className="mr-1">
+                  <Button
+                    type="text"
+                    shape="circle"
+                    icon={<BellOutlined className="text-lg text-slate-600 hover:text-indigo-600" />}
+                    className="flex items-center justify-center hover:bg-indigo-50 transition-colors"
+                  />
+                </Badge>
+              </Popover>
+            )}
 
             <span className="text-sm text-gray-600">
               Xin chào,{" "}
@@ -264,7 +274,7 @@ const Header = memo(function Header() {
                 icon={!user?.avatar && <UserOutlined />}
                 size="large"
                 className="cursor-pointer bg-blue-500 text-white"
-                imgProps={{ crossOrigin: "anonymous" }}
+                crossOrigin="anonymous"
               >
                 {user?.fullName?.charAt(0)?.toUpperCase()}
               </Avatar>

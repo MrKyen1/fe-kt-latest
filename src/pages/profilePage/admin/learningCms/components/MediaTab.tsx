@@ -1,6 +1,8 @@
 import { Button, Card, Col, Empty, Row, Space, Tooltip } from "antd";
 import { DeleteOutlined, EyeOutlined, SoundOutlined, UploadOutlined } from "@ant-design/icons";
+import { Video } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../services/apiClient";
+import { AppImage } from "../../../../../components/AppImagePreview";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -63,18 +65,25 @@ export default function MediaTab({ media, onUploadClick, onDeleteClick, onPrevie
               cover={
                 <div className="h-32 bg-slate-50 flex items-center justify-center overflow-hidden">
                   {isImage(asset) ? (
-                    <img
-                      src={resolveMediaUrl(asset.url)}
-                      alt={asset.altText}
-                      className="h-full w-full object-cover"
-                    />
+                    <div className="h-full w-full">
+                      <AppImage
+                        src={asset.url}
+                        alt={asset.altText}
+                        rootClassName="w-full h-full"
+                        className="h-full w-full object-cover"
+                        maskText="Xem ảnh"
+                      />
+                    </div>
                   ) : isAudio(asset) ? (
                     <div className="text-4xl text-slate-400 flex flex-col items-center gap-1">
                       <SoundOutlined />
                       <span className="text-xs text-slate-400">Audio</span>
                     </div>
                   ) : (
-                    <div className="text-4xl text-slate-400">📹</div>
+                    <div className="text-slate-400 flex flex-col items-center gap-1">
+                      <Video size={36} className="text-slate-400" />
+                      <span className="text-xs text-slate-400">Video</span>
+                    </div>
                   )}
                 </div>
               }
@@ -91,14 +100,16 @@ export default function MediaTab({ media, onUploadClick, onDeleteClick, onPrevie
                       {asset.type ?? "File"}
                     </span>
                     <Space size={2}>
-                      <Tooltip title="Xem chi tiết">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EyeOutlined />}
-                          onClick={() => onPreviewClick(asset)}
-                        />
-                      </Tooltip>
+                      {!isImage(asset) && (
+                        <Tooltip title="Xem chi tiết">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={() => onPreviewClick(asset)}
+                          />
+                        </Tooltip>
+                      )}
                       <Button
                         type="text"
                         size="small"

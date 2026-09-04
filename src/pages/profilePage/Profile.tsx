@@ -18,6 +18,7 @@ import {
   Tag,
   Typography,
 } from "antd";
+import { Star } from "lucide-react";
 
 import {
   BarChartOutlined,
@@ -187,7 +188,10 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
       title: "Score",
 
       render: (_: any, record: Student) => (
-        <div className="font-bold text-lg">⭐ {record.score}</div>
+        <div className="font-bold text-lg flex items-center gap-1.5">
+          <Star size={16} className="text-amber-500 fill-amber-500" />
+          <span>{record.score}</span>
+        </div>
       ),
     },
   ];
@@ -243,7 +247,7 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
                   <Statistic
                     title="Current Score"
                     value={currentStudent.score}
-                    prefix="⭐"
+                    prefix={<Star size={18} className="text-amber-500 fill-amber-500 inline" />}
                   />
                 </div>
               </Col>

@@ -39,7 +39,7 @@ import {
   QuestionCircleOutlined,
   ReadOutlined,
 } from "@ant-design/icons";
-import { BookOpenIcon } from "lucide-react";
+import { BookOpenIcon, Pencil, Trash2 } from "lucide-react";
 
 import { learningCmsService } from "../../../services/learningCmsService";
 import { academicService } from "../../../services/academicService";
@@ -73,6 +73,7 @@ import QuestionVersionsModal from "./learningCms/components/modals/QuestionVersi
 import ManageQuestionsModal from "./learningCms/components/modals/ManageQuestionsModal";
 import ManageExamsModal from "./learningCms/components/modals/ManageExamsModal";
 import MediaPreviewModal from "./learningCms/components/modals/MediaPreviewModal";
+import { useAppImagePreview } from "../../../components/AppImagePreview";
 
 const { Title, Text } = Typography;
 
@@ -101,7 +102,7 @@ const ANT_THEME = {
  */
 export function statusTag(status: string) {
   if (status === "published")
-    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">✓ Đã duyệt</Tag>;
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
   if (status === "archived")
     return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
   return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
@@ -231,6 +232,18 @@ export default function LearningCms() {
   // ── Modal visibility ───────────────────────────────────────
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<any>(null);
+  const { showPreview, previewElement } = useAppImagePreview();
+
+  const handlePreviewAsset = (a: any) => {
+    if (!a) return;
+    const isImg = a.type === "image" || a.mimeType?.startsWith("image");
+    if (isImg && a.url) {
+      showPreview(a.url);
+    } else {
+      setPreviewAsset(a);
+      setPreviewVisible(true);
+    }
+  };
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [passageModalOpen, setPassageModalOpen] = useState(false);
@@ -327,12 +340,12 @@ export default function LearningCms() {
 
   const getAvailableRoles = () => {
     if (currentQuestionType === "image_choice")
-      return [{ value: "prompt_image", label: "🖼️ Hình ảnh đề bài" }];
+      return [{ value: "prompt_image", label: "Hình ảnh đề bài" }];
     if (currentQuestionType === "audio_choice")
-      return [{ value: "prompt_audio", label: "🔊 Âm thanh đề bài" }];
+      return [{ value: "prompt_audio", label: "Âm thanh đề bài" }];
     return [
-      { value: "prompt_audio", label: "🔊 Âm thanh đề bài" },
-      { value: "prompt_image", label: "🖼️ Hình ảnh đề bài" },
+      { value: "prompt_audio", label: "Âm thanh đề bài" },
+      { value: "prompt_image", label: "Hình ảnh đề bài" },
     ];
   };
 
@@ -379,11 +392,11 @@ export default function LearningCms() {
       render: (_: any, record: any) => (
         <Space size="small">
           <Button type="text" size="small"
-            icon={<span className="text-slate-400 hover:text-indigo-600 anticon">✏️</span>}
+            icon={<Pencil size={14} className="text-slate-400 hover:text-indigo-600" />}
             onClick={() => handleTaxEdit(record)}
           />
           <Button type="text" size="small" danger
-            icon={<span className="text-slate-400 hover:text-rose-600 anticon">🗑</span>}
+            icon={<Trash2 size={14} className="text-slate-400 hover:text-rose-600" />}
             onClick={() => handleTaxDelete(record)}
           />
         </Space>
@@ -817,13 +830,13 @@ export default function LearningCms() {
     if (CHOICE_TYPES.includes(qType)) {
       const options = values.options ?? [];
       if (options.length < 2) {
-        message.error({ content: "⚠️ Câu hỏi trắc nghiệm phải có ít nhất 2 phương án trả lời!", key: "question-form-validation-error" });
+        message.error({ content: "Câu hỏi trắc nghiệm phải có ít nhất 2 phương án trả lời!", key: "question-form-validation-error" });
         questionForm.scrollToField(["options"], { behavior: "smooth", block: "center" });
         return;
       }
       const hasCorrect = options.some((o: any) => o.isCorrect);
       if (!hasCorrect) {
-        message.error({ content: "⚠️ Vui lòng chọn ít nhất một đáp án đúng cho câu hỏi!", key: "question-form-validation-error" });
+        message.error({ content: "Vui lòng chọn ít nhất một đáp án đúng cho câu hỏi!", key: "question-form-validation-error" });
         questionForm.scrollToField(["options", 0, "isCorrect"], { behavior: "smooth", block: "center", focus: true });
         return;
       }
@@ -1270,7 +1283,7 @@ export default function LearningCms() {
           media={media}
           onUploadClick={() => { setUploadFile(null); setMediaAlt(""); setMediaModalOpen(true); }}
           onDeleteClick={handleMediaDelete}
-          onPreviewClick={(a) => { setPreviewAsset(a); setPreviewVisible(true); }}
+          onPreviewClick={handlePreviewAsset}
         />
       ),
     },
@@ -1479,7 +1492,7 @@ export default function LearningCms() {
               passages={passages}
               filteredMedia={getFilteredMedia()}
               availableRoles={getAvailableRoles()}
-              onPreviewAsset={(a) => { setPreviewAsset(a); setPreviewVisible(true); }}
+              onPreviewAsset={handlePreviewAsset}
             />
 
             <ExamFormModal
@@ -1562,6 +1575,9 @@ export default function LearningCms() {
               asset={previewAsset}
               onCancel={() => { setPreviewVisible(false); setPreviewAsset(null); }}
             />
+
+            {/* LIGHTBOX PREVIEW ELEMENT */}
+            {previewElement}
 
           </div>
         </Spin>

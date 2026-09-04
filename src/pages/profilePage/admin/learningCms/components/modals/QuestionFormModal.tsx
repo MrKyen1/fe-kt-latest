@@ -1,6 +1,7 @@
 import { Button, Checkbox, Col, Divider, Form, Input, InputNumber, Row, Select, Space, Switch, Tooltip } from "antd";
 import type { FormInstance } from "antd";
 import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined, SoundOutlined } from "@ant-design/icons";
+import { Settings, ArrowLeftRight, Image as LucideImage, FolderOpen, Video, Volume2 } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../../services/apiClient";
 import { CHOICE_TYPES, QUESTION_TYPES } from "../../constants";
 
@@ -90,7 +91,9 @@ function ChoiceFields({ type, passages }: { type: string; passages: Passage[] })
 function WordOrderingFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-      <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sắp xếp từ</span>
+      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+        <Settings size={15} className="text-slate-500" /> Cấu hình sắp xếp từ
+      </span>
       <Form.Item name="correctTokens" label="Các từ theo thứ tự đúng (cách nhau bởi dấu cách)" rules={[{ required: true, message: "Vui lòng nhập thứ tự từ đúng!" }]}>
         <Input placeholder="Ví dụ: I am a student" className="rounded-xl font-mono" />
       </Form.Item>
@@ -113,7 +116,9 @@ function WordOrderingFields() {
 function SentenceRewriteFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-      <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình viết lại câu</span>
+      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+        <Settings size={15} className="text-slate-500" /> Cấu hình viết lại câu
+      </span>
       <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true, message: "Vui lòng nhập câu gốc!" }]}>
         <Input.TextArea placeholder="Câu gốc để học sinh viết lại..." rows={2} className="rounded-xl" />
       </Form.Item>
@@ -133,7 +138,9 @@ function SentenceRewriteFields() {
 function HintRewriteFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-      <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình viết lại có gợi ý</span>
+      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+        <Settings size={15} className="text-slate-500" /> Cấu hình viết lại có gợi ý
+      </span>
       <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true, message: "Vui lòng nhập câu gốc!" }]}>
         <Input.TextArea placeholder="Câu gốc..." rows={2} className="rounded-xl" />
       </Form.Item>
@@ -165,7 +172,9 @@ function HintRewriteFields() {
 function ErrorCorrectionFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-      <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sửa lỗi</span>
+      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+        <Settings size={15} className="text-slate-500" /> Cấu hình sửa lỗi
+      </span>
       <Form.Item name="correctSentence" label="Đáp án" rules={[{ required: true, message: "Vui lòng nhập đáp án sửa đúng!" }]}>
         <Input.TextArea placeholder="Câu đã sửa đúng..." rows={2} className="rounded-xl" />
       </Form.Item>
@@ -176,7 +185,9 @@ function ErrorCorrectionFields() {
 function MatchingFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-      <span className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình ghép đôi</span>
+      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+        <Settings size={15} className="text-slate-500" /> Cấu hình ghép đôi
+      </span>
       <Row gutter={16}>
         <Col span={12}>
           <Form.Item name="shuffleLeft" valuePropName="checked" label="Xáo trộn cột trái">
@@ -203,7 +214,7 @@ function MatchingFields() {
                 <Form.Item {...restField} name={[name, "leftText"]} rules={[{ required: true, message: "Vui lòng nhập vế trái!" }]}>
                   <Input placeholder="Cột trái" className="rounded-lg w-36" />
                 </Form.Item>
-                <span className="text-slate-400">↔</span>
+                <ArrowLeftRight size={14} className="text-slate-400" />
                 <Form.Item {...restField} name={[name, "rightText"]} rules={[{ required: true, message: "Vui lòng nhập vế phải!" }]}>
                   <Input placeholder="Cột phải" className="rounded-lg w-36" />
                 </Form.Item>
@@ -246,8 +257,8 @@ function MediaSection({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
-            <span className="text-sm">🖼️</span>
+          <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+            <LucideImage size={15} />
           </div>
           <span className="text-sm font-semibold text-slate-700">Tệp tin đa phương tiện (Media)</span>
         </div>
@@ -260,7 +271,7 @@ function MediaSection({
             <div className="space-y-2">
               {mediaFields.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-6 text-slate-400">
-                  <span className="text-3xl mb-2">📂</span>
+                  <FolderOpen size={36} className="text-slate-300 mb-2 stroke-[1.5]" />
                   <span className="text-xs">Chưa có tệp tin nào. Nhấn bên dưới để thêm.</span>
                 </div>
               )}
@@ -340,7 +351,7 @@ function MediaSection({
                               ) : isAud ? (
                                 <SoundOutlined className="text-base text-indigo-500" />
                               ) : (
-                                <span className="text-base">📹</span>
+                                <Video size={16} className="text-slate-500" />
                               )}
                             </div>
                           </Tooltip>
@@ -367,7 +378,13 @@ function MediaSection({
                       {selectedAsset && (
                         <div className="flex items-center gap-1.5">
                           <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${isImg ? "bg-blue-50 text-blue-600" : isAud ? "bg-violet-50 text-violet-600" : "bg-orange-50 text-orange-600"}`}>
-                            {isImg ? "🖼️ Hình ảnh" : isAud ? "🔊 Âm thanh" : "📹 Video"}
+                            {isImg ? (
+                              <><LucideImage size={11} /> Hình ảnh</>
+                            ) : isAud ? (
+                              <><Volume2 size={11} /> Âm thanh</>
+                            ) : (
+                              <><Video size={11} /> Video</>
+                            )}
                           </span>
                           <span className="text-[10px] text-slate-400 truncate max-w-[180px]">
                             {selectedAsset.altText ?? selectedAsset.url.split("/").pop()}

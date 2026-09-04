@@ -1,5 +1,6 @@
 import { Button, Space, Table, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
+import { BookOpen, Target } from "lucide-react";
 import { PAGE_SIZE_PASSAGES } from "../constants";
 
 const { Paragraph } = Typography;
@@ -35,9 +36,20 @@ function buildColumns(
       render: (val: string, record: Passage) => (
         <div>
           <div className="font-semibold text-slate-800">{val}</div>
-          <div className="text-xs text-slate-400">
-            {record.source ? `📚 ${record.source}` : "—"} •{" "}
-            {record.level ? `🎯 ${record.level.name}` : "Chưa chọn level"}
+          <div className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+            {record.source ? (
+              <span className="inline-flex items-center gap-1">
+                <BookOpen size={11} className="text-slate-400" />
+                {record.source}
+              </span>
+            ) : "—"}
+            <span>•</span>
+            {record.level ? (
+              <span className="inline-flex items-center gap-1">
+                <Target size={11} className="text-slate-400" />
+                {record.level.name}
+              </span>
+            ) : "Chưa chọn level"}
           </div>
         </div>
       ),

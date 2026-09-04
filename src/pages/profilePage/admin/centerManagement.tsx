@@ -57,6 +57,16 @@ import { learningCmsService } from "../../../services/learningCmsService";
 import { teacherLearningService } from "../../../services/teacherLearningService";
 import { resolveMediaUrl } from "../../../services/apiClient";
 import { SecureImage } from "../../../components/SecureImage";
+import { useAppImagePreview } from "../../../components/AppImagePreview";
+import {
+  Building2,
+  Image as LucideImageIcon,
+  GraduationCap,
+  BookOpen as LucideBookOpen,
+  MapPin,
+  Info as LucideInfo,
+  AlertTriangle,
+} from "lucide-react";
 import dayjs from "dayjs";
 
 const { Title, Text, Paragraph } = Typography;
@@ -149,9 +159,7 @@ export default function CenterManagement() {
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   const [specializationModalOpen, setSpecializationModalOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewImage, setPreviewImage] = useState("");
-  const [previewTitle, setPreviewTitle] = useState("");
+  const { showPreview, previewElement } = useAppImagePreview();
 
   // Dynamic filter state for modal inputs
   const [selectedModalCenterId, setSelectedModalCenterId] = useState<string | undefined>(undefined);
@@ -1761,8 +1769,9 @@ export default function CenterManagement() {
                             }`}
                         >
                           <div className="flex items-start justify-between">
-                            <div className="font-bold text-sm line-clamp-1 flex-1 pr-2">
-                              🏫 {center.name}
+                            <div className="font-bold text-sm line-clamp-1 flex-1 pr-2 flex items-center gap-1.5">
+                              <Building2 size={15} className="text-indigo-600 shrink-0" />
+                              <span className="truncate">{center.name}</span>
                             </div>
                             <span
                               className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${isSelected ? "bg-indigo-600" : "bg-slate-300 group-hover:bg-indigo-400"
@@ -1844,7 +1853,9 @@ export default function CenterManagement() {
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-2xl">🏫</span>
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                              <Building2 size={22} />
+                            </div>
                             <Title level={3} className="!mb-0 !text-slate-800 font-extrabold">
                               {selectedCenter?.name}
                             </Title>
@@ -1923,7 +1934,7 @@ export default function CenterManagement() {
                     {selectedCenter?.images && selectedCenter.images.length > 0 && (
                       <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                         <div className="flex items-center gap-2 mb-4">
-                          <span className="text-lg">🖼️</span>
+                          <LucideImageIcon size={18} className="text-slate-500" />
                           <h3 className="text-base font-bold text-slate-800 m-0">Ảnh chi tiết trung tâm ({selectedCenter.images.length})</h3>
                         </div>
                         <Image.PreviewGroup>
@@ -1937,7 +1948,7 @@ export default function CenterManagement() {
                                     rootClassName="w-full h-full"
                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                                     preview={{
-                                      mask: (
+                                      cover: (
                                         <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">Xem ảnh</span>
                                       ),
                                     }}
@@ -1993,7 +2004,7 @@ export default function CenterManagement() {
                     <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">📚</span>
+                          <GraduationCap size={18} className="text-slate-500" />
                           <h3 className="text-base font-bold text-slate-800 m-0">Lớp học thuộc trung tâm</h3>
                         </div>
                         <Button
@@ -2039,8 +2050,9 @@ export default function CenterManagement() {
                                   </div>
                                   {cls.specializationId && (
                                     <div className="mt-1">
-                                      <span className="text-[10px] text-emerald-600 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full inline-block">
-                                        📖 {specializations.find(s => s.id === cls.specializationId)?.name || "Môn học khác"}
+                                      <span className="text-[10px] text-emerald-600 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                        <LucideBookOpen size={10} />
+                                        {specializations.find(s => s.id === cls.specializationId)?.name || "Môn học khác"}
                                       </span>
                                     </div>
                                   )}
@@ -2050,8 +2062,9 @@ export default function CenterManagement() {
                                         const name = m.curriculum?.title || m.curriculum?.code;
                                         if (!name) return null;
                                         return (
-                                          <span key={m.id} className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full">
-                                            📚 {name}
+                                          <span key={m.id} className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                            <LucideBookOpen size={10} />
+                                            {name}
                                           </span>
                                         );
                                       })}
@@ -2086,7 +2099,7 @@ export default function CenterManagement() {
                     {selectedCenter?.mapEmbedUrl && (
                       <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                         <div className="flex items-center gap-2 mb-4">
-                          <span className="text-lg">📍</span>
+                          <MapPin size={18} className="text-slate-500" />
                           <h3 className="text-base font-bold text-slate-800 m-0">Vị trí trung tâm</h3>
                         </div>
                         <div className="w-full h-64 rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
@@ -2356,7 +2369,10 @@ export default function CenterManagement() {
                     accept="image/*"
                     multiple
                     maxCount={20}
-                    showUploadList={{ showPreviewIcon: false }}
+                    onPreview={(file) => {
+                      const url = file.url || file.thumbUrl || file.response?.url;
+                      if (url) showPreview(url);
+                    }}
                   >
                     {subImagesFileList.length < 20 && (
                       <div>
@@ -2619,7 +2635,7 @@ export default function CenterManagement() {
                     })()}
 
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
-                      <div className="font-semibold text-blue-700">ℹ️ Quy tắc trạng thái tài khoản:</div>
+                      <div className="font-semibold text-blue-700 flex items-center gap-1.5"><LucideInfo size={14} /> Quy tắc trạng thái tài khoản:</div>
                       <ul className="list-disc pl-4 m-0 space-y-0.5">
                         <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
                         <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
@@ -2833,11 +2849,7 @@ export default function CenterManagement() {
                                           type="text"
                                           size="small"
                                           icon={<EyeOutlined className="text-white text-xs" />}
-                                          onClick={() => {
-                                            setPreviewImage(url);
-                                            setPreviewTitle(file.name || "Xem ảnh bằng cấp");
-                                            setPreviewOpen(true);
-                                          }}
+                                          onClick={() => showPreview(url)}
                                         />
                                         <Button
                                           type="text"
@@ -3032,7 +3044,7 @@ export default function CenterManagement() {
                     })()}
 
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
-                      <div className="font-semibold text-blue-700">ℹ️ Quy tắc trạng thái tài khoản:</div>
+                      <div className="font-semibold text-blue-700 flex items-center gap-1.5"><LucideInfo size={14} /> Quy tắc trạng thái tài khoản:</div>
                       <ul className="list-disc pl-4 m-0 space-y-0.5">
                         <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
                         <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
@@ -3283,7 +3295,7 @@ export default function CenterManagement() {
                     })()}
 
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
-                      <div className="font-semibold text-blue-700">ℹ️ Quy tắc trạng thái tài khoản:</div>
+                      <div className="font-semibold text-blue-700 flex items-center gap-1.5"><LucideInfo size={14} /> Quy tắc trạng thái tài khoản:</div>
                       <ul className="list-disc pl-4 m-0 space-y-0.5">
                         <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
                         <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
@@ -3361,9 +3373,10 @@ export default function CenterManagement() {
                       Sao chép
                     </Button>
                   </div>
-                  <p className="text-amber-600 text-xs bg-amber-50 p-3 rounded-xl">
-                    ⚠️ Hãy copy và chia sẻ mật khẩu mới này cho người dùng. Họ có thể đổi sang mật khẩu mong muốn sau khi đăng nhập thành công.
-                  </p>
+                  <div className="flex items-start gap-2 text-amber-700 text-xs bg-amber-50 p-3 rounded-xl border border-amber-200/50">
+                    <AlertTriangle size={15} className="shrink-0 text-amber-600 mt-0.5" />
+                    <span>Hãy copy và chia sẻ mật khẩu mới này cho người dùng. Họ có thể đổi sang mật khẩu mong muốn sau khi đăng nhập thành công.</span>
+                  </div>
                   <Button
                     block
                     type="primary"
@@ -3422,25 +3435,8 @@ export default function CenterManagement() {
               </Form>
             </Modal>
 
-            {/* IMAGE PREVIEW MODAL */}
-            <Modal
-              open={previewOpen}
-              title={previewTitle}
-              footer={null}
-              onCancel={() => setPreviewOpen(false)}
-              centered
-              className="rounded-2xl"
-              styles={{
-                body: {
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  padding: "10px",
-                }
-              }}
-            >
-              <SecureImage src={previewImage} className="max-w-full max-h-[70vh] object-contain rounded-xl" />
-            </Modal>
+            {/* IMAGE PREVIEW LIGHTBOX */}
+            {previewElement}
 
           </div>
         </Spin>

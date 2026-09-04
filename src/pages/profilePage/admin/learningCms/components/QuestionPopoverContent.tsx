@@ -1,4 +1,5 @@
 import { Tag } from "antd";
+import { Check } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../constants";
 
 // ── Types ────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
         </div>
         {question.instruction && (
           <div className="text-slate-500 italic text-[11px] mb-1 leading-relaxed">
-            📌 {question.instruction}
+            {question.instruction}
           </div>
         )}
         <div
@@ -123,9 +124,9 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
         >
           {QUESTION_TYPE_LABELS[question.type] ?? question.type}
         </Tag>
-        {skill && <Tag color="blue"  className="text-[10px] m-0 border-none">💡 {skill.name}</Tag>}
-        {level && <Tag color="purple" className="text-[10px] m-0 border-none">🎯 {level.name}</Tag>}
-        {topic && <Tag color="cyan"  className="text-[10px] m-0 border-none">📁 {topic.name}</Tag>}
+        {skill && <Tag color="blue" className="text-[10px] m-0 border-none">{skill.name}</Tag>}
+        {level && <Tag color="purple" className="text-[10px] m-0 border-none">{level.name}</Tag>}
+        {topic && <Tag color="cyan" className="text-[10px] m-0 border-none">{topic.name}</Tag>}
         {qTags.map((t) => (
           <Tag key={t.id} color="gold" className="text-[10px] m-0 border-none">
             # {t.name}
@@ -153,7 +154,7 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
                   {opt.label ?? String.fromCharCode(65 + idx)}.
                 </span>
                 <span className="flex-1">{opt.content}</span>
-                {opt.isCorrect && <span className="shrink-0">✓</span>}
+                {opt.isCorrect && <Check size={12} className="shrink-0 text-emerald-600" />}
               </div>
             ))}
           </div>
@@ -166,8 +167,9 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
             Câu trả lời đúng
           </div>
-          <div className="bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5 text-[11px] font-semibold text-emerald-700">
-            ✓ {correctAnswer}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5 text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+            <Check size={12} className="shrink-0" />
+            <span>{correctAnswer}</span>
           </div>
         </div>
       )}

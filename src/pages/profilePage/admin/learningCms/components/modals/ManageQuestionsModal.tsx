@@ -25,6 +25,7 @@ import {
   SearchOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
+import { AlertCircle, AlertTriangle, Search, ClipboardList } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from "../../constants";
 import QuestionPopoverContent from "../QuestionPopoverContent";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
@@ -360,8 +361,9 @@ export default function ManageQuestionsModal({
       width={1000}
       footer={
         <div className="flex justify-between items-center">
-          <div className="text-xs text-slate-400">
-            ⚠️ Chỉ câu hỏi đã được <strong>Duyệt (published)</strong> mới có thể thêm vào đề thi
+          <div className="text-xs text-slate-500 flex items-center gap-1">
+            <AlertCircle size={13} className="text-amber-500 shrink-0" />
+            <span>Chỉ câu hỏi đã được <strong>Duyệt (published)</strong> mới có thể thêm vào đề thi</span>
           </div>
           <Button type="primary" onClick={onDone}>Hoàn tất</Button>
         </div>
@@ -371,10 +373,13 @@ export default function ManageQuestionsModal({
       {/* Published-exam warning banner */}
       {selectedExam?.status === "published" && (
         <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3.5 text-xs flex justify-between items-center gap-3">
-          <div className="leading-relaxed">
-            ⚠️ <strong>Lưu ý:</strong> Đề thi này đang ở trạng thái <strong>Đang phát hành</strong>.
-            Các thay đổi về câu hỏi sẽ không tự động áp dụng cho học sinh đã giao cho đến khi bạn{" "}
-            <strong>Xuất bản phiên bản mới</strong>.
+          <div className="leading-relaxed flex items-start gap-1.5">
+            <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <strong>Lưu ý:</strong> Đề thi này đang ở trạng thái <strong>Đang phát hành</strong>.
+              Các thay đổi về câu hỏi sẽ không tự động áp dụng cho học sinh đã giao cho đến khi bạn{" "}
+              <strong>Xuất bản phiên bản mới</strong>.
+            </div>
           </div>
           <Button
             type="primary"
@@ -459,7 +464,7 @@ export default function ManageQuestionsModal({
                 <Segmented
                   options={[
                     { label: "Chọn thủ công", value: "manual" },
-                    { label: "🎲 Tạo ngẫu nhiên (Criteria)", value: "random" },
+                    { label: "Tạo ngẫu nhiên (Criteria)", value: "random" },
                   ]}
                   value={tabMode}
                   onChange={(v) => setTabMode(v as "manual" | "random")}
@@ -481,7 +486,8 @@ export default function ManageQuestionsModal({
                 <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden">
                   <div className="px-3 pt-3 pb-2">
                     <Input
-                      placeholder="🔍  Tìm theo đề bài, đáp án, giải thích..."
+                      placeholder="Tìm theo đề bài, đáp án, giải thích..."
+                      prefix={<Search size={13} className="text-slate-400 mr-1" />}
                       value={examQSearch}
                       onChange={(e) => onExamQSearch(e.target.value)}
                       allowClear
@@ -493,27 +499,28 @@ export default function ManageQuestionsModal({
                   <div className="mx-3 border-t border-slate-100" />
 
                   <div className="px-3 py-2 grid grid-cols-2 gap-1.5">
-                    <Select placeholder="📋 Loại câu hỏi" value={examQTypeFilter} onChange={onExamQTypeFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                    <Select placeholder="Loại câu hỏi" value={examQTypeFilter} onChange={onExamQTypeFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
                       {QUESTION_TYPES.map((qt) => <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>)}
                     </Select>
-                    <Select placeholder="💡 Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                    <Select placeholder="Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
                       {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
                     </Select>
-                    <Select placeholder="🎯 Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                    <Select placeholder="Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
                       {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
                     </Select>
-                    <Select placeholder="📁 Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
+                    <Select placeholder="Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
                       {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
                     </Select>
-                    <Select placeholder="🏷 Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false}>
+                    <Select placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false}>
                       {tags.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
                     </Select>
                   </div>
 
                   {hasActiveFilters && (
                     <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
-                      <span className="text-[11px] text-indigo-600">
-                        🔎 Tìm thấy <strong>{available.length}</strong> câu hỏi
+                      <span className="text-[11px] text-indigo-600 flex items-center gap-1">
+                        <Search size={12} />
+                        <span>Tìm thấy <strong>{available.length}</strong> câu hỏi</span>
                       </span>
                       <button
                         onClick={onResetFilters}
@@ -739,8 +746,9 @@ export default function ManageQuestionsModal({
                 {randomResult && (
                   <div className="mt-3 p-3 rounded-xl border border-purple-200 bg-purple-50/50">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-xs font-bold text-purple-900">
-                        📋 Kết quả Preview: {randomResult.totalCount} câu hỏi
+                      <div className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                        <ClipboardList size={14} className="text-purple-600" />
+                        <span>Kết quả Preview: {randomResult.totalCount} câu hỏi</span>
                       </div>
                       <Button
                         type="primary"

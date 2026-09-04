@@ -1,4 +1,5 @@
 import { Button, Space, Table, Tag, Tooltip } from "antd";
+import { AlertTriangle, Clock } from "lucide-react";
 import {
   BookOutlined,
   CheckCircleOutlined,
@@ -44,19 +45,19 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
   onRepublish: (e: Exam) => void;
 }) {
   return (
-    <Space direction="vertical" size={2} align="center" className="w-full">
+    <Space orientation="vertical" size={2} align="center" className="w-full">
       <Tag
         color={exam.status === "published" ? "success" : "default"}
         className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold m-0"
       >
-        {exam.status === "published" ? "✓ Đang phát hành" : "Nháp"}
+        {exam.status === "published" ? "Đang phát hành" : "Nháp"}
       </Tag>
 
       {exam.status === "published" && exam.hasUnpublishedChanges && (
         <div className="flex flex-col items-center gap-1 mt-1.5">
           <Tooltip title="Đề thi đã bị thay đổi sau khi xuất bản. Hãy bấm nút bên dưới hoặc chuyển về nháp rồi xuất bản lại để cập nhật phiên bản mới.">
-            <Tag color="warning" className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-bold m-0">
-              ⚠️ Có thay đổi
+            <Tag color="warning" className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-bold m-0 inline-flex items-center gap-1">
+              <AlertTriangle size={11} /> Có thay đổi
             </Tag>
           </Tooltip>
           <Button
@@ -90,11 +91,14 @@ function buildColumns(
       render: (val: string, record: Exam) => (
         <div>
           <div className="font-bold text-slate-800">{val}</div>
-          <div className="text-xs text-slate-400 font-mono mt-0.5">
-            {record.code} • ⏱{" "}
-            {record.timeLimitSeconds
-              ? `${Math.round(record.timeLimitSeconds / 60)} phút`
-              : "Không giới hạn"}
+          <div className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+            <span>{record.code} •</span>
+            <Clock size={11} className="inline text-slate-400" />
+            <span>
+              {record.timeLimitSeconds
+                ? `${Math.round(record.timeLimitSeconds / 60)} phút`
+                : "Không giới hạn"}
+            </span>
           </div>
         </div>
       ),

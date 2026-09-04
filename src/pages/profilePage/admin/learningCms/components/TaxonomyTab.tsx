@@ -1,5 +1,6 @@
 import { Button, Input, Table, Tabs } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { Target, Sparkles, Folder, Tag as TagIcon } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import { PAGE_SIZE_DEFAULT } from "../constants";
 
@@ -32,10 +33,42 @@ interface Props {
 // ── Tabs config ──────────────────────────────────────────────
 
 const TAX_TABS = [
-  { key: "levels", label: "🎯 Level"    },
-  { key: "skills", label: "💡 Kỹ năng"  },
-  { key: "topics", label: "📂 Chủ đề"   },
-  { key: "tags",   label: "🏷️ Thẻ gắn" },
+  {
+    key: "levels",
+    label: (
+      <span className="flex items-center gap-1.5">
+        <Target size={14} />
+        <span>Level</span>
+      </span>
+    ),
+  },
+  {
+    key: "skills",
+    label: (
+      <span className="flex items-center gap-1.5">
+        <Sparkles size={14} />
+        <span>Kỹ năng</span>
+      </span>
+    ),
+  },
+  {
+    key: "topics",
+    label: (
+      <span className="flex items-center gap-1.5">
+        <Folder size={14} />
+        <span>Chủ đề</span>
+      </span>
+    ),
+  },
+  {
+    key: "tags",
+    label: (
+      <span className="flex items-center gap-1.5">
+        <TagIcon size={14} />
+        <span>Thẻ gắn</span>
+      </span>
+    ),
+  },
 ];
 
 // ── Component ────────────────────────────────────────────────

@@ -57,7 +57,7 @@ const Login = () => {
           {/* ===== FORM ===== */}
           <Form
             layout="vertical"
-            onFinish={handleFinish} // ✅ Enter & Button đều chạy
+            onFinish={handleFinish} // Enter & Button deu chay
             requiredMark={false}
           >
             {/* Username */}

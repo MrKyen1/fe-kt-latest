@@ -54,7 +54,7 @@ function buildColumns(
           <div className="font-bold text-slate-800">{val}</div>
           <div className="text-xs text-slate-400 font-mono mt-0.5">
             {record.code}
-            {record.level && ` • 🎯 ${record.level.name}`}
+            {record.level && ` • Level: ${record.level.name}`}
           </div>
         </div>
       ),
@@ -80,7 +80,7 @@ function buildColumns(
           color={val === "published" ? "success" : "default"}
           className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
         >
-          {val === "published" ? "✓ Đang phát hành" : "Nháp"}
+          {val === "published" ? "Đang phát hành" : "Nháp"}
         </Tag>
       ),
     },

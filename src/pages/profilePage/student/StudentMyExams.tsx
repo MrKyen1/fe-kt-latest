@@ -22,6 +22,7 @@ import {
   Select,
   Radio,
 } from "antd";
+import { History, BookOpen } from "lucide-react";
 
 import {
   BookOutlined,
@@ -90,7 +91,7 @@ function AttemptHistoryModal({
     {
       title: "Trạng thái", dataIndex: "status",
       render: (status: string) => status === "submitted"
-        ? <Tag color="success" className="rounded-full border-none text-xs font-semibold">✓ Đã nộp</Tag>
+        ? <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã nộp</Tag>
         : <Tag color="processing" className="rounded-full border-none text-xs font-semibold">Đang làm</Tag>,
     },
     {
@@ -125,7 +126,7 @@ function AttemptHistoryModal({
 
   return (
     <Modal
-      title={<div className="font-bold text-base text-slate-800">📜 Lịch sử làm bài: {title}</div>}
+      title={<div className="font-bold text-base text-slate-800 flex items-center gap-1.5"><History size={18} className="text-indigo-600" /> Lịch sử làm bài: {title}</div>}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -406,13 +407,13 @@ export default function StudentMyExams() {
                   onClick={() => setFilterType("exam")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "exam" ? "bg-white text-purple-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
                 >
-                  📝 Kiểm tra
+                  Kiểm tra
                 </button>
                 <button
                   onClick={() => setFilterType("practice")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "practice" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
                 >
-                  📘 Ôn tập
+                  Ôn tập
                 </button>
               </div>
 
@@ -424,8 +425,8 @@ export default function StudentMyExams() {
                 dropdownClassName="rounded-xl"
                 options={[
                   { value: "all", label: "Tất cả trạng thái" },
-                  { value: "pending", label: "⚡ Chưa làm / Ôn tập" },
-                  { value: "completed", label: "✓ Đã hoàn thành" },
+                  { value: "pending", label: "Chưa làm / Ôn tập" },
+                  { value: "completed", label: "Đã hoàn thành" },
                 ]}
               />
             </div>
@@ -493,7 +494,7 @@ export default function StudentMyExams() {
                           {item.examTitle}
                         </span>
                         <Tag color={item.isExamType ? "purple" : "blue"} className="rounded-full border-none text-[10px] font-bold px-2 py-0.5 m-0">
-                          {item.isExamType ? "📝 Kiểm tra" : "📘 Ôn tập"}
+                          {item.isExamType ? "Kiểm tra" : "Ôn tập"}
                         </Tag>
                         {item.className && (
                           <Tag color="cyan" className="rounded-full border-none text-[10px] font-semibold px-2 py-0.5 m-0">
@@ -512,7 +513,7 @@ export default function StudentMyExams() {
                         {item.maxAttempts ? (
                           <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0">Tối đa {item.maxAttempts} lần</Tag>
                         ) : (
-                          <Tag color="blue" className="rounded-full border-none text-[10px] px-2 m-0">♾ Không giới hạn</Tag>
+                          <Tag color="blue" className="rounded-full border-none text-[10px] px-2 m-0">Không giới hạn</Tag>
                         )}
                         {item.attemptsCount > 0 && (
                           <span className="text-slate-400">{item.attemptsCount} lần đã làm</span>
@@ -524,15 +525,15 @@ export default function StudentMyExams() {
                         {item.isExamType ? (
                           item.mastered ? (
                             <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              ✓ Đã đạt (100%)
+                              Đã đạt (100%)
                             </Tag>
                           ) : item.requiresRemediation ? (
                             <Tag color="volcano" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              ⚡ Cần ôn tập ({item.bestPctVal.toFixed(0)}%)
+                              Cần ôn tập ({item.bestPctVal.toFixed(0)}%)
                             </Tag>
                           ) : item.isCompleted ? (
                             <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              ✓ Đã nộp bài
+                              Đã nộp bài
                             </Tag>
                           ) : item.attemptsCount > 0 ? (
                             <Tag color="orange" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
@@ -546,11 +547,11 @@ export default function StudentMyExams() {
                         ) : (
                           item.isCompleted ? (
                             <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              ✓ Đã hoàn thành (100%)
+                              Đã hoàn thành (100%)
                             </Tag>
                           ) : item.attemptsCount > 0 ? (
                             <Tag color="orange" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              ⚡ Đang ôn tập ({item.bestPctVal.toFixed(0)}%)
+                              Đang ôn tập ({item.bestPctVal.toFixed(0)}%)
                             </Tag>
                           ) : (
                             <Tag color="default" className="rounded-full border-none text-xs px-2.5 py-0.5">
@@ -660,7 +661,7 @@ export default function StudentMyExams() {
                       {curriculum?.code && <span className="font-mono">{curriculum.code}</span>}
                       {maxAttempts
                         ? <span>Tối đa {maxAttempts} lần/bài</span>
-                        : <span>♾ Không giới hạn</span>}
+                        : <span>Không giới hạn</span>}
                     </div>
                   </div>
                   <div className="text-center">
@@ -720,7 +721,7 @@ export default function StudentMyExams() {
                               <div className="font-semibold text-slate-800 text-sm">{examTitle}</div>
                               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                 <Tag color={isExamType ? "purple" : "blue"} className="rounded-full border-none text-[10px] px-2 m-0 font-semibold">
-                                  {isExamType ? "📝 Kiểm tra" : "📘 Ôn tập"}
+                                  {isExamType ? "Kiểm tra" : "Ôn tập"}
                                 </Tag>
                                 {isRequired
                                   ? <Tag color="red" className="rounded-full border-none text-[10px] px-2 m-0">Bắt buộc</Tag>
@@ -731,11 +732,11 @@ export default function StudentMyExams() {
                                 {isPracticeMode ? (
                                   isPracticeCompleted ? (
                                     <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      ✓ Đã hoàn thành (100%)
+                                      Đã hoàn thành (100%)
                                     </Tag>
                                   ) : attemptsCount > 0 ? (
                                     <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      ⚡ Đang ôn tập ({bestPctVal.toFixed(0)}%)
+                                      Đang ôn tập ({bestPctVal.toFixed(0)}%)
                                     </Tag>
                                   ) : (
                                     <Tag color="default" className="rounded-full border-none text-[10px] px-2 m-0">
@@ -745,15 +746,15 @@ export default function StudentMyExams() {
                                 ) : (
                                   isMastered ? (
                                     <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      ✓ Đã đạt (100%)
+                                      Đã đạt (100%)
                                     </Tag>
                                   ) : requiresRemediation ? (
                                     <Tag color="volcano" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      ⚡ Cần ôn tập ({bestPctVal.toFixed(0)}%)
+                                      Cần ôn tập ({bestPctVal.toFixed(0)}%)
                                     </Tag>
                                   ) : isExamCompleted ? (
                                     <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      ✓ Đã nộp bài
+                                      Đã nộp bài
                                     </Tag>
                                   ) : attemptsCount > 0 ? (
                                     <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
@@ -836,8 +837,9 @@ export default function StudentMyExams() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
               <div>
-                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
-                  📚 Bài học của tôi
+                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight flex items-center gap-2">
+                  <BookOpen size={24} className="text-indigo-600" />
+                  <span>Bài học của tôi</span>
                 </Title>
                 <Text className="text-slate-500 text-sm">
                   Bài thi được giao và lộ trình học từ giáo viên / lớp học

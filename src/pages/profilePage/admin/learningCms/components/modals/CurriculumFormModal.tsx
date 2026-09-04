@@ -1,6 +1,7 @@
 import { Form, Input, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { FileTextOutlined } from "@ant-design/icons";
+import { Info } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -62,8 +63,9 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
         </Form.Item>
 
         {!isEditing && (
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-700">
-            💡 Giáo trình sẽ được tạo ở trạng thái <strong>Nháp</strong>. Sau khi thêm đề thi (đã phát hành), bạn có thể Phát hành giáo trình.
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-700 flex items-start gap-2">
+            <Info size={15} className="shrink-0 text-purple-600 mt-0.5" />
+            <span>Giáo trình sẽ được tạo ở trạng thái <strong>Nháp</strong>. Sau khi thêm đề thi (đã phát hành), bạn có thể Phát hành giáo trình.</span>
           </div>
         )}
       </Form>

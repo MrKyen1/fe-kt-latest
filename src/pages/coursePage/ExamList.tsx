@@ -589,7 +589,7 @@ function AttemptHistoryModal({
     {
       title: "Trạng thái", dataIndex: "status",
       render: (status: string) => status === "submitted"
-        ? <Tag color="success" className="rounded-full border-none text-xs font-semibold">✓ Đã nộp</Tag>
+        ? <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã nộp</Tag>
         : <Tag color="processing" className="rounded-full border-none text-xs font-semibold">Đang làm</Tag>,
     },
     {

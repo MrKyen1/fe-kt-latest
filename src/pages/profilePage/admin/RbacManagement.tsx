@@ -20,6 +20,7 @@ import {
   Typography,
   message,
 } from "antd";
+import { Save } from "lucide-react";
 
 import {
   DeleteOutlined,
@@ -565,9 +566,10 @@ export default function RbacManagement() {
                                 type="primary"
                                 loading={matrixSaving}
                                 onClick={handleMatrixSave}
+                                icon={<Save size={15} />}
                                 className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
                               >
-                                💾 Lưu thay đổi
+                                Lưu thay đổi
                               </Button>
                             </div>
                             <div className="overflow-x-auto border border-slate-100 rounded-2xl">

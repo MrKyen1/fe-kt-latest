@@ -1,4 +1,5 @@
 import { Modal, Table, Tag } from "antd";
+import { History } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../../constants";
 
 // ── Types ────────────────────────────────────────────────────
@@ -101,7 +102,8 @@ export default function QuestionVersionsModal({
     <Modal
       title={
         <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
-          📖 Lịch sử phiên bản câu hỏi — {promptPreview}
+          <History size={18} className="text-indigo-600" />
+          <span>Lịch sử phiên bản câu hỏi — {promptPreview}</span>
         </div>
       }
       open={open}

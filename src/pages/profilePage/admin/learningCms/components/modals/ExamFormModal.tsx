@@ -1,6 +1,7 @@
 import { Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { BookOutlined } from "@ant-design/icons";
+import { Info } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -75,8 +76,9 @@ export default function ExamFormModal({ open, onCancel, form, onFinish, isEditin
         </Form.Item>
 
         {!isEditing && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-            💡 Đề thi sẽ được tạo ở trạng thái <strong>Nháp</strong>. Sau khi thêm câu hỏi (đã duyệt), bạn có thể Phát hành đề thi.
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 flex items-start gap-2">
+            <Info size={15} className="shrink-0 text-amber-600 mt-0.5" />
+            <span>Đề thi sẽ được tạo ở trạng thái <strong>Nháp</strong>. Sau khi thêm câu hỏi (đã duyệt), bạn có thể Phát hành đề thi.</span>
           </div>
         )}
       </Form>

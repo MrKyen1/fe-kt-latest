@@ -6,6 +6,7 @@ import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import logoImg from "../../assets/logo/logo.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { Modal } from "antd";
+import { Trophy } from "lucide-react";
 import { studentLearningService } from "../../services/studentLearningService";
 import { parseBackendAnswer } from "./ExamDetail";
 
@@ -996,8 +997,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 md:p-10 flex items-center justify-center transition-colors">
         <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-8 md:p-10 text-center border border-slate-200 dark:border-slate-700">
-          <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-6 shadow-inner">
-            🏆
+          <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Trophy className="w-10 h-10 text-emerald-600 dark:text-emerald-400 stroke-[1.75]" />
           </div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-slate-100 mb-3">
             Hoàn thành 100% Đề Ôn Tập!

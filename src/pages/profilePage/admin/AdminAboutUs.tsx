@@ -13,6 +13,7 @@ import {
   Typography,
 } from "antd";
 import { SaveOutlined, FileTextOutlined } from "@ant-design/icons";
+import { Info } from "lucide-react";
 import { getAboutUs, saveAboutUs } from "../../../utils/adminStorage";
 import { AboutUs } from "../../../types";
 
@@ -169,8 +170,8 @@ export default function AdminAboutUs() {
 
       {/* Help Info */}
       <Card type="inner" className="bg-blue-50 border-blue-200">
-        <Title level={5} className="text-blue-800">
-          💡 Ghi chú
+        <Title level={5} className="text-blue-800 flex items-center gap-1.5">
+          <Info size={16} className="text-blue-600" /> Ghi chú
         </Title>
         <ul className="text-sm text-gray-700 space-y-2">
           <li>

@@ -1,9 +1,11 @@
 import React, { useMemo } from "react";
 import { Input, Modal, Form, Select, Checkbox, Button, message, Space } from "antd";
+import { Check, RotateCcw, AlertTriangle } from "lucide-react";
 import { ExamOption, ExamQuestion } from "../../types";
 import { MatchingQuestion } from "./MatchingQuestion";
 import { tokenStorage } from "../../services/tokenStorage";
 import { learningCmsService } from "../../services/learningCmsService";
+import { AppImage } from "../../components/AppImagePreview";
 
 const CHOICE_TYPES = ["multiple_choice", "audio_choice", "image_choice", "reading_comprehension", "multiple-choice", "listening"];
 
@@ -366,7 +368,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     <span className={textClass}>{optionLabel}</span>
                   </div>
                   {showFeedback && isThisOptionCorrect && (
-                    <span className="text-emerald-600 font-bold text-base ml-2">✓</span>
+                    <Check size={18} className="text-emerald-600 font-bold ml-2 shrink-0" />
                   )}
                 </label>
               );
@@ -571,10 +573,11 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             type="dashed"
             danger
             size="small"
+            icon={<RotateCcw size={13} />}
             onClick={() => setRegradeModalOpen(true)}
             className="flex-shrink-0 font-semibold border-rose-300 hover:border-rose-500 rounded-lg text-xs"
           >
-            ⚙️ Chấm lại (Hotfix)
+            Chấm lại (Hotfix)
           </Button>
         )}
       </div>
@@ -619,12 +622,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               {imageMedia.length > 0 && (
                 <div className="bg-slate-50 p-2 md:p-4 rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center gap-4">
                   {imageMedia.map((media, index) => (
-                    <img
-                      key={`${media.url}-${index}`}
-                      src={media.url}
-                      alt={`Context Media ${index + 1}`}
-                      className="max-w-full rounded-lg shadow-sm object-contain"
-                    />
+                    <div key={`${media.url}-${index}`} className="rounded-xl overflow-hidden shadow-sm">
+                      <AppImage
+                        src={media.url}
+                        alt={`Context Media ${index + 1}`}
+                        className="max-w-full rounded-xl object-contain"
+                        maskText="Phóng to ảnh"
+                      />
+                    </div>
                   ))}
                 </div>
               )}
@@ -719,7 +724,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       <Modal
         title={
           <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
-            ⚙️ Chấm lại Câu hỏi (Hotfix)
+            <RotateCcw size={18} className="text-rose-500" />
+            <span>Chấm lại Câu hỏi (Hotfix)</span>
           </div>
         }
         open={regradeModalOpen}
@@ -732,8 +738,11 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         destroyOnClose
       >
         <div className="py-2 space-y-4">
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs leading-relaxed">
-            ⚠️ <strong>Lưu ý:</strong> Thao tác này sẽ cập nhật đáp án đúng của <strong>phiên bản câu hỏi hiện tại</strong> và <strong>chấm lại ngay lập tức</strong> tất cả câu trả lời của học sinh trỏ tới phiên bản này.
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs leading-relaxed flex items-start gap-2">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <strong>Lưu ý:</strong> Thao tác này sẽ cập nhật đáp án đúng của <strong>phiên bản câu hỏi hiện tại</strong> và <strong>chấm lại ngay lập tức</strong> tất cả câu trả lời của học sinh trỏ tới phiên bản này.
+            </div>
           </div>
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
             <span className="font-semibold block mb-1">Đề bài:</span>

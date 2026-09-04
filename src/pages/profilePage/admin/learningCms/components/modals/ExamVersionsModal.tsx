@@ -1,5 +1,6 @@
 import { Button, Modal, Table, Tag } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import { History, AlertTriangle } from "lucide-react";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { message } from "antd";
 
@@ -110,7 +111,8 @@ export default function ExamVersionsModal({
     <Modal
       title={
         <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
-          📖 Lịch sử phiên bản — {viewingExam?.title}
+          <History size={18} className="text-indigo-600" />
+          <span>Lịch sử phiên bản — {viewingExam?.title}</span>
         </div>
       }
       open={open}
@@ -124,9 +126,12 @@ export default function ExamVersionsModal({
         {/* Unpublished-changes banner */}
         {viewingExam?.hasUnpublishedChanges && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3.5 text-xs flex justify-between items-center gap-3 shadow-sm">
-            <div className="leading-relaxed">
-              ⚠️ <strong>Có thay đổi chưa xuất bản:</strong>{" "}
-              Nhấn nút bên phải để lưu phiên bản mới của đề thi này ngay lập tức.
+            <div className="leading-relaxed flex items-start gap-1.5">
+              <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Có thay đổi chưa xuất bản:</strong>{" "}
+                Nhấn nút bên phải để lưu phiên bản mới của đề thi này ngay lập tức.
+              </div>
             </div>
             <Button
               type="primary"

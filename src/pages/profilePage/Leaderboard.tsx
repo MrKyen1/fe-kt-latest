@@ -25,6 +25,7 @@ import {
   StarOutlined,
   UserOutlined,
 } from "@ant-design/icons";
+import { Trophy, Medal } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import { leaderboardService } from "../../services/leaderboardService";
 import { useAuth } from "../../contexts/AuthContext";
@@ -57,9 +58,27 @@ const PERIOD_LABELS: Record<LeaderboardPeriod, string> = {
 };
 
 function rankBadge(rank: number) {
-  if (rank === 1) return <span className="text-2xl">🥇</span>;
-  if (rank === 2) return <span className="text-2xl">🥈</span>;
-  if (rank === 3) return <span className="text-2xl">🥉</span>;
+  if (rank === 1) {
+    return (
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-400 text-amber-950 font-black shadow-sm ring-2 ring-amber-200">
+        <Trophy size={16} />
+      </span>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-300 text-slate-800 font-black shadow-sm ring-2 ring-slate-200">
+        <Medal size={16} />
+      </span>
+    );
+  }
+  if (rank === 3) {
+    return (
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-600 text-white font-black shadow-sm ring-2 ring-amber-300/50">
+        <Medal size={16} />
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold text-sm">
       {rank}

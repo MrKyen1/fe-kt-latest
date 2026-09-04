@@ -1,12 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Spin } from "antd";
+import { Spin, Image } from "antd";
+import { EyeOutlined } from "@ant-design/icons";
+import { ImageOff } from "lucide-react";
 import { apiClient } from "../services/apiClient";
 
 interface SecureImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src: string;
+  previewable?: boolean;
+  maskText?: string;
 }
 
-export const SecureImage: React.FC<SecureImageProps> = ({ src, className, ...props }) => {
+export const SecureImage: React.FC<SecureImageProps> = ({
+  src,
+  className,
+  previewable,
+  maskText = "Xem ảnh",
+  ...props
+}) => {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -62,9 +72,27 @@ export const SecureImage: React.FC<SecureImageProps> = ({ src, className, ...pro
 
   if (error || !objectUrl) {
     return (
-      <div className={`flex items-center justify-center bg-slate-100 text-slate-400 text-xs text-center p-2 ${className}`} style={{ minHeight: 100 }}>
-        ⚠️ Lỗi tải ảnh
+      <div className={`flex flex-col items-center justify-center bg-slate-100 text-slate-400 text-xs text-center p-2 gap-1 ${className}`} style={{ minHeight: 100 }}>
+        <ImageOff size={18} className="text-slate-400 stroke-[1.5]" />
+        <span>Lỗi tải ảnh</span>
       </div>
+    );
+  }
+
+  if (previewable) {
+    return (
+      <Image
+        src={objectUrl}
+        className={className}
+        preview={{
+          cover: (
+            <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">
+              {maskText}
+            </span>
+          ),
+        }}
+        {...(props as any)}
+      />
     );
   }
 

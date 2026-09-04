@@ -1,5 +1,6 @@
 import { Button, Input, Modal, Upload } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
+import { Paperclip } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -64,9 +65,12 @@ export default function MediaUploadModal({
         </Upload>
 
         {uploadFile && (
-          <div className="bg-indigo-50 px-3 py-2 rounded-lg text-xs text-indigo-700">
-            📎 Đã chọn: <strong>{uploadFile.name}</strong>{" "}
-            ({(uploadFile.size / 1024).toFixed(1)} KB)
+          <div className="bg-indigo-50 px-3 py-2 rounded-lg text-xs text-indigo-700 flex items-center gap-1.5">
+            <Paperclip size={13} className="shrink-0" />
+            <span>
+              Đã chọn: <strong>{uploadFile.name}</strong>{" "}
+              ({(uploadFile.size / 1024).toFixed(1)} KB)
+            </span>
           </div>
         )}
 

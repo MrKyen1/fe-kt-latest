@@ -1,4 +1,5 @@
 import { Badge, Button, Space, Table, Tag, Tooltip } from "antd";
+import { Sparkles, Target } from "lucide-react";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -37,7 +38,7 @@ interface Props {
 
 function StatusTag({ status }: { status: string }) {
   if (status === "published")
-    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">✓ Đã duyệt</Tag>;
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
   if (status === "archived")
     return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
   return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
@@ -79,8 +80,8 @@ function buildColumns(
         const level = levels.find((l) => l.id === record.difficultyLevelId);
         return (
           <div className="text-xs text-slate-500 space-y-0.5">
-            {skill && <div>💡 {skill.name}</div>}
-            {level && <div>🎯 {level.name}</div>}
+            {skill && <div className="flex items-center gap-1"><Sparkles size={11} className="text-blue-500 shrink-0" /><span>{skill.name}</span></div>}
+            {level && <div className="flex items-center gap-1"><Target size={11} className="text-purple-500 shrink-0" /><span>{level.name}</span></div>}
           </div>
         );
       },
