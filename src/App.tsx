@@ -22,6 +22,7 @@ const AdminDashboard = lazy(() => import("./pages/profilePage/admin/AdminDashboa
 const LearningCms = lazy(() => import("./pages/profilePage/admin/LearningCms"));
 const RbacManagement = lazy(() => import("./pages/profilePage/admin/RbacManagement"));
 const AdminAboutUs = lazy(() => import("./pages/profilePage/admin/AdminAboutUs"));
+const AdminHomepageCms = lazy(() => import("./pages/profilePage/admin/AdminHomepageCms"));
 const TeacherAssignments = lazy(() => import("./pages/profilePage/teacher/TeacherAssignments"));
 const StudentMyExams = lazy(() => import("./pages/profilePage/student/StudentMyExams"));
 const Leaderboard = lazy(() => import("./pages/profilePage/Leaderboard"));
@@ -40,7 +41,8 @@ export default function App() {
       >
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<Home />} />
+            <Route index element={<Navigate to="/home" replace />} />
+            <Route path="home" element={<Home />} />
             <Route
               path="courses"
               element={
@@ -95,12 +97,13 @@ export default function App() {
             >
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="profile" element={<UserProfile />} />
-              <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="dashboard/centers/:centerId" element={<AdminDashboard />} />
+              <Route path="dashboard/*" element={<AdminDashboard />} />
               <Route path="cms/*" element={<LearningCms />} />
-              <Route path="ranking" element={<Leaderboard />} />
+              <Route path="ranking/*" element={<Leaderboard />} />
               <Route path="rbac/*" element={<RbacManagement />} />
-              <Route path="about" element={<AdminAboutUs />} />
+              <Route path="about/*" element={<AdminHomepageCms />} />
+              <Route path="homepage-cms/*" element={<AdminHomepageCms />} />
+              <Route path="homepage/*" element={<AdminHomepageCms />} />
             </Route>
 
             {/* Teacher Dedicated Nested Routes */}
@@ -115,9 +118,8 @@ export default function App() {
               <Route index element={<Navigate to="/teacher/profile" replace />} />
               <Route path="profile" element={<UserProfile />} />
               <Route path="cms/*" element={<LearningCms />} />
-              <Route path="assignments" element={<TeacherAssignments />} />
-              <Route path="assignments/:classId" element={<TeacherAssignments />} />
-              <Route path="ranking" element={<Leaderboard />} />
+              <Route path="assignments/*" element={<TeacherAssignments />} />
+              <Route path="ranking/*" element={<Leaderboard />} />
             </Route>
 
             {/* Student Dedicated Nested Routes */}
@@ -132,7 +134,7 @@ export default function App() {
               <Route index element={<Navigate to="/student/profile" replace />} />
               <Route path="profile" element={<UserProfile />} />
               <Route path="my-exams" element={<StudentMyExams />} />
-              <Route path="ranking" element={<Leaderboard />} />
+              <Route path="ranking/*" element={<Leaderboard />} />
             </Route>
           </Route>
 

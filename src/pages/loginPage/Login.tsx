@@ -17,7 +17,7 @@ const Login = () => {
     try {
       await login(username, password);
       message.success("Đăng nhập thành công!");
-      navigate("/");
+      navigate("/home");
     } catch (error: any) {
       console.error("Login failed:", error);
       message.error(error?.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
@@ -116,12 +116,15 @@ const Login = () => {
 
           {/* Register */}
           <p className="text-center text-sm text-gray-600 mt-4">
-            Bạn chưa có tài khoản?
-            <span
+            Bạn chưa có tài khoản?{" "}
+            <a
+              href="https://www.facebook.com/Nguyen.Xuan.Khoa.89"
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-blue-600 ml-1 cursor-pointer hover:underline"
             >
               Liên hệ với quản lý trung tâm.
-            </span>
+            </a>
           </p>
         </div>
       </div>

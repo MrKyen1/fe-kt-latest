@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState, useMemo } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Avatar,
   Button,
@@ -25,6 +25,7 @@ import {
   message,
   Upload,
   Image,
+  Segmented,
 } from "antd";
 import type { UploadFile } from "antd";
 
@@ -127,19 +128,36 @@ export default function CenterManagement() {
   const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
 
   // ================= UI STATE =================
-  const { centerId: paramCenterId } = useParams<{ centerId?: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [selectedCenterIdState, setSelectedCenterIdState] = useState<string | null>(null);
 
-  const selectedCenterId = paramCenterId || selectedCenterIdState;
+  const centerSubPathInfo = useMemo(() => {
+    const parts = location.pathname.split("/centers/")[1] || "";
+    const segments = parts.split("/").filter(Boolean);
+    const centerId = segments[0] || null;
+    const subTab = segments[1] || "teachers";
+    const validTabs = ["teachers", "students", "specializations", "admins"];
+    const activeSubTab = validTabs.includes(subTab) ? subTab : "teachers";
+    return { centerId, activeSubTab };
+  }, [location.pathname]);
+
+  const selectedCenterId = centerSubPathInfo.centerId || selectedCenterIdState;
+  const activeSubTab = centerSubPathInfo.activeSubTab;
 
   const setSelectedCenterId = (id: string | null) => {
     setSelectedCenterIdState(id);
     if (id) {
-      navigate(`/admin/dashboard/centers/${id}`, { replace: true });
+      navigate(`/admin/dashboard/centers/${id}/${activeSubTab}`, { replace: true });
     } else {
       navigate(`/admin/dashboard`, { replace: true });
+    }
+  };
+
+  const handleSubTabChange = (key: string) => {
+    if (selectedCenterId) {
+      navigate(`/admin/dashboard/centers/${selectedCenterId}/${key}`);
     }
   };
 
@@ -150,6 +168,8 @@ export default function CenterManagement() {
   const [teacherSearch, setTeacherSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [adminSearch, setAdminSearch] = useState("");
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   // ================= MODAL STATE =================
   const [centerModalOpen, setCenterModalOpen] = useState(false);
@@ -229,10 +249,17 @@ export default function CenterManagement() {
       );
       const enrichedTeachers = uniqueTeachers.map((t: any) => {
         const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
-        const matchedClass = (classesData || []).find((c: any) => classIds.includes(c.id));
+        const matchedClass =
+          (classesData || []).find((c: any) => classIds.includes(c.id)) ||
+          (t.teacherProfile?.classes || [])[0];
         return {
           ...t,
-          centerId: t.centerId || matchedClass?.centerId || t.teacherProfile?.centerId,
+          centerId:
+            t.centerId ||
+            matchedClass?.centerId ||
+            matchedClass?.center?.id ||
+            t.teacherProfile?.centerId ||
+            t.teacher?.classes?.[0]?.class?.centerId,
         };
       });
       setTeachers(enrichedTeachers);
@@ -243,10 +270,17 @@ export default function CenterManagement() {
       );
       const enrichedStudents = uniqueStudents.map((s: any) => {
         const classIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
-        const matchedClass = (classesData || []).find((c: any) => classIds.includes(c.id));
+        const matchedClass =
+          (classesData || []).find((c: any) => classIds.includes(c.id)) ||
+          (s.studentProfile?.classes || [])[0];
         return {
           ...s,
-          centerId: s.centerId || matchedClass?.centerId || s.studentProfile?.centerId,
+          centerId:
+            s.centerId ||
+            matchedClass?.centerId ||
+            matchedClass?.center?.id ||
+            s.studentProfile?.centerId ||
+            s.student?.classes?.[0]?.class?.centerId,
         };
       });
       setStudents(enrichedStudents);
@@ -1526,6 +1560,8 @@ export default function CenterManagement() {
   });
 
   const filteredTeachers = centerTeachers.filter((t) => {
+    if (teacherStatusFilter === "active" && !isUserActive(t)) return false;
+    if (teacherStatusFilter === "inactive" && isUserActive(t)) return false;
     const q = teacherSearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -1537,6 +1573,8 @@ export default function CenterManagement() {
   });
 
   const filteredStudents = centerStudents.filter((s) => {
+    if (studentStatusFilter === "active" && !isUserActive(s)) return false;
+    if (studentStatusFilter === "inactive" && isUserActive(s)) return false;
     const q = studentSearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -2120,7 +2158,8 @@ export default function CenterManagement() {
                     {/* USERS ACCORDION/TAB CARD */}
                     <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                       <Tabs
-                        defaultActiveKey="teachers"
+                        activeKey={activeSubTab}
+                        onChange={handleSubTabChange}
                         className="custom-tabs border-b-0"
                         items={[
                           {
@@ -2133,15 +2172,27 @@ export default function CenterManagement() {
                             ),
                             children: (
                               <div className="space-y-4 pt-4">
-                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <Input
-                                    placeholder="Tìm kiếm giáo viên theo tên, mã..."
-                                    prefix={<SearchOutlined className="text-slate-400" />}
-                                    value={teacherSearch}
-                                    onChange={(e) => setTeacherSearch(e.target.value)}
-                                    className="max-w-md rounded-xl border-slate-200"
-                                    allowClear
-                                  />
+                                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+                                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+                                    <Input
+                                      placeholder="Tìm kiếm giáo viên theo tên, mã..."
+                                      prefix={<SearchOutlined className="text-slate-400" />}
+                                      value={teacherSearch}
+                                      onChange={(e) => setTeacherSearch(e.target.value)}
+                                      className="max-w-md rounded-xl border-slate-200"
+                                      allowClear
+                                    />
+                                    <Segmented
+                                      value={teacherStatusFilter}
+                                      onChange={(val) => setTeacherStatusFilter(val as any)}
+                                      options={[
+                                        { label: `Tất cả (${centerTeachers.length})`, value: "all" },
+                                        { label: `Đang hoạt động (${centerTeachers.filter(isUserActive).length})`, value: "active" },
+                                        { label: `Đã nghỉ (${centerTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
+                                      ]}
+                                      className="bg-slate-100 p-0.5 rounded-xl text-xs"
+                                    />
+                                  </div>
                                   <Button
                                     type="primary"
                                     icon={<PlusOutlined />}
@@ -2174,15 +2225,27 @@ export default function CenterManagement() {
                             ),
                             children: (
                               <div className="space-y-4 pt-4">
-                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <Input
-                                    placeholder="Tìm kiếm học sinh theo tên, mã..."
-                                    prefix={<SearchOutlined className="text-slate-400" />}
-                                    value={studentSearch}
-                                    onChange={(e) => setStudentSearch(e.target.value)}
-                                    className="max-w-md rounded-xl border-slate-200"
-                                    allowClear
-                                  />
+                                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+                                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+                                    <Input
+                                      placeholder="Tìm kiếm học sinh theo tên, mã..."
+                                      prefix={<SearchOutlined className="text-slate-400" />}
+                                      value={studentSearch}
+                                      onChange={(e) => setStudentSearch(e.target.value)}
+                                      className="max-w-md rounded-xl border-slate-200"
+                                      allowClear
+                                    />
+                                    <Segmented
+                                      value={studentStatusFilter}
+                                      onChange={(val) => setStudentStatusFilter(val as any)}
+                                      options={[
+                                        { label: `Tất cả (${centerStudents.length})`, value: "all" },
+                                        { label: `Đang hoạt động (${centerStudents.filter(isUserActive).length})`, value: "active" },
+                                        { label: `Đã nghỉ (${centerStudents.filter((s) => !isUserActive(s)).length})`, value: "inactive" },
+                                      ]}
+                                      className="bg-slate-100 p-0.5 rounded-xl text-xs"
+                                    />
+                                  </div>
                                   <Button
                                     type="primary"
                                     icon={<PlusOutlined />}

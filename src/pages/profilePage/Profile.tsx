@@ -37,7 +37,7 @@ import { useAuth } from "../../contexts/AuthContext";
 
 import AdminDashboard from "./admin/AdminDashboard";
 import AdminCourses from "./admin/AdminCourses";
-import AdminAboutUs from "./admin/AdminAboutUs";
+import AdminHomepageCms from "./admin/AdminHomepageCms";
 import RbacManagement from "./admin/RbacManagement";
 import LearningCms from "./admin/LearningCms";
 import TeacherAssignments from "./teacher/TeacherAssignments";
@@ -299,7 +299,9 @@ export default function Profile() {
   const menuKey = useMemo(() => {
     const pathSegments = location.pathname.split("/").filter(Boolean);
     if (pathSegments.length >= 2 && (pathSegments[0] === "admin" || pathSegments[0] === "teacher" || pathSegments[0] === "student")) {
-      return pathSegments[1];
+      const seg = pathSegments[1];
+      if (seg === "homepage" || seg === "about") return "homepage-cms";
+      return seg;
     }
     return searchParams.get("tab") || (rolePrefix === "admin" ? "dashboard" : "profile");
   }, [location.pathname, searchParams, rolePrefix]);
@@ -429,16 +431,9 @@ export default function Profile() {
       label: "Phân quyền (RBAC)",
     },
     {
-      key: "about",
+      key: "homepage-cms",
       icon: <FileTextOutlined />,
-      label: (
-        <>
-          About{" "}
-          <span className="text-[9px] bg-rose-50 text-rose-500 border border-rose-200 px-1 py-0.5 rounded font-bold uppercase ml-1.5">
-            Coming Soon
-          </span>
-        </>
-      ),
+      label: "Cấu hình Trang chủ",
     },
   ];
 
@@ -511,8 +506,10 @@ export default function Profile() {
         return <LearningCms />;
       case "profile":
         return <UserProfile />;
+      case "homepage-cms":
+      case "homepage":
       case "about":
-        return <AdminAboutUs />;
+        return <AdminHomepageCms />;
       default:
         return <UserProfile />;
     }

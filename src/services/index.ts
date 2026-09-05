@@ -9,4 +9,5 @@ export * from "./teacherLearningService";
 export * from "./studentLearningService";
 export * from "./observabilityService";
 export * from "./leaderboardService";
+export * from "./homepageService";
 

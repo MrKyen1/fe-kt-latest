@@ -11,12 +11,33 @@ function mapUserResponse(user: any): User {
   if (!user) return user;
   const mapped = { ...user };
   if (user.teacher) {
+    const allClasses = (user.teacher.classes || []).map((c: any) => c.class).filter(Boolean);
     const activeClasses = (user.teacher.classes || [])
       .filter((c: any) => c.isActive)
-      .map((c: any) => c.class);
+      .map((c: any) => c.class)
+      .filter(Boolean);
+    const allClassesIds = (user.teacher.classes || []).map((c: any) => c.classId).filter(Boolean);
+    const activeClassIds = (user.teacher.classes || [])
+      .filter((c: any) => c.isActive)
+      .map((c: any) => c.classId)
+      .filter(Boolean);
+
+    const allSpecs = (user.teacher.teacherSpecializations || []).map((s: any) => s.specialization).filter(Boolean);
     const activeSpecs = (user.teacher.teacherSpecializations || [])
       .filter((s: any) => s.isActive)
-      .map((s: any) => s.specialization);
+      .map((s: any) => s.specialization)
+      .filter(Boolean);
+    const allSpecIds = (user.teacher.teacherSpecializations || []).map((s: any) => s.specializationId).filter(Boolean);
+    const activeSpecIds = (user.teacher.teacherSpecializations || [])
+      .filter((s: any) => s.isActive)
+      .map((s: any) => s.specializationId)
+      .filter(Boolean);
+
+    // Fallback: If user is inactive or has no active classes, retain historical classes for dashboard/center association
+    const resolvedClasses = activeClasses.length > 0 ? activeClasses : allClasses;
+    const resolvedClassIds = activeClassIds.length > 0 ? activeClassIds : allClassesIds;
+    const resolvedSpecs = activeSpecs.length > 0 ? activeSpecs : allSpecs;
+    const resolvedSpecIds = activeSpecIds.length > 0 ? activeSpecIds : allSpecIds;
 
     mapped.teacherProfile = {
       id: user.teacher.id,
@@ -27,30 +48,45 @@ function mapUserResponse(user: any): User {
       insuranceStartDate: user.teacher.insuranceStartDate,
       employmentType: user.teacher.employmentType,
       degrees: user.teacher.degrees || [],
-      classIds: (user.teacher.classes || [])
-        .filter((c: any) => c.isActive)
-        .map((c: any) => c.classId),
-      specializationIds: (user.teacher.teacherSpecializations || [])
-        .filter((s: any) => s.isActive)
-        .map((s: any) => s.specializationId),
-      classes: activeClasses,
-      specializations: activeSpecs,
+      classIds: resolvedClassIds,
+      specializationIds: resolvedSpecIds,
+      classes: resolvedClasses,
+      specializations: resolvedSpecs,
     };
   }
   if (user.student) {
+    const allClasses = (user.student.classes || []).map((c: any) => c.class).filter(Boolean);
     const activeClasses = (user.student.classes || [])
       .filter((c: any) => c.isActive)
-      .map((c: any) => c.class);
+      .map((c: any) => c.class)
+      .filter(Boolean);
+    const allClassesIds = (user.student.classes || []).map((c: any) => c.classId).filter(Boolean);
+    const activeClassIds = (user.student.classes || [])
+      .filter((c: any) => c.isActive)
+      .map((c: any) => c.classId)
+      .filter(Boolean);
+
+    const resolvedClasses = activeClasses.length > 0 ? activeClasses : allClasses;
+    const resolvedClassIds = activeClassIds.length > 0 ? activeClassIds : allClassesIds;
 
     mapped.studentProfile = {
       id: user.student.id,
       parentFullName: user.student.parentFullName,
-      classIds: (user.student.classes || [])
-        .filter((c: any) => c.isActive)
-        .map((c: any) => c.classId),
-      classes: activeClasses,
+      classIds: resolvedClassIds,
+      classes: resolvedClasses,
     };
   }
+
+  // Preserve centerId if present in class entity hierarchy
+  if (!mapped.centerId) {
+    const classWithCenter =
+      (user.teacher?.classes || []).find((c: any) => c.class?.centerId || c.class?.center?.id) ||
+      (user.student?.classes || []).find((c: any) => c.class?.centerId || c.class?.center?.id);
+    if (classWithCenter) {
+      mapped.centerId = classWithCenter.class?.centerId || classWithCenter.class?.center?.id;
+    }
+  }
+
   return mapped;
 }
 

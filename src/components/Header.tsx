@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Layout, Menu, Button, Dropdown, MenuProps, Avatar, Badge, Popover, Spin, Tag } from "antd";
 import { UserOutlined, LogoutOutlined, BellOutlined } from "@ant-design/icons";
-import { useEffect, useState, memo } from "react";
+import { useEffect, useState, memo, useMemo } from "react";
 import { Bell, Inbox, PenTool, BookOpen } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { resolveMediaUrl } from "../services/apiClient";
@@ -150,19 +150,26 @@ const Header = memo(function Header() {
     return () => { isMounted = false; };
   }, [isLoggedIn, isStudent, location.pathname]);
 
+  const activeMenuKey = useMemo(() => {
+    if (location.pathname === "/" || location.pathname === "/home") {
+      return "/home";
+    }
+    return location.pathname;
+  }, [location.pathname]);
+
   const handleMenuClick = (e: any) => {
-    if (e.key === "/") {
+    if (e.key === "/home" || e.key === "/") {
       window.scrollTo({ top: 0, behavior: "smooth" });
-      navigate("/");
+      navigate("/home");
     } else if (
       e.key === "about" ||
       e.key === "teachers" ||
       e.key === "contact"
     ) {
-      // Nếu đang ở trang khác, điều hướng về /?scrollTo=...
+      // Nếu đang ở trang khác, điều hướng về /home?scrollTo=...
       // Nếu đã ở trang chủ, cuộn luôn
-      if (location.pathname !== "/") {
-        navigate(`/?scrollTo=${e.key}`);
+      if (location.pathname !== "/" && location.pathname !== "/home") {
+        navigate(`/home?scrollTo=${e.key}`);
       } else {
         const element = document.getElementById(e.key);
         if (element) {
@@ -176,11 +183,11 @@ const Header = memo(function Header() {
 
   const handleLogout = async () => {
     await logout();
-    navigate("/");
+    navigate("/home");
   };
 
   const items = [
-    { key: "/", label: "Trang chủ" },
+    { key: "/home", label: "Trang chủ" },
     { key: "/courses", label: "Khóa học" },
     { key: "about", label: "Về chúng tôi" },
     { key: "teachers", label: "Giáo viên" },
@@ -209,7 +216,7 @@ const Header = memo(function Header() {
       <div
         className="flex items-center gap-3 cursor-pointer group"
         onClick={() => {
-          navigate("/");
+          navigate("/home");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
       >
@@ -222,7 +229,7 @@ const Header = memo(function Header() {
 
       <Menu
         mode="horizontal"
-        selectedKeys={[current]}
+        selectedKeys={[activeMenuKey]}
         onClick={handleMenuClick}
         items={items}
         className="flex-1 justify-center border-none bg-transparent font-medium text-gray-700 hidden md:flex"

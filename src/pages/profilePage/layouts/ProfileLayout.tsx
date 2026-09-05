@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import { Layout } from "antd";
 import {
   LayoutDashboard,
@@ -7,11 +6,9 @@ import {
   Trophy,
   ShieldCheck,
   Info,
-  LogOut,
   ChevronRight,
   Users,
 } from "lucide-react";
-import { useAuth } from "../../../contexts/AuthContext";
 
 const { Content } = Layout;
 
@@ -93,53 +90,22 @@ export default function ProfileLayout({
   onChange,
   children,
 }: Props) {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login");
-  };
-
-  const roleLabel: Record<string, string> = {
-    admin: "Administrator",
-    teacher: "Giáo viên",
-    student: "Học viên",
-  };
-  const currentRoleLabel = roleLabel[user?.role ?? ""] ?? user?.role ?? "";
-
   return (
     <div className="flex" style={{ minHeight: "100vh" }}>
       {/* ── Sidebar ─────────────────────────────────────────── */}
       <aside
         style={{
           width: 240,
-          flexShrink: 0,
-          position: "sticky",
+          position: "fixed",
           top: 64,
-          height: "calc(100vh - 64px)",
+          left: 0,
+          bottom: 0,
+          zIndex: 40,
         }}
         className="flex flex-col bg-white border-r border-slate-200"
       >
-        {/* Brand header */}
-        <div className="px-5 pt-5 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-sm shadow-indigo-200">
-              <LayoutDashboard size={15} className="text-white" />
-            </div>
-            <div>
-              <div className="text-slate-800 font-bold text-sm leading-none tracking-tight">
-                Kata <span className="text-indigo-600">Admin</span>
-              </div>
-              <div className="text-[10px] text-slate-400 mt-0.5 font-medium uppercase tracking-wider leading-none">
-                {currentRoleLabel}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Scrollable nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5 custom-scrollbar">
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-2 select-none">
             Navigation
           </div>
@@ -158,7 +124,7 @@ export default function ProfileLayout({
       </aside>
 
       {/* ── Main content ────────────────────────────────────── */}
-      <Layout className="flex-1 min-w-0">
+      <Layout className="flex-1 min-w-0" style={{ marginLeft: 240 }}>
         <Content
           style={{
             padding: "24px",

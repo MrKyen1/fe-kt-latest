@@ -14,11 +14,410 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-09-04
+
+### Bổ sung CMS settings cho Homepage
+
+**Migration cần chạy:** `1780000027000-add-homepage-cms.ts`.
+
+Nội dung Homepage được công khai ngay sau khi admin lưu. Không có trạng thái draft/publish.
+
+#### 1. API public lấy toàn bộ dữ liệu Homepage
+
+```http
+GET /api/v1/homepage
+```
+
+Không cần Bearer token, không có request body. API chỉ trả Slider và Gallery có `isActive=true`, sắp xếp theo `orderIndex` tăng dần.
+
+```jsonc
+{
+  "success": true,
+  "data": {
+    "slider": [
+      {
+        "id": "slide-uuid",
+        "mediaId": "media-uuid",
+        "media": {
+          "id": "media-uuid",
+          "url": "/api/v1/homepage/media/files/hero.jpg",
+          "mimeType": "image/jpeg",
+          "altText": "Banner khai giảng",
+        },
+        "altText": "Học viên Kata Edu",
+        "title": "Khai giảng khóa mới",
+        "subtitle": "Đăng ký để được tư vấn",
+        "ctaLabel": "Đăng ký ngay",
+        "ctaLink": "/dang-ky",
+        "orderIndex": 0,
+        "isActive": true,
+      },
+    ],
+    "about": {
+      "title": "Về Kata Edu",
+      "description": "...",
+      "mission": "...",
+      "vision": "...",
+      "stats": [{ "label": "Học viên", "value": "1000+" }],
+      "image": {
+        "id": "media-uuid",
+        "url": "/api/v1/homepage/media/files/about.jpg",
+      },
+    },
+    "facilities": {
+      "title": "Cơ sở vật chất & Hoạt động",
+      "description": "...",
+      "highlights": [{ "title": "Phòng học hiện đại", "description": "..." }],
+      "gallery": [
+        {
+          "id": "gallery-uuid",
+          "mediaId": "media-uuid",
+          "media": { "url": "/api/v1/homepage/media/files/gallery.jpg" },
+          "altText": "Hoạt động ngoại khóa",
+          "orderIndex": 0,
+          "isActive": true,
+        },
+      ],
+    },
+    "footer": {
+      "brandName": "Kata Edu",
+      "description": "...",
+      "socialLinks": [
+        { "platform": "Facebook", "url": "https://facebook.com/kataedu" },
+      ],
+      "phone": "0900000000",
+      "email": "contact@kata.edu",
+      "copyright": "© Kata Edu",
+    },
+  },
+}
+```
+
+#### 2. Quy ước Footer và API Centers
+
+Homepage settings **không lưu/không trả** `centerId`, tên cơ sở, địa chỉ, Google Maps URL hoặc liên hệ riêng từng cơ sở.
+
+- Danh sách cơ sở ở Footer: FE gọi `GET /api/v1/centers`, dùng `data[].name` để hiển thị.
+- Số điện thoại/email Footer: lấy lần lượt từ `data.footer.phone` và `data.footer.email` của `GET /api/v1/homepage`; hai giá trị này **dùng chung cho toàn bộ cơ sở**.
+- Địa chỉ và map theo từng cơ sở: FE lấy từ API Centers, không lấy từ Homepage settings.
+
+#### 3. API admin cập nhật singleton settings
+
+Tất cả API `/api/v1/admin/homepage/*` yêu cầu Bearer token của user có `roleCode = ADMIN`. User đã đăng nhập nhưng không phải ADMIN nhận `403`; không có token nhận `401`.
+
+```http
+PATCH /api/v1/admin/homepage
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```jsonc
+{
+  "aboutTitle": "Về Kata Edu",
+  "aboutDescription": "...",
+  "aboutMission": "...",
+  "aboutVision": "...",
+  "aboutStats": [{ "label": "Giáo viên", "value": "50+" }],
+  "aboutMediaId": "media-uuid", // gửi null để bỏ ảnh About
+  "facilitiesTitle": "Cơ sở vật chất & Hoạt động",
+  "facilitiesDescription": "...",
+  "facilitiesHighlights": [
+    { "title": "Hoạt động ngoại khóa", "description": "..." },
+  ],
+  "footerBrandName": "Kata Edu",
+  "footerDescription": "...",
+  "footerSocialLinks": [
+    { "platform": "Facebook", "url": "https://facebook.com/kataedu" },
+  ],
+  "footerPhone": "0900000000",
+  "footerEmail": "contact@kata.edu",
+  "footerCopyright": "© Kata Edu",
+}
+```
+
+Response `200` trả cùng shape `data` của API public nhưng gồm cả Slider/Gallery inactive. Các field trong body đều optional. Nested payload sai (ví dụ social URL không hợp lệ hoặc email không đúng định dạng) trả `400`.
+
+#### 4. Site media
+
+```http
+POST /api/v1/admin/homepage/media/upload
+Authorization: Bearer <accessToken>
+Content-Type: multipart/form-data
+```
+
+```txt
+file: <file-ảnh>
+altText: Banner khai giảng
+```
+
+Response `201`:
+
+```jsonc
+{
+  "success": true,
+  "data": {
+    "id": "media-uuid",
+    "url": "/api/v1/homepage/media/files/hero.jpg",
+    "mimeType": "image/jpeg",
+    "altText": "Banner khai giảng",
+  },
+}
+```
+
+- Field multipart bắt buộc là `file`; chỉ nhận MIME type `image/*`. File không phải ảnh hoặc thiếu file trả `400`.
+- `GET /api/v1/admin/homepage/media` trả danh sách media.
+- `DELETE /api/v1/admin/homepage/media/:id` trả `{ "data": { "id": "media-uuid" } }` khi xóa được.
+- Media đang được About, Slider hoặc Gallery tham chiếu trả `409` và không bị xóa.
+
+#### 5. Slider và Gallery
+
+Tạo Slider:
+
+```http
+POST /api/v1/admin/homepage/slides
+```
+
+```jsonc
+{
+  "mediaId": "media-uuid",
+  "altText": "Lớp học Kata Edu",
+  "title": "Khai giảng khóa mới",
+  "subtitle": "...",
+  "ctaLabel": "Xem chi tiết",
+  "ctaLink": "/khoa-hoc",
+  "orderIndex": 0,
+  "isActive": true,
+}
+```
+
+Response `201` trả Slider vừa tạo. `ctaLink` nhận route nội bộ hoặc URL ngoài. `PATCH /api/v1/admin/homepage/slides/:id` nhận các field tương tự; `DELETE` trả `{ "data": { "id": "slide-uuid" } }`.
+
+Tạo Gallery:
+
+```http
+POST /api/v1/admin/homepage/gallery
+```
+
+```json
+{
+  "mediaId": "media-uuid",
+  "altText": "Hoạt động ngoại khóa",
+  "orderIndex": 0,
+  "isActive": true
+}
+```
+
+Response `201` trả Gallery vừa tạo. `PATCH /api/v1/admin/homepage/gallery/:id` và `DELETE /api/v1/admin/homepage/gallery/:id` hoạt động tương ứng.
+
+Sắp xếp Slider hoặc Gallery:
+
+```http
+PATCH /api/v1/admin/homepage/slides/reorder
+PATCH /api/v1/admin/homepage/gallery/reorder
+```
+
+```json
+{
+  "items": [
+    { "id": "item-uuid-1", "orderIndex": 0 },
+    { "id": "item-uuid-2", "orderIndex": 1 }
+  ]
+}
+```
+
+Response `200` trả toàn bộ settings admin sau khi sắp xếp. ID trùng, ID không tồn tại hoặc `orderIndex` không hợp lệ bị reject.
+
+Giới hạn nghiệp vụ:
+
+- Tối đa **8 Slider active** và **4 Gallery active**; tạo/kích hoạt vượt giới hạn trả `409`.
+- About có đúng một trường `aboutMediaId`, nên tối đa một ảnh.
+- Có thể lưu Slider/Gallery inactive; chúng không xuất hiện ở API public.
+
+### Sửa lọc trạng thái tài khoản người dùng
+
+**Migration cần chạy:** không có.
+
+```http
+GET /api/v1/users
+```
+
+- Không truyền `isActive` sẽ chỉ trả user đang active.
+- Gửi `?isActive=true` để chỉ lấy user active; gửi `?isActive=false` để chỉ lấy user inactive.
+- Backend parse chính xác chuỗi query `true` và `false`; giá trị khác trả `400` do không phải boolean hợp lệ.
+
+---
+
+## 2026-08-27
+
+### Bổ sung lọc theo tag khi random câu hỏi cho exam
+
+**Migration cần chạy:** không có.
+
+```http
+POST /api/v1/learning/exams/random-questions
+```
+
+API này chỉ preview danh sách câu hỏi, **không ghi dữ liệu vào exam**. Mỗi phần tử trong `criteria` chọn ngẫu nhiên `count` câu hỏi khớp tất cả bộ lọc được truyền:
+
+```jsonc
+{
+  "criteria": [
+    {
+      "count": 5,
+      "levelId": "...",
+      "type": "multiple_choice",
+      "topicId": "...",
+      "skillId": "...",
+      "tagId": "...",
+    },
+  ],
+}
+```
+
+- `levelId`, `type`, `topicId`, `skillId` và `tagId` đều optional; `tagId` là bộ lọc được bổ sung trong đợt này.
+- Chỉ chọn câu hỏi đang active và có trạng thái `published`.
+- Một câu hỏi không xuất hiện lại ở nhóm sau; kết quả giữ thứ tự nhóm và có `orderIndex` liên tục từ `0`.
+- `tagId` không tồn tại trả `404`; nhóm không đủ số câu phù hợp trả `409`.
+- Response trả `data.items` để FE truyền thẳng sang API bulk attach và `data.groups[].questions` để preview đầy đủ nội dung câu hỏi.
+
+```http
+POST /api/v1/learning/exams/:id/questions/bulk
+```
+
+```jsonc
+{
+  "items": [{ "questionId": "...", "orderIndex": 0 }],
+}
+```
+
+---
+
+## 2026-08-06
+
+### Tách đề ôn tập và đề thi, bắt buộc làm đúng 100%
+
+**Migration cần chạy:** `1780000026000-add-exam-type.ts`.
+
+- Exam có `examType = practice | exam`; dữ liệu cũ được backfill `practice`, cần phân loại lại các đề thi cũ trước khi sử dụng.
+- `practice`: làm tuần tự, nộp từng câu, nhận đúng/sai và lời giải ngay, không sửa được câu đã nộp.
+- Lượt đầu của `exam`: được nhảy câu/bỏ qua/sửa đáp án qua `PUT /learning/student/attempts/:attemptId/answers/:questionId`; không lộ review trước khi nộp.
+- Lượt đầu của `exam` tự kết thúc khi hết `timeLimitSeconds`; backend cưỡng chế deadline và có scheduler đóng attempt hết hạn.
+- Sau lượt đầu, cả hai loại chỉ tạo lại câu sai/chưa làm. Retry làm tuần tự, chấm ngay và không bị `maxAttempts` chặn.
+- Exam/assignment/curriculum chỉ `finished` khi mọi câu bắt buộc đạt 100%.
+- Response attempt thêm `examType`, `attemptPhase`, `expiresAt`, `firstAttemptResult`, `remainingQuestionCount`, `mastered`, `requiresRemediation`, `taskStatus`.
+- Điểm báo cáo chính thức lấy từ attempt số 1; teacher analytics không dùng điểm cộng dồn của retry làm điểm thi.
+
+---
+
+## 2026-07-18
+
+### Siết invariant môn học và phạm vi giao bài của giáo viên
+
+**Migration cần chạy:** không có. Đợt này chỉ thay đổi validation, quyền truy cập và cơ chế soft-revoke; request/response DTO không đổi.
+
+> **Trước:** teacher có thể được gắn class nhưng thiếu specialization của class; `studentIds` không có `classId` có thể chứa học viên ngoài phạm vi teacher; standing curriculum có thể lệch môn với class; enrollment sinh từ class có thể còn active sau khi quan hệ cấp quyền bị thu hồi.
+> **Sau:** BE kiểm tra trạng thái cuối của teacher, giới hạn mọi recipient theo class teacher quản lý, bắt buộc class ↔ curriculum cùng môn và revalidate quyền class-derived ở mọi luồng student.
+
+#### 1) Tạo/cập nhật teacher — class phải được phủ bởi specialization
+
+Áp dụng cho:
+
+```http
+POST /api/v1/users
+PATCH /api/v1/users/:id
+```
+
+- Mọi active class trong `teacherProfile.classIds` phải có `specializationId` nằm trong `teacherProfile.specializationIds` của teacher.
+- Teacher vẫn được có thêm specialization chưa gắn class.
+- Khi `PATCH` chỉ gửi `classIds` hoặc chỉ gửi `specializationIds`, BE ghép với danh sách hiện tại rồi kiểm tra **trạng thái cuối**; không thể lách invariant bằng partial update.
+- Vi phạm trả `400`:
+
+```jsonc
+{
+  "success": false,
+  "statusCode": 400,
+  "message": "Chuyên môn của mọi lớp giáo viên phụ trách phải nằm trong danh sách chuyên môn của giáo viên",
+  "path": "…",
+  "requestId": "…",
+  "timestamp": "…",
+}
+```
+
+#### 2) Giao exam/curriculum — `studentIds` luôn nằm trong phạm vi teacher
+
+Áp dụng cho:
+
+```http
+POST /api/v1/learning/teacher/exam-assignments
+POST /api/v1/learning/teacher/curriculum-assignments
+```
+
+| Input recipient                  | Quy tắc mới                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Chỉ có `classId`                 | Giao cho toàn bộ học viên đang active trong class; teacher phải đang quản lý class.                                      |
+| Có `classId` và `studentIds`     | Mọi student phải đang thuộc chính class đó.                                                                              |
+| Chỉ có `studentIds`, không class | Mỗi student phải thuộc ít nhất một active class mà teacher đang quản lý; chỉ cần một student sai là hủy toàn bộ request. |
+
+Các lỗi recipient chính:
+
+| Điều kiện                                                         | HTTP  | `message`                                                        |
+| ----------------------------------------------------------------- | ----- | ---------------------------------------------------------------- |
+| Class không có học viên active khi giao cả lớp                    | `409` | `Lớp chưa có học viên đang hoạt động để giao bài`                |
+| Có `classId` nhưng một hoặc nhiều student không thuộc class       | `404` | `Một hoặc nhiều học viên không thuộc lớp đang hoạt động`         |
+| Không có `classId` và student nằm ngoài các class teacher quản lý | `404` | `Một hoặc nhiều học viên không thuộc lớp giáo viên đang quản lý` |
+
+Lưu ý:
+
+- Curriculum giao trực tiếp **không cần** là standing curriculum của class. Teacher vẫn có thể giao một curriculum ngoài cho học viên tự học thêm, miễn teacher phụ trách môn của curriculum và học viên nằm trong phạm vi class teacher quản lý.
+- Nếu gửi `classId`, exam/curriculum phải cùng specialization với class như trước.
+- Không thay đổi shape response của assignment.
+
+#### 3) Standing curriculum của class — cùng môn và thu hồi quyền đúng nguồn
+
+Áp dụng cho:
+
+```http
+POST /api/v1/learning/teacher/class-curriculums
+DELETE /api/v1/learning/teacher/class-curriculums/:id
+DELETE /api/v1/classes/:id
+PATCH /api/v1/users/:studentUserId
+```
+
+Khi tạo standing curriculum:
+
+- Class và curriculum bắt buộc cùng `specializationId`; lệch môn trả `400 "Lớp không thuộc cùng môn học với chương trình"`.
+- Teacher thường phải đang quản lý class và có active specialization tương ứng; thiếu specialization trả `403 "Giáo viên không phụ trách môn học của chương trình"`.
+- User có `learning.manage` vẫn có thể quản lý mọi class, nhưng không được gắn curriculum lệch môn.
+
+Quyền class-derived của học viên bị soft-revoke khi xảy ra một trong các trường hợp:
+
+- Xóa standing link class ↔ curriculum.
+- Học viên bị gỡ khỏi class qua `studentProfile.classIds`.
+- Class bị vô hiệu hóa.
+- Class hoặc standing link không còn active khi student truy cập.
+
+Ảnh hưởng tới FE:
+
+- `GET /api/v1/learning/student/curriculums` không còn trả enrollment class-derived đã mất quyền.
+- Detail/start attempt cũng revalidate quyền, không chỉ tin vào enrollment cũ.
+- Assignment trực tiếp từ teacher và lịch sử attempt **không bị xóa hoặc thu hồi** bởi các thao tác trên.
+- Nếu học viên còn một class active khác có cùng standing curriculum, chương trình vẫn truy cập được qua class hợp lệ đó.
+
+#### 4) Không thể vô hiệu hóa specialization còn dữ liệu active tham chiếu
+
+```http
+DELETE /api/v1/specializations/:id
+```
+
+BE trả `409 "Không thể vô hiệu hóa chuyên môn đang được dữ liệu active tham chiếu"` nếu specialization còn được tham chiếu bởi class, teacher specialization, level, skill, topic, reading passage, question, exam hoặc curriculum đang active.
+
+Khi reactivate class/level/skill/topic, specialization cha cũng phải active; nếu không, BE trả `404 "Không tìm thấy môn học"`.
+
 ---
 
 ## 2026-07-16
 
-### Bảng xếp hạng (Ranking)
+### Bảng xếp hạng (Leaderboard / Ranking)
 
 **Migration cần chạy:** `npm run migration:run` (`1780000025000-add-leaderboard-indexes` — chỉ thêm chỉ mục, không đổi dữ liệu).
 

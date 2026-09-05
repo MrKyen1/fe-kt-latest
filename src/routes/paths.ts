@@ -8,7 +8,7 @@
  */
 
 export const PATHS = {
-  HOME: "/",
+  HOME: "/home",
   LOGIN: "/login",
   REGISTER: "/register",
   FORGOT_PASSWORD: "/forgot-password",
@@ -72,6 +72,7 @@ export const PATHS = {
     },
     RANKING: "/admin/leaderboard",
     ABOUT: "/admin/about",
+    HOMEPAGE_CMS: "/admin/homepage-cms",
   },
 
   PROFILE: "/profile",

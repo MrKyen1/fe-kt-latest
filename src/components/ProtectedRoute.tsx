@@ -24,11 +24,11 @@ export function ProtectedRoute({ children, roles, permissions }: ProtectedRouteP
   }
 
   if (roles?.length && !hasRole(roles)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/home" replace />;
   }
 
   if (permissions?.length && !hasPermission(permissions)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/home" replace />;
   }
 
   return children;

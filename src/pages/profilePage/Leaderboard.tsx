@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Card,
   Table,
@@ -196,7 +197,38 @@ export default function Leaderboard() {
   const [scope, setScope] = useState<LeaderboardScope>("class");
   const [scopeId, setScopeId] = useState<string | undefined>(undefined);
   const [specializationId, setSpecializationId] = useState<string | undefined>(undefined);
-  const [metric, setMetric] = useState<LeaderboardMetric>("mastery");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const rolePrefix = useMemo(() => {
+    if ((user as any)?.role === "student") return "student";
+    if ((user as any)?.role === "teacher") return "teacher";
+    return "admin";
+  }, [user]);
+
+  const metric = useMemo<LeaderboardMetric>(() => {
+    const parts = location.pathname.split("/ranking")[1] || "";
+    const segments = parts.split("/").filter(Boolean);
+    const m = segments[0] as LeaderboardMetric;
+    if (m === "mastery" || m === "accuracy" || m === "progress") {
+      return m;
+    }
+    return "mastery";
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const parts = location.pathname.split("/ranking")[1] || "";
+    const segments = parts.split("/").filter(Boolean);
+    if (segments.length === 0) {
+      navigate(`/${rolePrefix}/ranking/mastery`, { replace: true });
+    }
+  }, [location.pathname, rolePrefix, navigate]);
+
+  const handleMetricChange = (newMetric: LeaderboardMetric) => {
+    navigate(`/${rolePrefix}/ranking/${newMetric}`);
+    setPage(1);
+  };
+
   const [metricPeriods, setMetricPeriods] = useState<Record<LeaderboardMetric, LeaderboardPeriod>>({
     mastery: "all_time",
     accuracy: "all_time",
@@ -560,10 +592,7 @@ export default function Leaderboard() {
         {/* Metric tabs */}
         <Tabs
           activeKey={metric}
-          onChange={(key) => {
-            setMetric(key as LeaderboardMetric);
-            setPage(1);
-          }}
+          onChange={(key) => handleMetricChange(key as LeaderboardMetric)}
           items={visibleTabs.map(t => ({
             key: t.key,
             label: (
