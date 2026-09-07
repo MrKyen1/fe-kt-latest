@@ -97,9 +97,15 @@ export const userService = {
   },
 
   async list(params?: UserListQuery): Promise<User[]> {
+    const queryParams: any = { ...params };
+    if (queryParams) {
+      if (queryParams.isActive === false || queryParams.isActive === "false") {
+        queryParams.isActive = "";
+      }
+    }
     // BE trả về paginated response { data: [...], meta: {...} }
     // unwrapList lấy cả data và meta, ta chỉ cần data array
-    const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params }));
+    const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params: queryParams }));
     return (result.data || []).map(mapUserResponse);
   },
 

@@ -247,43 +247,49 @@ export default function CenterManagement() {
       const uniqueTeachers = rawTeachers.filter(
         (teacher, index, self) => self.findIndex((t) => t.id === teacher.id) === index
       );
-      const enrichedTeachers = uniqueTeachers.map((t: any) => {
-        const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
-        const matchedClass =
-          (classesData || []).find((c: any) => classIds.includes(c.id)) ||
-          (t.teacherProfile?.classes || [])[0];
-        return {
-          ...t,
-          centerId:
-            t.centerId ||
-            matchedClass?.centerId ||
-            matchedClass?.center?.id ||
-            t.teacherProfile?.centerId ||
-            t.teacher?.classes?.[0]?.class?.centerId,
-        };
+      setTeachers((prevTeachers) => {
+        return uniqueTeachers.map((t: any) => {
+          const prev = prevTeachers.find((p: any) => p.id === t.id);
+          const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
+          const matchedClass =
+            (classesData || []).find((c: any) => classIds.includes(c.id)) ||
+            (t.teacherProfile?.classes || [])[0];
+          return {
+            ...t,
+            centerId:
+              t.centerId ||
+              matchedClass?.centerId ||
+              matchedClass?.center?.id ||
+              t.teacherProfile?.centerId ||
+              t.teacher?.classes?.[0]?.class?.centerId ||
+              prev?.centerId,
+          };
+        });
       });
-      setTeachers(enrichedTeachers);
 
       const rawStudents = [...(activeStudents || []), ...(inactiveStudents || [])];
       const uniqueStudents = rawStudents.filter(
         (student, index, self) => self.findIndex((s) => s.id === student.id) === index
       );
-      const enrichedStudents = uniqueStudents.map((s: any) => {
-        const classIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
-        const matchedClass =
-          (classesData || []).find((c: any) => classIds.includes(c.id)) ||
-          (s.studentProfile?.classes || [])[0];
-        return {
-          ...s,
-          centerId:
-            s.centerId ||
-            matchedClass?.centerId ||
-            matchedClass?.center?.id ||
-            s.studentProfile?.centerId ||
-            s.student?.classes?.[0]?.class?.centerId,
-        };
+      setStudents((prevStudents) => {
+        return uniqueStudents.map((s: any) => {
+          const prev = prevStudents.find((p: any) => p.id === s.id);
+          const classIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
+          const matchedClass =
+            (classesData || []).find((c: any) => classIds.includes(c.id)) ||
+            (s.studentProfile?.classes || [])[0];
+          return {
+            ...s,
+            centerId:
+              s.centerId ||
+              matchedClass?.centerId ||
+              matchedClass?.center?.id ||
+              s.studentProfile?.centerId ||
+              s.student?.classes?.[0]?.class?.centerId ||
+              prev?.centerId,
+          };
+        });
       });
-      setStudents(enrichedStudents);
 
       const rawAdmins = [...(activeAdmins || []), ...(inactiveAdmins || [])];
       const uniqueAdmins = rawAdmins.filter(
@@ -788,7 +794,16 @@ export default function CenterManagement() {
           citizenId: citizenIdVal,
           teacherProfile: profileData,
         });
-        message.success("Cập nhật giáo viên thành công");
+        const todayStr = dayjs().format("YYYY-MM-DD");
+        const isNowInactive = formattedEndDate ? formattedEndDate <= todayStr : false;
+        if (isNowInactive && teacherStatusFilter === "active") {
+          setTeacherStatusFilter("all");
+        }
+        message.success(
+          isNowInactive
+            ? "Cập nhật thành công! Giáo viên đã chuyển sang trạng thái Đã nghỉ."
+            : "Cập nhật giáo viên thành công"
+        );
       } else {
         const createdUser = await userService.create({
           password: values.password || "Teacher@123",
@@ -904,7 +919,16 @@ export default function CenterManagement() {
           citizenId: citizenIdVal,
           studentProfile: profileData,
         });
-        message.success("Cập nhật học sinh thành công");
+        const todayStr = dayjs().format("YYYY-MM-DD");
+        const isNowInactive = formattedEndDate ? formattedEndDate <= todayStr : false;
+        if (isNowInactive && studentStatusFilter === "active") {
+          setStudentStatusFilter("all");
+        }
+        message.success(
+          isNowInactive
+            ? "Cập nhật thành công! Học sinh đã chuyển sang trạng thái Đã nghỉ."
+            : "Cập nhật học sinh thành công"
+        );
       } else {
         const createdUser = await userService.create({
           password: values.password || "Student@123",
