@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Button,
   Card,
@@ -22,6 +22,7 @@ import {
   Tooltip,
   Progress,
   Alert,
+  Segmented,
 } from "antd";
 
 import {
@@ -38,8 +39,12 @@ import {
   LinkOutlined,
   ReloadOutlined,
   InfinityOutlined,
+  BankOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  GlobalOutlined,
 } from "@ant-design/icons";
-import { ClipboardList, Info } from "lucide-react";
+import { ClipboardList, Info, Building2, Filter } from "lucide-react";
 
 import { teacherLearningService, ClassCurriculum } from "../../../services/teacherLearningService";
 import { learningCmsService } from "../../../services/learningCmsService";
@@ -47,20 +52,40 @@ import { academicService } from "../../../services/academicService";
 import { userService } from "../../../services/userService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { getErrorMessage } from "../../../services/apiClient";
+import { Center, Specialization } from "../../../types/backend";
 
 const { Title, Text } = Typography;
 
 // ==================== TYPES ====================
 type AssignmentStatus = "active" | "cancelled";
 
-interface ExamOption { id: string; title?: string; code?: string; status?: string; }
-interface CurriculumOption { id: string; title?: string; code?: string; status?: string; }
-interface ClassOption { id: string; name?: string; centerId?: string; }
+interface ExamOption {
+  id: string;
+  title?: string;
+  code?: string;
+  status?: string;
+  examType?: string;
+  specializationId?: string;
+}
+interface CurriculumOption {
+  id: string;
+  title?: string;
+  code?: string;
+  status?: string;
+  specializationId?: string;
+}
+interface ClassOption {
+  id: string;
+  name?: string;
+  centerId?: string;
+  specializationId?: string;
+  specialization?: { id?: string; name?: string };
+}
 interface StudentOption {
   id: string;
   fullName?: string;
   code?: string;
-  studentProfile?: { id?: string; classes?: { id: string }[] };
+  studentProfile?: { id?: string; classes?: { id: string; centerId?: string; class?: { centerId?: string } }[] };
 }
 
 // ==================== STATUS TAG ====================
@@ -221,6 +246,9 @@ export default function TeacherAssignments() {
   const [activeTab, setActiveTab] = useState("class-curriculum");
 
   // ---- Data ----
+  const [centers, setCenters] = useState<Center[]>([]);
+  const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [allClasses, setAllClasses] = useState<ClassOption[]>([]);
   const [exams, setExams] = useState<ExamOption[]>([]);
   const [curriculums, setCurriculums] = useState<CurriculumOption[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
@@ -229,6 +257,12 @@ export default function TeacherAssignments() {
   const [classCurriculums, setClassCurriculums] = useState<ClassCurriculum[]>([]);
   const [examAssignments, setExamAssignments] = useState<any[]>([]);
   const [curriculumAssignments, setCurriculumAssignments] = useState<any[]>([]);
+
+  // ---- Filtering & Scopes ----
+  const [selectedCenterId, setSelectedCenterId] = useState<string>("all");
+  const [assignmentScope, setAssignmentScope] = useState<"my" | "center" | "all">(isTeacher ? "my" : "center");
+  const [searchKeyword, setSearchKeyword] = useState<string>("");
+  const [centerInitialized, setCenterInitialized] = useState(false);
 
   // ---- Loading ----
   const [loading, setLoading] = useState(false);
@@ -246,9 +280,10 @@ export default function TeacherAssignments() {
   const [examForm] = Form.useForm();
   const [curriculumForm] = Form.useForm();
 
-  // ---- Selected class (for filtering students) ----
+  // ---- Selected class (for filtering students and exams/curriculums) ----
   const [selectedClassForExam, setSelectedClassForExam] = useState<string | undefined>(undefined);
   const [selectedClassForCurriculum, setSelectedClassForCurriculum] = useState<string | undefined>(undefined);
+  const [selectedClassForClassCurriculum, setSelectedClassForClassCurriculum] = useState<string | undefined>(undefined);
 
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
   const [examVersionsMap, setExamVersionsMap] = useState<Record<string, any[]>>({});
@@ -269,6 +304,38 @@ export default function TeacherAssignments() {
     setExamVersionsMap(newVersionsMap);
   };
 
+  // ==================== USER CENTERS & SPECIALIZATIONS ====================
+  const teacherClassIds = useMemo(() => {
+    return (user?.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? []).filter(Boolean);
+  }, [user]);
+
+  const userCenters = useMemo(() => {
+    const set = new Set<string>();
+    if (user?.centerId) set.add(user.centerId);
+    if (user?.teacherProfile?.centerId) set.add(user.teacherProfile.centerId);
+    (user?.teacherProfile?.classes ?? []).forEach((c: any) => {
+      const cid = c.centerId || c.center?.id || c.class?.centerId || c.class?.center?.id;
+      if (cid) set.add(cid);
+    });
+    // Match with allClasses as well
+    allClasses.filter((c) => teacherClassIds.includes(c.id)).forEach((c) => {
+      if (c.centerId) set.add(c.centerId);
+    });
+    return Array.from(set);
+  }, [user, allClasses, teacherClassIds]);
+
+  const teacherSpecializationIds = useMemo(() => {
+    const set = new Set<string>();
+    (user?.teacherProfile?.specializationIds ?? []).forEach((id: string) => set.add(id));
+    (user?.teacherProfile?.specializations ?? []).forEach((s: any) => set.add(s.id));
+    (allClasses ?? []).forEach((c: any) => {
+      if (teacherClassIds.includes(c.id) && c.specializationId) {
+        set.add(c.specializationId);
+      }
+    });
+    return Array.from(set);
+  }, [user, allClasses, teacherClassIds]);
+
   // ==================== LOAD DATA ====================
   useEffect(() => { loadAll(); }, []);
 
@@ -283,6 +350,8 @@ export default function TeacherAssignments() {
         teacherLearningService.classCurriculums.list({ limit: 100 }),
         teacherLearningService.examAssignments.list({ limit: 100 }),
         teacherLearningService.curriculumAssignments.list({ limit: 100 }),
+        academicService.centers.list({ limit: 100 }),
+        academicService.specializations.list({ limit: 100 }),
       ]);
 
       const get = (i: number, name: string) => {
@@ -291,32 +360,20 @@ export default function TeacherAssignments() {
           if (name === "classes") {
             return user?.teacherProfile?.classes ?? [];
           }
-          if (name === "students") {
+          if (name === "students" || name === "centers" || name === "specializations") {
             return [];
           }
           return { data: [] };
         }
         const apiData = res.value;
-        if (name === "classes" && isTeacher) {
-          const teacherClassIds = (user.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? []).filter(Boolean);
-          const teacherCenters = new Set([
-            ...(user.teacherProfile?.classes?.map((c: any) => c.centerId || c.center?.id).filter(Boolean) ?? []),
-            ...(apiData as any[])
-              .filter((c: any) => teacherClassIds.includes(c.id))
-              .map((c: any) => c.centerId)
-              .filter(Boolean)
-          ]);
-          if (teacherCenters.size > 0) {
-            return (apiData as any[]).filter((c: any) => teacherCenters.has(c.centerId));
-          }
-          return (apiData as any[]).filter((c: any) => teacherClassIds.includes(c.id));
-        }
         return apiData;
       };
 
       setExams(get(0, "exams")?.data ?? []);
       setCurriculums(get(1, "curriculums")?.data ?? []);
-      setClasses(get(2, "classes") ?? []);
+      const rawClasses = get(2, "classes") ?? [];
+      setAllClasses(rawClasses);
+      setClasses(rawClasses);
       setAllStudents(get(3, "students") ?? []);
       setClassCurriculums(get(4, "classCurriculums")?.data ?? []);
       const rawExams = get(5, "examAssignments")?.data ?? [];
@@ -333,6 +390,9 @@ export default function TeacherAssignments() {
       });
 
       setCurriculumAssignments(get(6, "curriculumAssignments")?.data ?? []);
+      const rawCenters = (get(7, "centers") ?? []).filter((c: any) => c.isActive !== false);
+      setCenters(rawCenters);
+      setSpecializations(get(8, "specializations") ?? []);
     } catch (err: any) {
       message.error(getErrorMessage(err, "Tải dữ liệu thất bại"), 5);
     } finally {
@@ -340,47 +400,334 @@ export default function TeacherAssignments() {
     }
   };
 
+  // Auto initialize selectedCenterId based on user context
+  useEffect(() => {
+    if (!centerInitialized && centers.length > 0) {
+      if (userCenters.length > 0) {
+        setSelectedCenterId(userCenters[0]);
+      } else if (user?.centerId) {
+        setSelectedCenterId(user.centerId);
+      } else if (!isTeacher && centers.length > 0) {
+        setSelectedCenterId(centers[0].id);
+      }
+      setCenterInitialized(true);
+    }
+  }, [centers, userCenters, user?.centerId, centerInitialized, isTeacher]);
+
+  // ==================== HELPER RESOLVERS ====================
+  const getCenterName = (centerId?: string) => {
+    if (!centerId) return undefined;
+    return centers.find((c) => c.id === centerId)?.name;
+  };
+
+  const getSpecializationName = (specId?: string) => {
+    if (!specId) return undefined;
+    return specializations.find((s) => s.id === specId)?.name;
+  };
+
+  const getClassSpecializationId = (classId?: string) => {
+    if (!classId) return undefined;
+    const cls = allClasses.find((c) => c.id === classId);
+    return cls?.specializationId || (cls as any)?.specialization?.id;
+  };
+
+  const getRecordCenterId = (record: any) => {
+    if (record.class?.centerId) return record.class.centerId;
+    if (record.class?.center?.id) return record.class.center.id;
+    if (record.classId) {
+      const cls = allClasses.find((c) => c.id === record.classId);
+      if (cls?.centerId) return cls.centerId;
+    }
+    if (record.students?.length || record.studentIds?.length) {
+      const targetStudentIds =
+        record.students?.map((s: any) => s.studentId || s.student?.id || s.id) || record.studentIds || [];
+      const matchedStudent = allStudents.find(
+        (s) => targetStudentIds.includes(s.id) || targetStudentIds.includes(s.studentProfile?.id)
+      );
+      if (matchedStudent) {
+        const studentClasses = matchedStudent.studentProfile?.classes ?? [];
+        for (const sc of studentClasses) {
+          const cid = (sc as any).centerId || (sc as any).center?.id || (sc as any).class?.centerId;
+          if (cid) return cid;
+          const matchedCls = allClasses.find((c) => c.id === (sc.id || (sc as any).classId));
+          if (matchedCls?.centerId) return matchedCls.centerId;
+        }
+      }
+    }
+    if (
+      record.teacherId &&
+      (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)
+    ) {
+      return userCenters[0] || user?.centerId;
+    }
+    return undefined;
+  };
+
+  const isMyRecord = (record: any) => {
+    if (!isTeacher) return true;
+    if (
+      record.teacherId &&
+      (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)
+    ) {
+      return true;
+    }
+    if (record.classId && teacherClassIds.includes(record.classId)) {
+      return true;
+    }
+    if (record.students?.length || record.studentIds?.length) {
+      const targetStudentIds =
+        record.students?.map((s: any) => s.studentId || s.student?.id || s.id) || record.studentIds || [];
+      const hasMyStudent = allStudents.some((s) => {
+        if (!targetStudentIds.includes(s.id) && !targetStudentIds.includes(s.studentProfile?.id)) return false;
+        const studentClassIds = [
+          ...(s.studentProfile?.classIds ?? []),
+          ...(s.studentProfile?.classes?.map((c: any) => c.id || c.classId) ?? []),
+        ];
+        return studentClassIds.some((cid) => teacherClassIds.includes(cid));
+      });
+      if (hasMyStudent) return true;
+    }
+    return false;
+  };
+
+  // ==================== FILTERED LISTS ====================
+  const filteredClassCurriculums = useMemo(() => {
+    return classCurriculums.filter((item) => {
+      const itemCenterId = getRecordCenterId(item);
+
+      // Center Filter
+      if (selectedCenterId !== "all") {
+        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
+        if (!itemCenterId && item.classId) {
+          const cls = allClasses.find((c) => c.id === item.classId);
+          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
+        }
+      }
+
+      // Scope Filter
+      if (assignmentScope === "my" && isTeacher) {
+        if (!teacherClassIds.includes(item.classId)) return false;
+      }
+
+      // Search Keyword
+      if (searchKeyword.trim()) {
+        const kw = searchKeyword.toLowerCase();
+        const curTitle = (item.curriculum?.title || "").toLowerCase();
+        const curCode = (item.curriculum?.code || "").toLowerCase();
+        const clsName = (item.class?.name || allClasses.find((c) => c.id === item.classId)?.name || "").toLowerCase();
+        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
+        if (!curTitle.includes(kw) && !curCode.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [classCurriculums, selectedCenterId, assignmentScope, isTeacher, teacherClassIds, searchKeyword, allClasses, centers]);
+
+  const filteredExamAssignments = useMemo(() => {
+    return examAssignments.filter((record) => {
+      const itemCenterId = getRecordCenterId(record);
+
+      // Center Filter
+      if (selectedCenterId !== "all") {
+        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
+        if (!itemCenterId && record.classId) {
+          const cls = allClasses.find((c) => c.id === record.classId);
+          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
+        }
+      }
+
+      // Scope Filter
+      if (assignmentScope === "my" && isTeacher) {
+        if (!isMyRecord(record)) return false;
+      }
+
+      // Search Keyword
+      if (searchKeyword.trim()) {
+        const kw = searchKeyword.toLowerCase();
+        const title = (record.title || "").toLowerCase();
+        const examNames = (record.exams || []).map((e: any) => `${e.exam?.title || ""} ${e.exam?.code || ""}`).join(" ").toLowerCase();
+        const clsName = (record.class?.name || allClasses.find((c) => c.id === record.classId)?.name || "").toLowerCase();
+        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
+        const studentNames = (record.students || []).map((s: any) => s.student?.user?.fullName || s.student?.fullName || "").join(" ").toLowerCase();
+        if (!title.includes(kw) && !examNames.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw) && !studentNames.includes(kw)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [examAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds]);
+
+  const filteredCurriculumAssignments = useMemo(() => {
+    return curriculumAssignments.filter((record) => {
+      const itemCenterId = getRecordCenterId(record);
+
+      // Center Filter
+      if (selectedCenterId !== "all") {
+        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
+        if (!itemCenterId && record.classId) {
+          const cls = allClasses.find((c) => c.id === record.classId);
+          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
+        }
+      }
+
+      // Scope Filter
+      if (assignmentScope === "my" && isTeacher) {
+        if (!isMyRecord(record)) return false;
+      }
+
+      // Search Keyword
+      if (searchKeyword.trim()) {
+        const kw = searchKeyword.toLowerCase();
+        const title = (record.title || record.curriculum?.title || "").toLowerCase();
+        const curCode = (record.curriculum?.code || "").toLowerCase();
+        const clsName = (record.class?.name || allClasses.find((c) => c.id === record.classId)?.name || "").toLowerCase();
+        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
+        const studentNames = (record.students || []).map((s: any) => s.student?.user?.fullName || s.student?.fullName || "").join(" ").toLowerCase();
+        if (!title.includes(kw) && !curCode.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw) && !studentNames.includes(kw)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [curriculumAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds]);
+
+  // ==================== MODAL OPTIONS ====================
+  const modalClasses = useMemo(() => {
+    let list = allClasses;
+    if (selectedCenterId !== "all") {
+      list = list.filter((c) => c.centerId === selectedCenterId);
+    } else if (isTeacher && userCenters.length > 0) {
+      list = list.filter((c) => c.centerId && userCenters.includes(c.centerId));
+    }
+    return list;
+  }, [allClasses, selectedCenterId, isTeacher, userCenters]);
+
+  const modalExams = useMemo(() => {
+    if (selectedClassForExam) {
+      const classSpecId = getClassSpecializationId(selectedClassForExam);
+      if (classSpecId) {
+        return exams.filter((e) => e.specializationId === classSpecId);
+      }
+    }
+    if (isTeacher && teacherSpecializationIds.length > 0) {
+      return exams.filter((e) => e.specializationId && teacherSpecializationIds.includes(e.specializationId));
+    }
+    return exams;
+  }, [exams, selectedClassForExam, allClasses, isTeacher, teacherSpecializationIds]);
+
+  const modalClassCurriculums = useMemo(() => {
+    if (selectedClassForClassCurriculum) {
+      const classSpecId = getClassSpecializationId(selectedClassForClassCurriculum);
+      if (classSpecId) {
+        return curriculums.filter((c) => c.specializationId === classSpecId);
+      }
+    }
+    if (isTeacher && teacherSpecializationIds.length > 0) {
+      return curriculums.filter((c) => c.specializationId && teacherSpecializationIds.includes(c.specializationId));
+    }
+    return curriculums;
+  }, [curriculums, selectedClassForClassCurriculum, allClasses, isTeacher, teacherSpecializationIds]);
+
+  const modalDirectCurriculums = useMemo(() => {
+    if (selectedClassForCurriculum) {
+      const classSpecId = getClassSpecializationId(selectedClassForCurriculum);
+      if (classSpecId) {
+        return curriculums.filter((c) => c.specializationId === classSpecId);
+      }
+    }
+    if (isTeacher && teacherSpecializationIds.length > 0) {
+      return curriculums.filter((c) => c.specializationId && teacherSpecializationIds.includes(c.specializationId));
+    }
+    return curriculums;
+  }, [curriculums, selectedClassForCurriculum, allClasses, isTeacher, teacherSpecializationIds]);
+
+  const handleClassChangeForExam = (classId?: string) => {
+    setSelectedClassForExam(classId);
+    examForm.setFieldValue("studentIds", []);
+    if (classId) {
+      const classSpecId = getClassSpecializationId(classId);
+      if (classSpecId) {
+        const currentExamIds: string[] = examForm.getFieldValue("examIds") || [];
+        const validExamIds = currentExamIds.filter((id) => {
+          const ex = exams.find((e) => e.id === id);
+          return ex && ex.specializationId === classSpecId;
+        });
+        if (validExamIds.length < currentExamIds.length) {
+          examForm.setFieldValue("examIds", validExamIds);
+          setSelectedExamIds(validExamIds);
+          message.info("Đã tự động loại bỏ các đề thi không cùng môn học với lớp vừa chọn");
+        }
+      }
+    }
+  };
+
+  const handleClassChangeForClassCurriculum = (classId?: string) => {
+    setSelectedClassForClassCurriculum(classId);
+    if (classId) {
+      const classSpecId = getClassSpecializationId(classId);
+      if (classSpecId) {
+        const currentCurriculumIds: string[] = classCurriculumForm.getFieldValue("curriculumIds") || [];
+        const validCurriculumIds = currentCurriculumIds.filter((id) => {
+          const curr = curriculums.find((c) => c.id === id);
+          return curr && curr.specializationId === classSpecId;
+        });
+        if (validCurriculumIds.length < currentCurriculumIds.length) {
+          classCurriculumForm.setFieldValue("curriculumIds", validCurriculumIds);
+          message.info("Đã tự động loại bỏ các giáo trình không cùng môn học với lớp vừa chọn");
+        }
+      }
+    }
+  };
+
+  const handleClassChangeForCurriculum = (classId?: string) => {
+    setSelectedClassForCurriculum(classId);
+    curriculumForm.setFieldValue("studentIds", []);
+    if (classId) {
+      const classSpecId = getClassSpecializationId(classId);
+      if (classSpecId) {
+        const currentCurriculumId = curriculumForm.getFieldValue("curriculumId");
+        if (currentCurriculumId) {
+          const curr = curriculums.find((c) => c.id === currentCurriculumId);
+          if (curr && curr.specializationId && curr.specializationId !== classSpecId) {
+            curriculumForm.setFieldValue("curriculumId", undefined);
+            message.info("Đã tự động bỏ chọn giáo trình không cùng môn học với lớp vừa chọn");
+          }
+        }
+      }
+    }
+  };
+
+  const handleResetFilters = () => {
+    const defaultCenter = userCenters.length > 0 ? userCenters[0] : (user?.centerId || "all");
+    setSelectedCenterId(defaultCenter);
+    setAssignmentScope(isTeacher ? "my" : "center");
+    setSearchKeyword("");
+  };
 
   /**
-   * Lọc học sinh theo lớp.
-   * studentProfile.classes có shape: Array<{ classId, isActive, class?: {id, name} }>
-   * sau khi đi qua mapUserResponse thì đã được map thành classes: ClassRoom[]
-   * và classIds: string[].
+   * Lọc học sinh theo lớp và trung tâm.
    */
   const getStudentsForClass = (classId?: string) => {
     let list = allStudents;
-    if (isTeacher) {
-      const teacherClassIds = (user.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? []).filter(Boolean);
-      const teacherCenters = new Set([
-        ...(user.teacherProfile?.classes?.map((c: any) => c.centerId || c.center?.id).filter(Boolean) ?? []),
-        ...classes.filter((c: any) => teacherClassIds.includes(c.id)).map((c: any) => c.centerId).filter(Boolean)
-      ]);
+    const activeCenterId = selectedCenterId !== "all" ? selectedCenterId : (userCenters[0] || undefined);
 
-      if (teacherCenters.size > 0) {
-        list = allStudents.filter((s) => {
-          const studentClasses = s.studentProfile?.classes ?? [];
-          const studentClassIds = s.studentProfile?.classIds ?? [];
-          return studentClasses.some((sc: any) => {
-            const matchedClass = classes.find((c) => c.id === (sc.id || sc.classId));
-            return matchedClass && teacherCenters.has(matchedClass.centerId);
-          }) || studentClassIds.some((cid) => {
-            const matchedClass = classes.find((c) => c.id === cid);
-            return matchedClass && teacherCenters.has(matchedClass.centerId);
-          });
+    if (activeCenterId) {
+      list = allStudents.filter((s) => {
+        const studentClasses = s.studentProfile?.classes ?? [];
+        return studentClasses.some((sc: any) => {
+          const matchedClass = allClasses.find((c) => c.id === (sc.id || sc.classId));
+          return matchedClass && matchedClass.centerId === activeCenterId;
         });
-      } else {
-        list = allStudents.filter((s) => {
-          const classIds = s.studentProfile?.classIds ?? [];
-          const classesArr = s.studentProfile?.classes ?? [];
-          return classIds.some((id: string) => teacherClassIds.includes(id)) ||
-                 classesArr.some((c: any) => teacherClassIds.includes(c.id) || teacherClassIds.includes(c.classId));
-        });
-      }
+      });
     }
 
     if (!classId) return list;
     return list.filter((s) => {
-      const classIds = s.studentProfile?.classIds ?? [];
+      const classIds = (s.studentProfile as any)?.classIds ?? [];
       if (classIds.includes(classId)) return true;
       const classesArr = s.studentProfile?.classes ?? [];
       return classesArr.some((c: any) => c.id === classId || c.classId === classId);
@@ -397,6 +744,21 @@ export default function TeacherAssignments() {
 
       if (curriculumIds.length === 0) {
         throw new Error("Vui lòng chọn ít nhất một giáo trình!");
+      }
+
+      if (values.classId) {
+        const classSpecId = getClassSpecializationId(values.classId);
+        if (classSpecId) {
+          const invalidCurrs = curriculumIds
+            .map((id) => curriculums.find((c) => c.id === id))
+            .filter((c) => c?.specializationId && c.specializationId !== classSpecId);
+          if (invalidCurrs.length > 0) {
+            const invalidTitles = invalidCurrs.map((c) => c?.title || c?.code).join(", ");
+            const cls = allClasses.find((c) => c.id === values.classId);
+            message.error(`Các giáo trình sau không cùng môn học với lớp ${cls?.name || ""}: ${invalidTitles}`);
+            return;
+          }
+        }
       }
 
       const results = await Promise.allSettled(
@@ -424,6 +786,7 @@ export default function TeacherAssignments() {
       }
 
       classCurriculumForm.resetFields();
+      setSelectedClassForClassCurriculum(undefined);
       setClassCurriculumFormOpen(false);
       loadAll();
     } catch (err: any) {
@@ -477,6 +840,21 @@ export default function TeacherAssignments() {
       const isAllExamType = selectedExamsObjs.length > 0 && selectedExamsObjs.every((e) => e?.examType === "exam");
       const calculatedMaxAttempts = isAllExamType ? 1 : undefined;
 
+      if (values.classId) {
+        const classSpecId = getClassSpecializationId(values.classId);
+        if (classSpecId) {
+          const invalidExams = selectedExamsObjs.filter(
+            (e) => e?.specializationId && e.specializationId !== classSpecId
+          );
+          if (invalidExams.length > 0) {
+            const invalidTitles = invalidExams.map((e) => e?.title || e?.code).join(", ");
+            const cls = allClasses.find((c) => c.id === values.classId);
+            message.error(`Các bài thi sau không cùng môn học với lớp ${cls?.name || ""}: ${invalidTitles}`);
+            return;
+          }
+        }
+      }
+
       await teacherLearningService.examAssignments.create({
         exams: examsPayload,
         classId: values.classId || undefined,
@@ -527,6 +905,15 @@ export default function TeacherAssignments() {
     }
     try {
       setSubmitting(true);
+      if (values.classId && values.curriculumId) {
+        const classSpecId = getClassSpecializationId(values.classId);
+        const curr = curriculums.find((c) => c.id === values.curriculumId);
+        if (classSpecId && curr?.specializationId && curr.specializationId !== classSpecId) {
+          const cls = allClasses.find((c) => c.id === values.classId);
+          message.error(`Giáo trình đã chọn không cùng môn học với lớp ${cls?.name || ""}`);
+          return;
+        }
+      }
       await teacherLearningService.curriculumAssignments.create({
         curriculumId: values.curriculumId,
         studentIds: Array.from(new Set(rawStudentIds)),
@@ -578,9 +965,24 @@ export default function TeacherAssignments() {
       ),
     },
     {
+      title: "Trung tâm",
+      render: (_: any, r: ClassCurriculum) => {
+        const centerId = getRecordCenterId(r);
+        const centerName = getCenterName(centerId);
+        return centerName ? (
+          <Tag color="cyan" className="rounded-full px-2.5 py-0.5 border-none font-medium">
+            <BankOutlined className="mr-1" />
+            {centerName}
+          </Tag>
+        ) : (
+          <span className="text-slate-400 text-xs">—</span>
+        );
+      },
+    },
+    {
       title: "Lớp học",
       render: (_: any, r: ClassCurriculum) => (
-        <Tag color="cyan" className="rounded-full">{r.class?.name || r.classId}</Tag>
+        <Tag color="blue" className="rounded-full">{r.class?.name || r.classId}</Tag>
       ),
     },
     {
@@ -631,10 +1033,48 @@ export default function TeacherAssignments() {
       }
     },
     {
+      title: "Trung tâm",
+      render: (_: any, record: any) => {
+        const centerId = getRecordCenterId(record);
+        const centerName = getCenterName(centerId);
+        return centerName ? (
+          <Tag color="cyan" className="rounded-full px-2.5 py-0.5 border-none font-medium">
+            <BankOutlined className="mr-1" />
+            {centerName}
+          </Tag>
+        ) : (
+          <span className="text-slate-400 text-xs">—</span>
+        );
+      },
+    },
+    {
       title: "Lớp học",
       render: (_: any, record: any) => record.class?.name
         ? <Tag color="blue" className="rounded-full">{record.class.name}</Tag>
         : <span className="text-slate-400 text-sm">—</span>,
+    },
+    {
+      title: "Người giao",
+      render: (_: any, record: any) => {
+        const isMe =
+          (record.teacherId && (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)) ||
+          (isTeacher && record.classId && teacherClassIds.includes(record.classId));
+        const teacherName =
+          record.teacher?.user?.fullName ||
+          record.teacher?.fullName ||
+          record.teacher?.name ||
+          (isMe ? user?.fullName : undefined);
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm text-slate-700">{teacherName || "—"}</span>
+            {isMe && (
+              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold">
+                Tôi
+              </Tag>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Đối tượng",
@@ -710,10 +1150,48 @@ export default function TeacherAssignments() {
       ),
     },
     {
+      title: "Trung tâm",
+      render: (_: any, record: any) => {
+        const centerId = getRecordCenterId(record);
+        const centerName = getCenterName(centerId);
+        return centerName ? (
+          <Tag color="cyan" className="rounded-full px-2.5 py-0.5 border-none font-medium">
+            <BankOutlined className="mr-1" />
+            {centerName}
+          </Tag>
+        ) : (
+          <span className="text-slate-400 text-xs">—</span>
+        );
+      },
+    },
+    {
       title: "Lớp học",
       render: (_: any, record: any) => record.class?.name
         ? <Tag color="purple" className="rounded-full">{record.class.name}</Tag>
         : <span className="text-slate-400 text-sm">—</span>,
+    },
+    {
+      title: "Người giao",
+      render: (_: any, record: any) => {
+        const isMe =
+          (record.teacherId && (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)) ||
+          (isTeacher && record.classId && teacherClassIds.includes(record.classId));
+        const teacherName =
+          record.teacher?.user?.fullName ||
+          record.teacher?.fullName ||
+          record.teacher?.name ||
+          (isMe ? user?.fullName : undefined);
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm text-slate-700">{teacherName || "—"}</span>
+            {isMe && (
+              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold">
+                Tôi
+              </Tag>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Học sinh",
@@ -804,6 +1282,113 @@ export default function TeacherAssignments() {
               </Button>
             </div>
 
+            {/* Filter & Search Toolbar */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Left: Center Select & Scope Filter */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <BankOutlined className="text-indigo-500" />
+                      Trung tâm:
+                    </span>
+                    <Select
+                      value={selectedCenterId}
+                      onChange={(val) => setSelectedCenterId(val)}
+                      className="min-w-[210px]"
+                      options={[
+                        { value: "all", label: "🌐 Tất cả trung tâm (All)" },
+                        ...centers.map((c) => ({
+                          value: c.id,
+                          label: (
+                            <div className="flex items-center gap-2 justify-between">
+                              <span className="truncate max-w-[180px]">{c.name}</span>
+                              {userCenters.includes(c.id) && (
+                                <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                  Của bạn
+                                </Tag>
+                              )}
+                            </div>
+                          ),
+                        })),
+                      ]}
+                    />
+                  </div>
+
+                  <Divider type="vertical" className="h-6 hidden sm:block" />
+
+                  {/* Scope Segmented */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <FilterOutlined className="text-indigo-500" />
+                      Phạm vi:
+                    </span>
+                    <Segmented
+                      value={assignmentScope}
+                      onChange={(val: any) => setAssignmentScope(val)}
+                      options={
+                        isTeacher
+                          ? [
+                              { label: "Bài của tôi", value: "my" },
+                              { label: "Toàn trung tâm", value: "center" },
+                              { label: "Tất cả (All)", value: "all" },
+                            ]
+                          : [
+                              { label: "Theo trung tâm", value: "center" },
+                              { label: "Tất cả hệ thống (All)", value: "all" },
+                            ]
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* Right: Search Input & Reset */}
+                <div className="flex items-center gap-3">
+                  <Input
+                    placeholder="Tìm bài thi, giáo trình, lớp, học sinh..."
+                    prefix={<SearchOutlined className="text-slate-400" />}
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    allowClear
+                    className="w-full sm:w-72 rounded-xl"
+                  />
+                  {(selectedCenterId !== "all" || (isTeacher ? assignmentScope !== "my" : assignmentScope !== "center") || searchKeyword) && (
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={handleResetFilters}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap px-1 font-semibold"
+                    >
+                      Đặt lại
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status summary banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 pt-3 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-semibold text-slate-600">Đang lọc:</span>
+                  <Tag color={selectedCenterId === "all" ? "orange" : "blue"} className="rounded-full">
+                    {selectedCenterId === "all" ? "Tất cả trung tâm" : (centers.find((c) => c.id === selectedCenterId)?.name || "Trung tâm đã chọn")}
+                  </Tag>
+                  <Tag color={assignmentScope === "all" ? "purple" : assignmentScope === "my" ? "green" : "default"} className="rounded-full">
+                    {assignmentScope === "my" ? "Chỉ bài của tôi" : assignmentScope === "center" ? "Toàn trung tâm" : "Tất cả (All)"}
+                  </Tag>
+                  {searchKeyword && (
+                    <Tag color="cyan" className="rounded-full">
+                      Từ khóa: "{searchKeyword}"
+                    </Tag>
+                  )}
+                </div>
+                <div className="text-slate-400 font-medium">
+                  {activeTab === "class-curriculum" && `Hiển thị ${filteredClassCurriculums.length} / ${classCurriculums.length} giáo trình`}
+                  {activeTab === "exam" && `Hiển thị ${filteredExamAssignments.length} / ${examAssignments.length} bài thi`}
+                  {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumAssignments.length} giáo trình`}
+                </div>
+              </div>
+            </div>
+
             {/* Tabs */}
             <Tabs
               activeKey={activeTab}
@@ -840,12 +1425,12 @@ export default function TeacherAssignments() {
                           Gắn Giáo Trình vào Lớp
                         </Button>
                       </div>
-                      {classCurriculums.length === 0 ? (
+                      {filteredClassCurriculums.length === 0 ? (
                         <div className="py-16 text-center">
-                          <Empty description={<span className="text-slate-400">Chưa có giáo trình nào được gắn vào lớp.<br />Nhấn "Gắn Giáo Trình vào Lớp" để bắt đầu.</span>} />
+                          <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Gắn Giáo Trình vào Lớp".</span>} />
                         </div>
                       ) : (
-                        <Table dataSource={classCurriculums} columns={classCurriculumColumns} rowKey="id"
+                        <Table dataSource={filteredClassCurriculums} columns={classCurriculumColumns} rowKey="id"
                           pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
                           className="rounded-2xl overflow-hidden" />
                       )}
@@ -869,7 +1454,7 @@ export default function TeacherAssignments() {
                         showIcon
                         className="mb-4 rounded-xl"
                         message="Giao bài thi cho học sinh"
-                        description="Có thể chọn nhiều bài thi cùng lúc. Giao cho toàn bộ lớp (chỉ chọn lớp) hoặc học sinh cụ thể. Bài thi bất kỳ đều được, không cần thuộc giáo trình của lớp."
+                        description="Có thể chọn nhiều bài thi cùng lúc. Hãy chọn lớp học trước để hệ thống tự động lọc các đề thi thuộc đúng môn học của lớp."
                       />
                       <div className="flex justify-end mb-4">
                         <Button type="primary" icon={<PlusOutlined />}
@@ -879,12 +1464,12 @@ export default function TeacherAssignments() {
                           Giao Bài Thi Mới
                         </Button>
                       </div>
-                      {examAssignments.length === 0 ? (
+                      {filteredExamAssignments.length === 0 ? (
                         <div className="py-16 text-center">
-                          <Empty description={<span className="text-slate-400">Chưa có bài thi nào được giao.<br />Nhấn "Giao Bài Thi Mới" để bắt đầu.</span>} />
+                          <Empty description={<span className="text-slate-400">Không tìm thấy bài thi nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Bài Thi Mới".</span>} />
                         </div>
                       ) : (
-                        <Table dataSource={examAssignments} columns={examAssignmentColumns} rowKey="id"
+                        <Table dataSource={filteredExamAssignments} columns={examAssignmentColumns} rowKey="id"
                           pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
                           className="rounded-2xl overflow-hidden" />
                       )}
@@ -919,12 +1504,12 @@ export default function TeacherAssignments() {
                           Giao Giáo Trình Trực Tiếp
                         </Button>
                       </div>
-                      {curriculumAssignments.length === 0 ? (
+                      {filteredCurriculumAssignments.length === 0 ? (
                         <div className="py-16 text-center">
-                          <Empty description={<span className="text-slate-400">Chưa có giáo trình nào được giao trực tiếp.<br />Nhấn "Giao Giáo Trình Trực Tiếp" để bắt đầu.</span>} />
+                          <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được giao trực tiếp phù hợp với bộ lọc.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Giáo Trình Trực Tiếp".</span>} />
                         </div>
                       ) : (
-                        <Table dataSource={curriculumAssignments} columns={curriculumAssignmentColumns} rowKey="id"
+                        <Table dataSource={filteredCurriculumAssignments} columns={curriculumAssignmentColumns} rowKey="id"
                           pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
                           className="rounded-2xl overflow-hidden" />
                       )}
@@ -944,15 +1529,55 @@ export default function TeacherAssignments() {
       >
         <Form form={classCurriculumForm} layout="vertical" onFinish={handleCreateClassCurriculum} className="pt-2">
           <Form.Item name="classId" label="Lớp học" rules={[{ required: true, message: "Vui lòng chọn lớp!" }]}>
-            <Select showSearch placeholder="Chọn lớp học..." optionFilterProp="children" className="rounded-xl">
-              {classes.map((c) => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
+            <Select
+              showSearch
+              placeholder="Chọn lớp học..."
+              optionFilterProp="children"
+              className="rounded-xl"
+              onChange={handleClassChangeForClassCurriculum}
+            >
+              {modalClasses.map((c) => (
+                <Select.Option key={c.id} value={c.id}>
+                  {c.name}
+                  {getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)) && (
+                    <span className="text-slate-400 text-xs ml-1.5 font-normal">
+                      ({getSpecializationName(getClassSpecializationId(c.id))})
+                    </span>
+                  )}
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
-          <Form.Item name="curriculumIds" label="Giáo trình" rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}>
+          <Form.Item
+            name="curriculumIds"
+            label={
+              <div className="flex items-center justify-between w-full">
+                <span>Giáo trình</span>
+                {selectedClassForClassCurriculum && getClassSpecializationId(selectedClassForClassCurriculum) && (
+                  <span className="text-xs text-cyan-600 font-medium">
+                    Môn: {getSpecializationName(getClassSpecializationId(selectedClassForClassCurriculum))} ({modalClassCurriculums.length} giáo trình)
+                  </span>
+                )}
+              </div>
+            }
+            rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
+            extra={
+              selectedClassForClassCurriculum && modalClassCurriculums.length === 0 ? (
+                <span className="text-amber-600 text-xs mt-1 block">
+                  Chưa có giáo trình nào thuộc môn học này được xuất bản (Published).
+                </span>
+              ) : undefined
+            }
+          >
             <Select mode="multiple" showSearch placeholder="Chọn giáo trình..." optionFilterProp="children" className="rounded-xl">
-              {curriculums.map((c) => (
+              {modalClassCurriculums.map((c) => (
                 <Select.Option key={c.id} value={c.id}>
                   {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
+                  {c.specializationId && getSpecializationName(c.specializationId) && (
+                    <span className="text-cyan-600 text-xs ml-1.5 font-normal">
+                      • {getSpecializationName(c.specializationId)}
+                    </span>
+                  )}
                 </Select.Option>
               ))}
             </Select>
@@ -977,22 +1602,74 @@ export default function TeacherAssignments() {
       >
         <Form form={examForm} layout="vertical" onFinish={handleCreateExamAssignment} className="pt-2">
           <Form.Item
+            name="classId"
+            label={
+              <span>
+                Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp trước để hệ thống lọc danh sách đề thi theo đúng môn học)</span>
+              </span>
+            }
+          >
+            <Select
+              showSearch
+              placeholder="Chọn lớp học..."
+              optionFilterProp="children"
+              className="rounded-xl"
+              allowClear
+              onChange={handleClassChangeForExam}
+            >
+              {modalClasses.map((c) => (
+                <Select.Option key={c.id} value={c.id}>
+                  {c.name}
+                  {getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)) && (
+                    <span className="text-slate-400 text-xs ml-1.5 font-normal">
+                      ({getSpecializationName(getClassSpecializationId(c.id))})
+                    </span>
+                  )}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
             name="examIds"
-            label={<span>Bài thi <span className="text-slate-400 font-normal text-xs">(có thể chọn nhiều)</span></span>}
+            label={
+              <div className="flex items-center justify-between w-full">
+                <span>
+                  Bài thi <span className="text-slate-400 font-normal text-xs">(có thể chọn nhiều)</span>
+                </span>
+                {selectedClassForExam && getClassSpecializationId(selectedClassForExam) && (
+                  <span className="text-xs text-indigo-600 font-medium">
+                    Môn: {getSpecializationName(getClassSpecializationId(selectedClassForExam))} ({modalExams.length} đề thi)
+                  </span>
+                )}
+              </div>
+            }
             rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 bài thi!" }]}
+            extra={
+              selectedClassForExam && modalExams.length === 0 ? (
+                <span className="text-amber-600 text-xs mt-1 block">
+                  Chưa có đề thi nào thuộc môn học này được xuất bản (Published).
+                </span>
+              ) : undefined
+            }
           >
             <Select
               mode="multiple"
               showSearch
-              placeholder="Chọn bài thi..."
+              placeholder={selectedClassForExam ? "Chọn bài thi thuộc môn học của lớp..." : "Chọn bài thi..."}
               optionFilterProp="children"
               className="rounded-xl"
               onChange={handleExamSelectionChange}
             >
-              {exams.map((e) => (
+              {modalExams.map((e) => (
                 <Select.Option key={e.id} value={e.id}>
                   {e.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}
                   {e.title || e.code} <span className="text-slate-400 text-xs ml-1">({e.code})</span>
+                  {e.specializationId && getSpecializationName(e.specializationId) && (
+                    <span className="text-indigo-500 text-xs ml-1.5 font-normal">
+                      • {getSpecializationName(e.specializationId)}
+                    </span>
+                  )}
                 </Select.Option>
               ))}
             </Select>
@@ -1029,21 +1706,6 @@ export default function TeacherAssignments() {
               })}
             </div>
           )}
-
-          <Form.Item
-            name="classId"
-            label={<span>Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp để lọc học sinh hoặc giao cho cả lớp)</span></span>}
-          >
-            <Select showSearch placeholder="Chọn lớp học..." optionFilterProp="children" className="rounded-xl"
-              allowClear
-              onChange={(val) => {
-                setSelectedClassForExam(val);
-                examForm.setFieldValue("studentIds", []);
-              }}
-            >
-              {classes.map((c) => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
-            </Select>
-          </Form.Item>
 
           <Form.Item
             name="studentIds"
@@ -1092,26 +1754,67 @@ export default function TeacherAssignments() {
         width={600}
       >
         <Form form={curriculumForm} layout="vertical" onFinish={handleCreateCurriculumAssignment} className="pt-2">
-          <Form.Item name="curriculumId" label="Giáo trình"
-            rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}>
-            <Select showSearch placeholder="Chọn giáo trình..." optionFilterProp="children" className="rounded-xl">
-              {curriculums.map((c) => (
+          <Form.Item
+            name="classId"
+            label={
+              <span>
+                Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp để lọc giáo trình theo môn học & danh sách học sinh)</span>
+              </span>
+            }
+          >
+            <Select
+              showSearch
+              placeholder="Chọn lớp học (tùy chọn)..."
+              optionFilterProp="children"
+              className="rounded-xl"
+              allowClear
+              onChange={handleClassChangeForCurriculum}
+            >
+              {modalClasses.map((c) => (
                 <Select.Option key={c.id} value={c.id}>
-                  {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
+                  {c.name}
+                  {getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)) && (
+                    <span className="text-slate-400 text-xs ml-1.5 font-normal">
+                      ({getSpecializationName(getClassSpecializationId(c.id))})
+                    </span>
+                  )}
                 </Select.Option>
               ))}
             </Select>
           </Form.Item>
 
-          <Form.Item name="classId" label={<span>Lọc học sinh theo lớp <span className="text-slate-400 font-normal text-xs">(tùy chọn – để lọc danh sách học sinh)</span></span>}>
-            <Select showSearch placeholder="Chọn lớp để lọc học sinh..." optionFilterProp="children" className="rounded-xl"
-              allowClear
-              onChange={(val) => {
-                setSelectedClassForCurriculum(val);
-                curriculumForm.setFieldValue("studentIds", []);
-              }}
-            >
-              {classes.map((c) => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
+          <Form.Item
+            name="curriculumId"
+            label={
+              <div className="flex items-center justify-between w-full">
+                <span>Giáo trình</span>
+                {selectedClassForCurriculum && getClassSpecializationId(selectedClassForCurriculum) && (
+                  <span className="text-xs text-purple-600 font-medium">
+                    Môn: {getSpecializationName(getClassSpecializationId(selectedClassForCurriculum))} ({modalDirectCurriculums.length} giáo trình)
+                  </span>
+                )}
+              </div>
+            }
+            rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
+            extra={
+              selectedClassForCurriculum && modalDirectCurriculums.length === 0 ? (
+                <span className="text-amber-600 text-xs mt-1 block">
+                  Chưa có giáo trình nào thuộc môn học này được xuất bản (Published).
+                </span>
+              ) : undefined
+            }
+          >
+            <Select showSearch placeholder="Chọn giáo trình..." optionFilterProp="children" className="rounded-xl">
+              {modalDirectCurriculums.map((c) => (
+                <Select.Option key={c.id} value={c.id}>
+                  {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
+                  {c.specializationId && getSpecializationName(c.specializationId) && (
+                    <span className="text-purple-600 text-xs ml-1.5 font-normal">
+                      • {getSpecializationName(c.specializationId)}
+                    </span>
+                  )}
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
 

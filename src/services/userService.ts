@@ -7,7 +7,7 @@ import {
 } from "../types/backend";
 import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
-function mapUserResponse(user: any): User {
+export function mapUserResponse(user: any): User {
   if (!user) return user;
   const mapped = { ...user };
   if (user.teacher) {

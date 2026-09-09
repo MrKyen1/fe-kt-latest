@@ -8,7 +8,7 @@ import {
 import { authService } from "../services/authService";
 import { tokenStorage } from "../services/tokenStorage";
 import { subscribeToAuthFailure } from "../services/apiClient";
-import { userService } from "../services/userService";
+import { userService, mapUserResponse } from "../services/userService";
 
 interface User {
   id: string;
@@ -24,6 +24,7 @@ interface User {
   permissions: string[];
   teacherProfile?: any;
   studentProfile?: any;
+  centerId?: string;
 }
 
 interface AuthContextType {
@@ -40,24 +41,34 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>>): User {
-  const code = user.code;
-  let studentProfile = (user as any).studentProfile;
-  let teacherProfile = (user as any).teacherProfile;
+  const mapped = mapUserResponse(user);
+  let studentProfile = (mapped as any).studentProfile;
+  let teacherProfile = (mapped as any).teacherProfile;
+  const centerId =
+    (mapped as any).centerId ||
+    teacherProfile?.centerId ||
+    teacherProfile?.classes?.[0]?.centerId ||
+    teacherProfile?.classes?.[0]?.class?.centerId ||
+    studentProfile?.centerId;
+
+  const roleCode = typeof mapped.role === "object" ? (mapped.role as any)?.code : mapped.role;
+  const permissions = (mapped.role as any)?.permissions ?? (mapped as any).permissions ?? [];
 
   return {
-    id: user.id,
-    code: user.code,
-    username: user.username || user.code,
-    fullName: user.fullName,
-    phone: user.phone,
-    email: user.email,
-    dateOfBirth: user.dateOfBirth,
-    address: user.address,
-    avatar: user.avatar,
-    role: user.role.code,
-    permissions: user.role.permissions ?? [],
+    id: mapped.id,
+    code: mapped.code,
+    username: mapped.username || mapped.code,
+    fullName: mapped.fullName,
+    phone: mapped.phone,
+    email: mapped.email,
+    dateOfBirth: mapped.dateOfBirth,
+    address: mapped.address,
+    avatar: mapped.avatar,
+    role: roleCode,
+    permissions,
     teacherProfile,
     studentProfile,
+    centerId,
   };
 }
 
@@ -70,14 +81,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (hasUsersManage) {
       try {
         const detail = await userService.get(currentUser.id);
+        const resolvedCenterId =
+          detail.centerId ||
+          currentUser.centerId ||
+          detail.teacherProfile?.centerId ||
+          detail.teacherProfile?.classes?.[0]?.centerId ||
+          detail.teacherProfile?.classes?.[0]?.class?.centerId;
         const merged = {
           ...currentUser,
+          centerId: resolvedCenterId,
           teacherProfile: detail.teacherProfile || currentUser.teacherProfile,
           studentProfile: detail.studentProfile || currentUser.studentProfile,
         };
         setUser(merged);
         tokenStorage.setUser({
           ...tokenStorage.getUser(),
+          centerId: resolvedCenterId,
           teacherProfile: detail.teacherProfile || undefined,
           studentProfile: detail.studentProfile || undefined,
         } as any);
