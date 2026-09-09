@@ -109,10 +109,25 @@ export function statusTag(status: string) {
 }
 
 /**
- * Returns the correct error message string from an Axios-style error.
+ * Returns the correct error message string from an Axios-style error or API error.
+ * Prioritizes backend response message (even if array of validation errors),
+ * then backend error, then network/client error message, and finally fallback.
  */
 function extractErrorMsg(error: any, fallback = "Thao tác thất bại"): string {
-  return error?.response?.data?.message ?? error?.message ?? fallback;
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  const resData = error?.response?.data;
+  if (resData?.message) {
+    const msg = resData.message;
+    return Array.isArray(msg) ? msg.join(", ") : String(msg);
+  }
+  if (resData?.error) {
+    return String(resData.error);
+  }
+  if (error?.message) {
+    return String(error.message);
+  }
+  return fallback;
 }
 
 // ============================================================
@@ -427,8 +442,8 @@ export default function LearningCms() {
         case "topics": setFilteredTopics(data); break;
         case "tags": setFilteredTags(data); break;
       }
-    } catch {
-      message.error("Tải dữ liệu danh mục thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải dữ liệu danh mục thất bại"));
     } finally {
       setTaxLoading(false);
     }
@@ -507,8 +522,8 @@ export default function LearningCms() {
       }
 
       setCurriculums(get(8)?.data ?? []);
-    } catch {
-      message.error("Tải dữ liệu CMS thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải dữ liệu CMS thất bại"));
     } finally {
       setLoading(false);
     }
@@ -537,8 +552,8 @@ export default function LearningCms() {
         if (specs?.length > 0 && !urlSubjectId) {
           navigate(`/${rolePrefix}/cms/subjects/${specs[0].id}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`, { replace: true });
         }
-      } catch {
-        message.error("Tải danh sách môn học thất bại");
+      } catch (error: any) {
+        message.error(extractErrorMsg(error, "Tải danh sách môn học thất bại"));
       }
     };
     fetchSpecs();
@@ -661,11 +676,17 @@ export default function LearningCms() {
       setMediaAlt("");
       setMediaModalOpen(false);
       loadAllData();
-    } catch {
-      message.error("Tải lên tệp thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải lên tệp thất bại"));
     } finally {
       setUploadLoading(false);
     }
+  };
+
+  const handleUploadQuestionMedia = async (file: File, altText?: string) => {
+    const asset = await learningCmsService.mediaAssets.upload(file, altText);
+    setMedia((prev) => [asset, ...prev]);
+    return asset;
   };
 
   const handleMediaDelete = (record: any) => {
@@ -785,6 +806,7 @@ export default function LearningCms() {
         orderIndex: m.orderIndex,
       }));
 
+      setQuestionModalOpen(true);
       questionForm.setFieldsValue({
         type: fullRecord.type,
         prompt: fullRecord.type === "error_correction" && fullRecord.detail?.incorrectSentence
@@ -800,9 +822,8 @@ export default function LearningCms() {
         mediaIds,
         ...detailFields,
       });
-      setQuestionModalOpen(true);
-    } catch {
-      message.error("Không thể tải chi tiết câu hỏi");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể tải chi tiết câu hỏi"));
     }
   };
 
@@ -910,8 +931,8 @@ export default function LearningCms() {
       await learningCmsService.questions.updateStatus(record.id, { status: nextStatus, expectedUpdatedAt: record.updatedAt });
       message.success(`Chuyển trạng thái câu hỏi sang ${nextStatus === "published" ? "Đã duyệt" : "Bản nháp"}`);
       loadAllData();
-    } catch {
-      message.error("Đổi trạng thái thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Đổi trạng thái thất bại"));
     }
   };
 
@@ -922,8 +943,8 @@ export default function LearningCms() {
       setQuestionVersions(data ?? []);
       setViewingQuestion(record);
       setQuestionVersionsModalOpen(true);
-    } catch {
-      message.error("Không thể tải lịch sử phiên bản của câu hỏi");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể tải lịch sử phiên bản của câu hỏi"));
     } finally {
       setLoading(false);
     }
@@ -1026,8 +1047,8 @@ export default function LearningCms() {
       setExamVersions(data ?? []);
       setViewingExam(record);
       setExamVersionsModalOpen(true);
-    } catch {
-      message.error("Không thể tải lịch sử phiên bản của đề thi");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể tải lịch sử phiên bản của đề thi"));
     } finally {
       setLoading(false);
     }
@@ -1115,8 +1136,8 @@ export default function LearningCms() {
       message.success("Sắp xếp lại thành công");
       const updated = await learningCmsService.exams.get(selectedExam.id);
       setSelectedExam(updated);
-    } catch {
-      message.error("Sắp xếp lại thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Sắp xếp lại thất bại"));
     }
   };
 
@@ -1248,8 +1269,8 @@ export default function LearningCms() {
       message.success("Sắp xếp lại thành công");
       const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
       setSelectedCurriculum(updated);
-    } catch {
-      message.error("Sắp xếp lại thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Sắp xếp lại thất bại"));
     }
   };
 
@@ -1493,6 +1514,7 @@ export default function LearningCms() {
               filteredMedia={getFilteredMedia()}
               availableRoles={getAvailableRoles()}
               onPreviewAsset={handlePreviewAsset}
+              onUploadMedia={handleUploadQuestionMedia}
             />
 
             <ExamFormModal

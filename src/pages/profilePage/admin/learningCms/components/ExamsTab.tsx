@@ -7,6 +7,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
+  SendOutlined,
 } from "@ant-design/icons";
 
 // ── Types ────────────────────────────────────────────────────
@@ -44,33 +45,49 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
   onToggle: (e: Exam) => void;
   onRepublish: (e: Exam) => void;
 }) {
-  return (
-    <Space orientation="vertical" size={2} align="center" className="w-full">
-      <Tag
-        color={exam.status === "published" ? "success" : "default"}
-        className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold m-0"
-      >
-        {exam.status === "published" ? "Đang phát hành" : "Nháp"}
-      </Tag>
+  if (exam.status !== "published") {
+    return (
+      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200">
+        Bản nháp
+      </span>
+    );
+  }
 
-      {exam.status === "published" && exam.hasUnpublishedChanges && (
-        <div className="flex flex-col items-center gap-1 mt-1.5">
-          <Tooltip title="Đề thi đã bị thay đổi sau khi xuất bản. Hãy bấm nút bên dưới hoặc chuyển về nháp rồi xuất bản lại để cập nhật phiên bản mới.">
-            <Tag color="warning" className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-bold m-0 inline-flex items-center gap-1">
-              <AlertTriangle size={11} /> Có thay đổi
-            </Tag>
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-1 w-full">
+      {/* Hàng 1: Trạng thái + Label Có thay đổi (Highlight vàng rực rỡ, không bị rớt dòng) */}
+      <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-xs shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+          Đang phát hành
+        </span>
+
+        {exam.hasUnpublishedChanges && (
+          <Tooltip title="Đề thi đã bị thay đổi nội dung (câu hỏi/cấu hình) sau khi xuất bản. Cần xuất bản bản mới để cập nhật cho học sinh.">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-yellow-400 text-yellow-950 border border-yellow-500 shadow-sm cursor-help shrink-0">
+              <AlertTriangle size={12} className="text-yellow-950 shrink-0" />
+              Có thay đổi
+            </span>
           </Tooltip>
+        )}
+      </div>
+
+      {/* Hàng 2: Nút Xuất bản bản mới (Highlight đỏ nổi bật, căn giữa hoàn hảo) */}
+      {exam.hasUnpublishedChanges && (
+        <Tooltip title="Nhấn để lưu và phát hành phiên bản mới ngay lập tức">
           <Button
-            type="link"
+            type="primary"
+            danger
             size="small"
+            icon={<SendOutlined className="text-xs" />}
             onClick={() => onRepublish(exam)}
-            className="text-[10px] p-0 h-auto font-bold text-indigo-600 hover:text-indigo-800"
+            className="rounded-full font-bold text-xs shadow-md shadow-rose-200 hover:shadow-rose-400 bg-rose-600 hover:bg-rose-700 border-none px-4 py-1 h-auto flex items-center gap-1.5 transition-all duration-200 transform hover:scale-105 active:scale-95 text-white whitespace-nowrap"
           >
             Xuất bản bản mới
           </Button>
-        </div>
+        </Tooltip>
       )}
-    </Space>
+    </div>
   );
 }
 
@@ -130,6 +147,8 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
+      width: 220,
+      align: "center" as const,
       render: (_: string, record: Exam) => (
         <ExamStatusCell exam={record} onToggle={onToggle} onRepublish={onRepublish} />
       ),

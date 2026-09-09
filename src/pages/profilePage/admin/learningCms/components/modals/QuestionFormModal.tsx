@@ -1,8 +1,35 @@
-import { Button, Checkbox, Col, Divider, Form, Input, InputNumber, Row, Select, Space, Switch, Tooltip } from "antd";
+import { useState, useRef, useEffect } from "react";
+import {
+  Button,
+  Checkbox,
+  Col,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Switch,
+  Tooltip,
+  Segmented,
+  Tag,
+  Upload,
+  message,
+} from "antd";
 import type { FormInstance } from "antd";
-import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined, SoundOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  PlusOutlined,
+  QuestionCircleOutlined,
+  SoundOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import { Settings, ArrowLeftRight, Image as LucideImage, FolderOpen, Video, Volume2 } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../../services/apiClient";
+import { AppImage } from "../../../../../../components/AppImagePreview";
+import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { CHOICE_TYPES, QUESTION_TYPES } from "../../constants";
 
 // ── Types ────────────────────────────────────────────────────
@@ -17,7 +44,7 @@ interface Props {
   open:       boolean;
   onCancel:   () => void;
   form:       FormInstance;
-  onFinish:   (values: any) => void;
+  onFinish:   (values: any) => Promise<void> | void;
 
   isEditing:  boolean;
 
@@ -35,6 +62,7 @@ interface Props {
   availableRoles:   MediaRole[];
 
   onPreviewAsset: (asset: MediaItem) => void;
+  onUploadMedia?: (file: File, altText?: string) => Promise<MediaItem>;
 }
 
 // ── Question-type–specific detail fields ─────────────────────
@@ -239,18 +267,487 @@ function QuestionDetailFields({ type, passages }: { type: string; passages: Pass
   return null;
 }
 
-// ── Media section ─────────────────────────────────────────────
+// ── Error extractor helper ────────────────────────────────────
+
+function extractErrorMsg(error: any, fallback = "Thao tác thất bại"): string {
+  const backendMsg = error?.response?.data?.message ?? error?.message;
+  if (Array.isArray(backendMsg)) return backendMsg.join(", ");
+  if (typeof backendMsg === "string" && backendMsg.trim()) return backendMsg;
+  return fallback;
+}
+
+// ── Media section & Item component ────────────────────────────
+
+interface MediaItemRowProps {
+  form:            FormInstance;
+  name:            number;
+  restField:       any;
+  index:           number;
+  remove:          (index: number) => void;
+  filteredMedia:   MediaItem[];
+  availableRoles:  MediaRole[];
+  onPreviewAsset:  (a: MediaItem) => void;
+  currentType:     string;
+  onRegisterObjectUrl: (url: string) => void;
+}
+
+function MediaItemRow({
+  form,
+  name,
+  restField,
+  index,
+  remove,
+  filteredMedia,
+  availableRoles,
+  onPreviewAsset,
+  currentType,
+  onRegisterObjectUrl,
+}: MediaItemRowProps) {
+  const initialRow = form.getFieldValue(["mediaIds", name]);
+
+  const [itemState, setItemState] = useState<{
+    mediaId?: string;
+    file?: File;
+    previewUrl?: string;
+    fileName?: string;
+    fileType?: string;
+  }>({
+    mediaId: initialRow?.mediaId,
+    file: initialRow?.file,
+    previewUrl: initialRow?.previewUrl,
+    fileName: initialRow?.fileName,
+    fileType: initialRow?.fileType,
+  });
+
+  const [mode, setMode] = useState<"upload" | "library">("upload");
+
+  // Sync if form changes externally (e.g. edit mode initialization)
+  useEffect(() => {
+    const row = form.getFieldValue(["mediaIds", name]);
+    setItemState({
+      mediaId: row?.mediaId,
+      file: row?.file,
+      previewUrl: row?.previewUrl,
+      fileName: row?.fileName,
+      fileType: row?.fileType,
+    });
+  }, [name, form]);
+
+  const currentMediaId    = itemState.mediaId;
+  const currentFile       = itemState.file;
+  const currentPreviewUrl = itemState.previewUrl;
+  const currentFileName   = itemState.fileName;
+  const currentFileType   = itemState.fileType;
+
+  const hasItem = Boolean(currentFile || currentMediaId);
+
+  const selectedAsset = currentMediaId ? filteredMedia.find((m) => m.id === currentMediaId) : undefined;
+
+  const isImg = currentFile
+    ? currentFileType === "image"
+    : selectedAsset?.type === "image" || selectedAsset?.mimeType?.startsWith("image");
+
+  const isAud = currentFile
+    ? currentFileType === "audio"
+    : selectedAsset?.type === "audio" || selectedAsset?.mimeType?.startsWith("audio");
+
+  const isVid = currentFile
+    ? currentFileType === "video"
+    : selectedAsset?.type === "video" || selectedAsset?.mimeType?.startsWith("video");
+
+  const previewSrc = currentFile && currentPreviewUrl
+    ? currentPreviewUrl
+    : selectedAsset?.url || "";
+
+  const displayName = currentFile
+    ? (currentFileName || currentFile.name)
+    : (selectedAsset?.altText ?? selectedAsset?.url?.split("/").pop() ?? `Tệp #${currentMediaId}`);
+
+  const handleClearItem = () => {
+    if (currentPreviewUrl) {
+      try { URL.revokeObjectURL(currentPreviewUrl); } catch (_) {}
+    }
+    form.setFieldValue(["mediaIds", name, "file"], undefined);
+    form.setFieldValue(["mediaIds", name, "previewUrl"], undefined);
+    form.setFieldValue(["mediaIds", name, "fileName"], undefined);
+    form.setFieldValue(["mediaIds", name, "fileType"], undefined);
+    form.setFieldValue(["mediaIds", name, "mediaId"], undefined);
+
+    setItemState({});
+  };
+
+  return (
+    <div className="relative bg-white border border-slate-200 rounded-2xl p-3.5 hover:border-indigo-200 transition-all duration-200 shadow-xs">
+      {/* Header bar */}
+      <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="shrink-0 w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
+            {index + 1}
+          </div>
+
+          {!hasItem ? (
+            <Segmented
+              size="small"
+              value={mode}
+              onChange={(val) => setMode(val as "upload" | "library")}
+              className="bg-slate-100 p-0.5"
+              options={[
+                {
+                  label: (
+                    <div className="flex items-center gap-1.5 px-1 py-0.5 text-xs">
+                      <UploadOutlined />
+                      <span>Tải lên từ máy</span>
+                    </div>
+                  ),
+                  value: "upload",
+                },
+                {
+                  label: (
+                    <div className="flex items-center gap-1.5 px-1 py-0.5 text-xs">
+                      <FolderOpen size={13} />
+                      <span>Chọn từ thư viện ({filteredMedia.length})</span>
+                    </div>
+                  ),
+                  value: "library",
+                },
+              ]}
+            />
+          ) : (
+            <div className="flex items-center gap-1.5 truncate">
+              {currentFile ? (
+                <Tag color="cyan" className="text-[10px] px-2 py-0.5 rounded-full font-medium m-0">
+                  Tệp từ máy tính (Sẵn sàng lưu)
+                </Tag>
+              ) : (
+                <Tag color="blue" className="text-[10px] px-2 py-0.5 rounded-full font-medium m-0">
+                  Từ thư viện Media
+                </Tag>
+              )}
+
+              {isImg && (
+                <Tag color="geekblue" className="text-[10px] px-1.5 py-0 leading-normal m-0 inline-flex items-center gap-1">
+                  <LucideImage size={10} /> Hình ảnh
+                </Tag>
+              )}
+              {isAud && (
+                <Tag color="purple" className="text-[10px] px-1.5 py-0 leading-normal m-0 inline-flex items-center gap-1">
+                  <Volume2 size={10} /> Âm thanh
+                </Tag>
+              )}
+              {isVid && (
+                <Tag color="orange" className="text-[10px] px-1.5 py-0 leading-normal m-0 inline-flex items-center gap-1">
+                  <Video size={10} /> Video
+                </Tag>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Role & Delete */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Form.Item
+            {...restField}
+            name={[name, "role"]}
+            rules={[
+              { required: true, message: "Chọn vai trò!" },
+              {
+                validator: async () => {
+                  const rowVal = form.getFieldValue(["mediaIds", name]);
+                  if (!rowVal?.mediaId && !rowVal?.file) {
+                    return Promise.reject(new Error("Vui lòng tải lên tệp hoặc chọn từ thư viện!"));
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
+            className="mb-0 w-44"
+          >
+            <Select placeholder="Vai trò" size="small" className="w-full">
+              {availableRoles.map((r) => (
+                <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Tooltip title="Xoá tệp này">
+            <Button
+              type="text"
+              danger
+              size="small"
+              shape="circle"
+              icon={<DeleteOutlined />}
+              onClick={() => {
+                handleClearItem();
+                remove(name);
+              }}
+              className="hover:bg-red-50 flex items-center justify-center"
+            />
+          </Tooltip>
+        </div>
+      </div>
+
+      {/* When Empty: Selector controls */}
+      {!hasItem && (
+        mode === "upload" ? (
+          <Upload.Dragger
+            showUploadList={false}
+            accept={
+              currentType === "audio_choice"
+                ? "audio/*,.mp3,.wav,.m4a,.ogg,.aac"
+                : currentType === "image_choice"
+                ? "image/*,.png,.jpg,.jpeg,.webp,.svg"
+                : "audio/*,image/*,video/*"
+            }
+            beforeUpload={(file) => {
+              if (currentType === "audio_choice" && !file.type.startsWith("audio/")) {
+                message.error("Câu hỏi dạng âm thanh chỉ chấp nhận tệp âm thanh (audio/*)!");
+                return false;
+              }
+              if (currentType === "image_choice" && !file.type.startsWith("image/")) {
+                message.error("Câu hỏi dạng hình ảnh chỉ chấp nhận tệp hình ảnh (image/*)!");
+                return false;
+              }
+              if (file.size > 20 * 1024 * 1024) {
+                message.error("Kích thước tệp không được vượt quá 20MB!");
+                return false;
+              }
+
+              const previewUrl = URL.createObjectURL(file);
+              onRegisterObjectUrl(previewUrl);
+
+              const fileType = file.type.startsWith("image/")
+                ? "image"
+                : file.type.startsWith("audio/")
+                ? "audio"
+                : "video";
+
+              const defaultRole =
+                availableRoles.length === 1
+                  ? availableRoles[0].value
+                  : fileType === "image"
+                  ? "prompt_image"
+                  : "prompt_audio";
+
+              form.setFieldValue(["mediaIds", name, "file"], file);
+              form.setFieldValue(["mediaIds", name, "previewUrl"], previewUrl);
+              form.setFieldValue(["mediaIds", name, "fileName"], file.name);
+              form.setFieldValue(["mediaIds", name, "fileType"], fileType);
+              form.setFieldValue(["mediaIds", name, "mediaId"], undefined);
+
+              if (!form.getFieldValue(["mediaIds", name, "role"])) {
+                form.setFieldValue(["mediaIds", name, "role"], defaultRole);
+              }
+
+              // Update local state -> triggers instant re-render!
+              setItemState({
+                file,
+                previewUrl,
+                fileName: file.name,
+                fileType,
+                mediaId: undefined,
+              });
+
+              message.success(`Đã chọn "${file.name}"! Xem trước hiển thị ngay bên dưới.`);
+              return false;
+            }}
+            className="bg-slate-50/70 hover:bg-indigo-50/20 border-dashed border-slate-200 hover:border-indigo-300 rounded-xl transition-all p-3"
+          >
+            <div className="py-2 flex flex-col items-center justify-center gap-1 text-slate-500">
+              <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mb-0.5">
+                <UploadOutlined className="text-base" />
+              </div>
+              <p className="text-xs font-semibold text-slate-700 m-0">
+                Nhấp hoặc kéo thả tệp từ máy tính vào đây
+              </p>
+              <p className="text-[11px] text-slate-400 m-0">
+                {currentType === "audio_choice"
+                  ? "Hỗ trợ MP3, WAV, M4A, OGG (Tối đa 20MB) • Xem trước ngay"
+                  : currentType === "image_choice"
+                  ? "Hỗ trợ PNG, JPG, JPEG, WEBP, SVG (Tối đa 20MB) • Xem trước ngay"
+                  : "Hỗ trợ Âm thanh, Hình ảnh hoặc Video (Tối đa 20MB) • Xem trước ngay"}
+              </p>
+            </div>
+          </Upload.Dragger>
+        ) : (
+          <Select
+            showSearch
+            placeholder="Tìm kiếm tệp theo tên hoặc mô tả trong thư viện..."
+            className="w-full"
+            allowClear
+            size="middle"
+            filterOption={(input, option) => {
+              const label = (option?.label as string) ?? "";
+              return label.toLowerCase().includes(input.toLowerCase());
+            }}
+            onChange={(val) => {
+              form.setFieldValue(["mediaIds", name, "mediaId"], val);
+              form.setFieldValue(["mediaIds", name, "file"], undefined);
+              form.setFieldValue(["mediaIds", name, "previewUrl"], undefined);
+              form.setFieldValue(["mediaIds", name, "fileName"], undefined);
+              form.setFieldValue(["mediaIds", name, "fileType"], undefined);
+
+              const chosen = filteredMedia.find((m) => m.id === val);
+              if (chosen) {
+                const isImageFile = chosen.type === "image" || chosen.mimeType?.startsWith("image");
+                const defaultRole =
+                  availableRoles.length === 1
+                    ? availableRoles[0].value
+                    : isImageFile
+                    ? "prompt_image"
+                    : "prompt_audio";
+                if (!form.getFieldValue(["mediaIds", name, "role"])) {
+                  form.setFieldValue(["mediaIds", name, "role"], defaultRole);
+                }
+              }
+
+              // Update local state -> triggers instant re-render!
+              setItemState({
+                mediaId: val,
+                file: undefined,
+                previewUrl: undefined,
+                fileName: undefined,
+                fileType: undefined,
+              });
+            }}
+          >
+            {filteredMedia.map((asset) => {
+              const isImgAsset = asset.type === "image" || asset.mimeType?.startsWith("image");
+              const isAudAsset = asset.type === "audio" || asset.mimeType?.startsWith("audio");
+              const fileName = asset.altText ?? asset.url.split("/").pop();
+              return (
+                <Select.Option key={asset.id} value={asset.id} label={fileName}>
+                  <div className="flex items-center gap-2 py-0.5">
+                    {isImgAsset ? (
+                      <span className="w-4 h-4 rounded bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <LucideImage size={11} />
+                      </span>
+                    ) : isAudAsset ? (
+                      <span className="w-4 h-4 rounded bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+                        <Volume2 size={11} />
+                      </span>
+                    ) : (
+                      <span className="w-4 h-4 rounded bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                        <Video size={11} />
+                      </span>
+                    )}
+                    <span className="font-medium text-slate-700 truncate">{fileName}</span>
+                    <span className="text-[10px] text-slate-400 ml-auto uppercase font-mono">
+                      {asset.type || "FILE"}
+                    </span>
+                  </div>
+                </Select.Option>
+              );
+            })}
+          </Select>
+        )
+      )}
+
+      {/* When Has Item: Rich Preview Card */}
+      {hasItem && (
+        <div className="flex items-center gap-3 p-3 bg-slate-50/80 border border-slate-200 rounded-xl">
+          {/* Thumbnail / Icon */}
+          {isImg ? (
+            <div className="shrink-0 w-24 h-24 rounded-xl overflow-hidden border border-slate-200 bg-white flex items-center justify-center relative shadow-xs">
+              <AppImage
+                src={previewSrc}
+                autoResolve={!currentFile}
+                alt={displayName}
+                className="w-24 h-24 object-cover"
+                maskText="Xem ảnh"
+              />
+            </div>
+          ) : isAud ? (
+            <div className="shrink-0 w-20 h-20 rounded-xl bg-violet-50 border border-violet-200 flex flex-col items-center justify-center text-violet-600 shadow-xs">
+              <Volume2 size={26} className="mb-0.5 text-violet-600" />
+              <span className="text-[10px] font-bold text-violet-700 uppercase tracking-wider">Audio</span>
+            </div>
+          ) : isVid ? (
+            <div className="shrink-0 w-20 h-20 rounded-xl bg-orange-50 border border-orange-200 flex flex-col items-center justify-center text-orange-600 shadow-xs">
+              <Video size={26} className="mb-0.5 text-orange-600" />
+              <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Video</span>
+            </div>
+          ) : (
+            <div className="shrink-0 w-20 h-20 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 text-xs">
+              Media
+            </div>
+          )}
+
+          {/* Details & Controls */}
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <div
+              className="font-semibold text-sm text-slate-800 truncate"
+              title={displayName}
+            >
+              {displayName}
+            </div>
+
+            {/* Note if local file */}
+            {currentFile ? (
+              <div className="text-xs text-indigo-600 font-medium mt-0.5 flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                {(currentFile.size / 1024 / 1024).toFixed(2)} MB • Sẵn sàng tải lên khi bạn nhấn &quot;Lưu lại&quot;
+              </div>
+            ) : (
+              <div className="text-xs text-slate-400 mt-0.5">
+                Tệp từ thư viện Media • ID: {currentMediaId}
+              </div>
+            )}
+
+            {/* Inline Audio Player if audio */}
+            {isAud && previewSrc && (
+              <div className="mt-2">
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                <audio
+                  src={currentFile ? previewSrc : resolveMediaUrl(previewSrc)}
+                  controls
+                  className="h-8 w-full max-w-[340px]"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 mt-2">
+              <Button
+                type="link"
+                size="small"
+                icon={<ArrowLeftRight size={13} />}
+                className="p-0 h-auto text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                onClick={handleClearItem}
+              >
+                Đổi tệp khác
+              </Button>
+
+              {selectedAsset && !isImg && (
+                <Button
+                  type="link"
+                  size="small"
+                  className="p-0 h-auto text-xs text-slate-500 hover:text-slate-700"
+                  onClick={() => onPreviewAsset(selectedAsset)}
+                >
+                  Xem chi tiết
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MediaSection({
   form,
   filteredMedia,
   availableRoles,
   onPreviewAsset,
+  currentType,
+  onRegisterObjectUrl,
 }: {
   form:            FormInstance;
   filteredMedia:   MediaItem[];
   availableRoles:  MediaRole[];
   onPreviewAsset:  (a: MediaItem) => void;
+  currentType:     string;
+  onRegisterObjectUrl: (url: string) => void;
 }) {
   return (
     <div className="mb-4 rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -268,7 +765,7 @@ function MediaSection({
       <div className="p-3">
         <Form.List name="mediaIds">
           {(mediaFields, { add, remove }) => (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {mediaFields.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-6 text-slate-400">
                   <FolderOpen size={36} className="text-slate-300 mb-2 stroke-[1.5]" />
@@ -276,125 +773,21 @@ function MediaSection({
                 </div>
               )}
 
-              {mediaFields.map(({ key, name, ...restField }, index) => {
-                const currentMediaId = form.getFieldValue(["mediaIds", name, "mediaId"]);
-                const selectedAsset  = filteredMedia.find((m) => m.id === currentMediaId);
-                const isImg = selectedAsset?.type === "image" || selectedAsset?.mimeType?.startsWith("image");
-                const isAud = selectedAsset?.type === "audio" || selectedAsset?.mimeType?.startsWith("audio");
-
-                return (
-                  <div
-                    key={key}
-                    className="group relative flex gap-2 items-center bg-white border border-slate-150 rounded-xl p-3 hover:border-indigo-200 hover:shadow-sm transition-all duration-200"
-                    style={{ borderColor: "#f0f0f0" }}
-                  >
-                    {/* Index badge */}
-                    <div className="shrink-0 w-6 h-6 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center text-xs font-bold self-start mt-1">
-                      {index + 1}
-                    </div>
-
-                    {/* Fields */}
-                    <div className="flex-1 flex flex-col gap-1.5 min-w-0">
-                      <div className="flex gap-2 items-start">
-                        {/* File select */}
-                        <Form.Item
-                          {...restField}
-                          name={[name, "mediaId"]}
-                          rules={[{ required: true, message: "Vui lòng chọn tệp media!" }]}
-                          className="mb-0 flex-1 min-w-0"
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Select
-                            placeholder="Chọn tệp tin (ảnh, âm thanh, video)..."
-                            className="w-full"
-                            allowClear
-                            size="middle"
-                            onChange={() => {
-                              if (availableRoles.length === 1) {
-                                form.setFieldValue(["mediaIds", name, "role"], availableRoles[0].value);
-                              }
-                            }}
-                          >
-                            {filteredMedia.map((asset) => (
-                              <Select.Option key={asset.id} value={asset.id}>
-                                [{asset.type?.toUpperCase()}]{" "}
-                                {asset.altText ?? asset.url.split("/").pop()}
-                              </Select.Option>
-                            ))}
-                          </Select>
-                        </Form.Item>
-
-                        {/* Role select */}
-                        <Form.Item
-                          {...restField}
-                          name={[name, "role"]}
-                          rules={[{ required: true, message: "Vui lòng chọn vai trò media!" }]}
-                          className="mb-0 w-44 shrink-0"
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Select placeholder="Vai trò" className="w-full" size="middle">
-                            {availableRoles.map((r) => (
-                              <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
-                            ))}
-                          </Select>
-                        </Form.Item>
-
-                        {/* Thumbnail */}
-                        {selectedAsset ? (
-                          <Tooltip title="Nhấp để xem/nghe thử">
-                            <div
-                              className="shrink-0 w-8 h-8 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center cursor-pointer hover:scale-105 hover:border-indigo-300 hover:shadow-md transition-all duration-200"
-                              onClick={() => onPreviewAsset(selectedAsset)}
-                            >
-                              {isImg ? (
-                                <img src={resolveMediaUrl(selectedAsset.url)} alt="Preview" className="w-full h-full object-cover" />
-                              ) : isAud ? (
-                                <SoundOutlined className="text-base text-indigo-500" />
-                              ) : (
-                                <Video size={16} className="text-slate-500" />
-                              )}
-                            </div>
-                          </Tooltip>
-                        ) : (
-                          <div className="shrink-0 w-8 h-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center">
-                            <span className="text-slate-300 text-sm">?</span>
-                          </div>
-                        )}
-
-                        {/* Delete */}
-                        <Tooltip title="Xoá tệp này">
-                          <Button
-                            type="text"
-                            danger
-                            shape="circle"
-                            icon={<DeleteOutlined />}
-                            onClick={() => remove(name)}
-                            className="shrink-0 w-8 h-8 flex items-center justify-center hover:bg-red-50 transition-all duration-200"
-                          />
-                        </Tooltip>
-                      </div>
-
-                      {/* Type badge */}
-                      {selectedAsset && (
-                        <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${isImg ? "bg-blue-50 text-blue-600" : isAud ? "bg-violet-50 text-violet-600" : "bg-orange-50 text-orange-600"}`}>
-                            {isImg ? (
-                              <><LucideImage size={11} /> Hình ảnh</>
-                            ) : isAud ? (
-                              <><Volume2 size={11} /> Âm thanh</>
-                            ) : (
-                              <><Video size={11} /> Video</>
-                            )}
-                          </span>
-                          <span className="text-[10px] text-slate-400 truncate max-w-[180px]">
-                            {selectedAsset.altText ?? selectedAsset.url.split("/").pop()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {mediaFields.map(({ key, name, ...restField }, index) => (
+                <MediaItemRow
+                  key={key}
+                  form={form}
+                  name={name}
+                  restField={restField}
+                  index={index}
+                  remove={remove}
+                  filteredMedia={filteredMedia}
+                  availableRoles={availableRoles}
+                  onPreviewAsset={onPreviewAsset}
+                  currentType={currentType}
+                  onRegisterObjectUrl={onRegisterObjectUrl}
+                />
+              ))}
 
               {/* Add button */}
               <Button
@@ -418,15 +811,13 @@ function MediaSection({
 
 // ── Main modal ────────────────────────────────────────────────
 
-import { Modal } from "antd";
-
 /**
  * Create / Edit Question modal.
  *
  * Contains the full Ant Design Form with:
  * - Question type and classification fields
  * - Prompt textarea
- * - Media attachments section
+ * - Media attachments section (with Direct Upload & Library Select)
  * - Type-specific detail fields (choices, tokens, pairs, etc.)
  * - Explanation field
  *
@@ -448,11 +839,86 @@ export default function QuestionFormModal({
   filteredMedia,
   availableRoles,
   onPreviewAsset,
+  onUploadMedia,
 }: Props) {
+  const [submitting, setSubmitting] = useState(false);
+  const objectUrlsRef = useRef<string[]>([]);
+
+  const handleRegisterObjectUrl = (url: string) => {
+    objectUrlsRef.current.push(url);
+  };
+
+  const cleanupObjectUrls = () => {
+    objectUrlsRef.current.forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+    });
+    objectUrlsRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => {
+      cleanupObjectUrls();
+    };
+  }, []);
+
+  const handleModalCancel = () => {
+    cleanupObjectUrls();
+    onCancel();
+  };
+
   const handleFinishFailed = (errorInfo: any) => {
     if (errorInfo.errorFields && errorInfo.errorFields.length > 0) {
       const firstError = errorInfo.errorFields[0];
       form.scrollToField(firstError.name, { behavior: "smooth", block: "center", focus: true });
+    }
+  };
+
+  const handleFormFinish = async (values: any) => {
+    try {
+      setSubmitting(true);
+
+      const rawMediaList = values.mediaIds ?? [];
+      const processedMediaIds: Array<{ mediaId: string; role: string; orderIndex: number }> = [];
+
+      for (let i = 0; i < rawMediaList.length; i++) {
+        const item = rawMediaList[i];
+        if (!item) continue;
+
+        if (item.file) {
+          const fileName = item.fileName || item.file.name;
+          let uploaded: MediaItem | null = null;
+          if (onUploadMedia) {
+            uploaded = await onUploadMedia(item.file, fileName);
+          } else {
+            uploaded = await learningCmsService.mediaAssets.upload(item.file, fileName);
+          }
+
+          if (uploaded?.id) {
+            processedMediaIds.push({
+              mediaId: uploaded.id,
+              role: item.role,
+              orderIndex: i,
+            });
+          }
+        } else if (item.mediaId) {
+          processedMediaIds.push({
+            mediaId: item.mediaId,
+            role: item.role,
+            orderIndex: i,
+          });
+        }
+      }
+
+      await onFinish({
+        ...values,
+        mediaIds: processedMediaIds,
+      });
+
+      cleanupObjectUrls();
+    } catch (err: any) {
+      message.error(extractErrorMsg(err, "Không thể lưu câu hỏi!"));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -465,21 +931,24 @@ export default function QuestionFormModal({
         </div>
       }
       open={open}
-      onCancel={onCancel}
+      forceRender
+      onCancel={handleModalCancel}
       onOk={() => form.submit()}
+      confirmLoading={submitting}
+      okText={submitting ? "Đang lưu..." : "Lưu lại"}
+      cancelButtonProps={{ disabled: submitting }}
       width={800}
       centered
       styles={{
         body: { maxHeight: "70vh", overflowY: "auto", overflowX: "hidden", paddingRight: "8px" },
       }}
       className="rounded-2xl"
-      okText="Lưu lại"
       cancelText="Hủy"
     >
       <Form
         form={form}
         layout="vertical"
-        onFinish={onFinish}
+        onFinish={handleFormFinish}
         onFinishFailed={handleFinishFailed}
         scrollToFirstError={{ behavior: "smooth", block: "center", focus: true }}
         className="pt-2"
@@ -567,6 +1036,8 @@ export default function QuestionFormModal({
           filteredMedia={filteredMedia}
           availableRoles={availableRoles}
           onPreviewAsset={onPreviewAsset}
+          currentType={currentType}
+          onRegisterObjectUrl={handleRegisterObjectUrl}
         />
 
         <Divider className="my-3" />

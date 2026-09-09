@@ -63,7 +63,7 @@ const Footer = memo(function Footer() {
     "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3718.4552851639846!2d106.12792497512365!3d21.25343838045273!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x31350dc2b53aaaa7%3A0x2c21448f641c767d!2zTmdv4bqhaSBuZ-G7ryBLQVRB!5e0!3m2!1svi!2s!4v1773211786824!5m2!1svi!2s";
 
   return (
-    <AntFooter className="!bg-slate-900 text-slate-300 py-16 px-6 md:px-16 mt-auto" id="contact">
+    <AntFooter className="!bg-slate-900 text-slate-300 py-16 px-6 md:px-16 mt-auto z-99" id="contact">
       <div className="max-w-7xl mx-auto">
         <Row gutter={[40, 40]}>
           {/* Brand & Introduction */}
@@ -116,11 +116,10 @@ const Footer = memo(function Footer() {
                           key={center.id}
                           type="button"
                           onClick={() => setSelectedCenterIndex(idx)}
-                          className={`text-xs px-2.5 py-1 rounded-md transition-all font-medium ${
-                            isSelected
-                              ? "bg-blue-600 text-white shadow-sm"
-                              : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
-                          }`}
+                          className={`text-xs px-2.5 py-1 rounded-md transition-all font-medium ${isSelected
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                            }`}
                         >
                           {center.name}
                         </button>

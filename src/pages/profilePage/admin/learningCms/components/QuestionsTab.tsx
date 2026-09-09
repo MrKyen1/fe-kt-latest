@@ -96,14 +96,6 @@ function buildColumns(
       align: "right" as const,
       render: (_: unknown, record: Question) => (
         <Space size="small">
-          <Button
-            type="dashed"
-            size="small"
-            onClick={() => onViewVersions(record)}
-            className="text-xs font-semibold border-amber-200 text-amber-600 rounded-lg hover:border-amber-500"
-          >
-            Lịch sử phiên bản
-          </Button>
           <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
             <Button
               type="text"

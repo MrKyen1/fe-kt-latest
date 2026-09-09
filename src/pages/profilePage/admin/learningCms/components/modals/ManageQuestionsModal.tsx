@@ -239,6 +239,7 @@ export default function ManageQuestionsModal({
   onAddQuestion,
   onRemoveQuestion,
   onReorder,
+  onRepublish,
   onBulkAttach,
 }: Props) {
   const examQuestions = selectedExam?.questions ?? [];
