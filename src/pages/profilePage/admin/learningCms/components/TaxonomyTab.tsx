@@ -3,6 +3,7 @@ import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { Target, Sparkles, Folder, Tag as TagIcon } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import { PAGE_SIZE_DEFAULT } from "../constants";
+import { Can } from "../../../../../components/Can";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -113,14 +114,16 @@ export default function TaxonomyTab({
             onChange={(e) => onTaxSearchChange(e.target.value)}
             className="rounded-xl w-64 shadow-sm border-slate-200"
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={onCreateClick}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-          >
-            Tạo mới
-          </Button>
+          <Can perform="learning.write">
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={onCreateClick}
+              className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+            >
+              Tạo mới
+            </Button>
+          </Can>
         </div>
       </div>
 

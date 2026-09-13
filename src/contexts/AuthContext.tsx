@@ -4,13 +4,21 @@ import {
   useState,
   useEffect,
   ReactNode,
+  useCallback,
 } from "react";
 import { authService } from "../services/authService";
 import { tokenStorage } from "../services/tokenStorage";
 import { subscribeToAuthFailure } from "../services/apiClient";
 import { userService, mapUserResponse } from "../services/userService";
+import { TeacherAuthProfile, StudentAuthProfile } from "../types/backend";
 
-interface User {
+export type PermissionCheckMode = "all" | "any";
+
+export interface PermissionCheckOptions {
+  mode?: PermissionCheckMode;
+}
+
+export interface User {
   id: string;
   code: string;
   username: string;
@@ -22,33 +30,65 @@ interface User {
   avatar?: string;
   role: string;
   permissions: string[];
+  teacher?: TeacherAuthProfile;
+  student?: StudentAuthProfile;
   teacherProfile?: any;
   studentProfile?: any;
   centerId?: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
   isInitializing: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasRole: (roles: string | string[]) => boolean;
-  hasPermission: (permissions: string | string[]) => boolean;
+  hasPermission: (permissions: string | string[], options?: PermissionCheckOptions) => boolean;
+  hasAnyPermission: (permissions: string | string[]) => boolean;
+  refreshProfile: () => Promise<User | null>;
   updateUser: (updatedUser: NonNullable<ReturnType<typeof tokenStorage.getUser>>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function checkSinglePermission(userPermissions: string[], userRole: string, requiredPerm: string): boolean {
+  if (userRole === "admin") return true;
+  if (userPermissions.includes(requiredPerm)) return true;
+
+  // Hierarchical super-permissions (matching Backend PermissionsGuard)
+  if (requiredPerm.startsWith("learning.") && userPermissions.includes("learning.manage")) {
+    return true;
+  }
+  if (
+    (requiredPerm === "classes.read" || requiredPerm === "centers.read" || requiredPerm === "specializations.read") &&
+    userPermissions.includes("classes.manage")
+  ) {
+    return true;
+  }
+  if (requiredPerm === "users.read" && userPermissions.includes("users.manage")) {
+    return true;
+  }
+  if (requiredPerm.startsWith("rbac.") && userPermissions.includes("rbac.manage")) {
+    return true;
+  }
+
+  return false;
+}
+
 function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>>): User {
   const mapped = mapUserResponse(user);
-  let studentProfile = (mapped as any).studentProfile;
-  let teacherProfile = (mapped as any).teacherProfile;
+  const teacherProfile = (mapped as any).teacherProfile || (user as any).teacherProfile;
+  const studentProfile = (mapped as any).studentProfile || (user as any).studentProfile;
+  const teacher = (user as any).teacher || (mapped as any).teacher;
+  const student = (user as any).student || (mapped as any).student;
+
   const centerId =
     (mapped as any).centerId ||
     teacherProfile?.centerId ||
     teacherProfile?.classes?.[0]?.centerId ||
     teacherProfile?.classes?.[0]?.class?.centerId ||
+    teacher?.classes?.[0]?.class?.centerId ||
     studentProfile?.centerId;
 
   const roleCode = typeof mapped.role === "object" ? (mapped.role as any)?.code : mapped.role;
@@ -66,6 +106,8 @@ function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>
     avatar: mapped.avatar,
     role: roleCode,
     permissions,
+    teacher,
+    student,
     teacherProfile,
     studentProfile,
     centerId,
@@ -76,9 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  const fetchAndMergeDetails = async (currentUser: User) => {
-    const hasUsersManage = currentUser.permissions?.includes("users.manage") || currentUser.role === "teacher" || currentUser.role === "admin";
-    if (hasUsersManage) {
+  const fetchAndMergeDetails = useCallback(async (currentUser: User) => {
+    const canFetchUserDetail =
+      currentUser.role === "admin" ||
+      currentUser.permissions?.includes("users.manage") ||
+      currentUser.permissions?.includes("users.read");
+
+    if (canFetchUserDetail) {
       try {
         const detail = await userService.get(currentUser.id);
         const resolvedCenterId =
@@ -87,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           detail.teacherProfile?.centerId ||
           detail.teacherProfile?.classes?.[0]?.centerId ||
           detail.teacherProfile?.classes?.[0]?.class?.centerId;
-        const merged = {
+        const merged: User = {
           ...currentUser,
           centerId: resolvedCenterId,
           teacherProfile: detail.teacherProfile || currentUser.teacherProfile,
@@ -101,10 +147,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           studentProfile: detail.studentProfile || undefined,
         } as any);
       } catch (err) {
-        console.warn("Failed to fetch detailed profile in background:", err);
+        // Backend blocks or fails quietly
+        console.warn("User detail fetch in background skipped or failed:", err);
       }
     }
-  };
+  }, []);
+
+  const refreshProfile = useCallback(async (): Promise<User | null> => {
+    try {
+      const freshUser = await authService.me();
+      const mapped = mapStoredUser(freshUser);
+      setUser(mapped);
+      await fetchAndMergeDetails(mapped);
+      return mapped;
+    } catch (err) {
+      console.warn("Failed to refresh profile:", err);
+      return null;
+    }
+  }, [fetchAndMergeDetails]);
 
   useEffect(() => {
     // Subscribe to automatic logout when refresh token fails
@@ -114,12 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const storedUser = tokenStorage.getUser();
     const hasToken = !!tokenStorage.getAccessToken();
-    
+
     if (hasToken) {
       if (storedUser) {
         const initial = mapStoredUser(storedUser);
         setUser(initial);
-        fetchAndMergeDetails(initial);
       }
 
       authService
@@ -139,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setIsInitializing(false);
     return unsubscribe;
-  }, []);
+  }, [fetchAndMergeDetails]);
 
   const login = async (identifier: string, password: string) => {
     const session = await authService.login({ identifier, password });
@@ -159,18 +218,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const hasRole = (roles: string | string[]) => {
+  const hasRole = useCallback((roles: string | string[]) => {
     if (!user) return false;
     const roleList = Array.isArray(roles) ? roles : [roles];
     return roleList.includes(user.role);
-  };
+  }, [user]);
 
-  const hasPermission = (permissions: string | string[]) => {
+  const hasPermission = useCallback((
+    permissions: string | string[],
+    options?: PermissionCheckOptions
+  ) => {
     if (!user) return false;
     const permissionList = Array.isArray(permissions) ? permissions : [permissions];
     if (permissionList.length === 0) return true;
-    return permissionList.every((permission) => user.permissions.includes(permission));
-  };
+    const mode = options?.mode || "all";
+    if (mode === "any") {
+      return permissionList.some((permission) =>
+        checkSinglePermission(user.permissions, user.role, permission)
+      );
+    }
+    return permissionList.every((permission) =>
+      checkSinglePermission(user.permissions, user.role, permission)
+    );
+  }, [user]);
+
+  const hasAnyPermission = useCallback((permissions: string | string[]) => {
+    return hasPermission(permissions, { mode: "any" });
+  }, [hasPermission]);
 
   const updateUser = (updatedUser: Parameters<typeof mapStoredUser>[0]) => {
     setUser(mapStoredUser(updatedUser));
@@ -186,6 +260,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         hasRole,
         hasPermission,
+        hasAnyPermission,
+        refreshProfile,
         updateUser,
       }}
     >

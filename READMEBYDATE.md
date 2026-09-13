@@ -14,6 +14,155 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-09-09
+
+### Tách quyền đọc dữ liệu học vụ và người dùng
+
+**Migration cần chạy:** `npm run migration:run` (`1780000028000-add-academic-read-permissions`).
+
+> **Trước:** toàn bộ endpoint `/centers`, `/specializations`, `/classes` cần `classes.manage`; toàn bộ endpoint `/users` cần `users.manage`.
+>
+> **Sau:** các endpoint `GET` dùng permission đọc riêng; `POST`, `PATCH`, `DELETE` vẫn cần permission quản lý như trước.
+
+| Permission             | Admin | Teacher | Student | Endpoint GET áp dụng                                                               |
+| ---------------------- | ----- | ------- | ------- | ---------------------------------------------------------------------------------- |
+| `centers.read`         | Có    | Có      | Có      | `GET /centers`, `GET /centers/:id`                                                 |
+| `specializations.read` | Có    | Có      | Có      | `GET /specializations`, `GET /specializations/:id`                                 |
+| `classes.read`         | Có    | Có      | Không   | `GET /classes`, `GET /classes/:id`                                                 |
+| `users.read`           | Có    | Có      | Không   | `GET /users`, `GET /users/:id`, `GET /users/teacher-degree-images/files/:filename` |
+
+- Các mutation `/centers`, `/specializations`, `/classes` tiếp tục cần `classes.manage`.
+- Các mutation `/users` và upload ảnh bằng cấp (`POST /users/teacher-degree-images/upload/multiple`) tiếp tục cần `users.manage`.
+- Sau khi chạy migration, người dùng cần đăng nhập hoặc refresh token để JWT nhận danh sách permission mới.
+
+### Auth response trả profile theo phân công lớp/môn
+
+**Migration cần chạy:** không có.
+
+> **Trước:** login, refresh và `/auth/me` chỉ trả role/permission cùng thông tin user cơ bản. Teacher không có nguồn dữ liệu scoped để biết các lớp mình phụ trách; FE phải gọi API user/class tổng quát, dẫn đến dropdown giao bài rỗng hoặc dễ hiển thị cả lớp không thuộc teacher.
+>
+> **Sau:** auth response trả profile teacher/student cùng các quan hệ active cần cho UI. Teacher lấy danh sách lớp giao bài trực tiếp từ `teacher.classes`, kèm center và môn của từng lớp.
+
+#### Endpoint áp dụng và vị trí dữ liệu
+
+```http
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+GET /api/v1/auth/me
+Authorization: Bearer <accessToken> // GET /auth/me
+```
+
+Không đổi request body, endpoint hay permission.
+
+| Endpoint             | Vị trí profile trong envelope `data` | Token pair                                    |
+| -------------------- | ------------------------------------ | --------------------------------------------- |
+| `POST /auth/login`   | `data.user`                          | Có `data.accessToken`, `data.refreshToken`    |
+| `POST /auth/refresh` | `data.user`                          | Có token pair mới; refresh token cũ bị revoke |
+| `GET /auth/me`       | trực tiếp ở `data`                   | Không trả token                               |
+
+#### Response teacher — phần FE cần dùng
+
+```jsonc
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "user-id",
+      "code": "GV000001",
+      "role": {
+        "code": "teacher",
+        "permissions": [
+          "centers.read",
+          "specializations.read",
+          "classes.read",
+          "users.read",
+        ],
+      },
+      "teacher": {
+        "id": "teacher-id",
+        "classes": [
+          {
+            "id": "teacher-class-id",
+            "teacherId": "teacher-id",
+            "classId": "class-id",
+            "isActive": true,
+            "class": {
+              "id": "class-id",
+              "name": "English 6",
+              "centerId": "center-id",
+              "specializationId": "specialization-id",
+              "center": {
+                "id": "center-id",
+                "name": "Kata Center",
+                "isActive": true,
+              },
+              "specialization": {
+                "id": "specialization-id",
+                "code": "english",
+                "name": "Tiếng Anh",
+                "isActive": true,
+              },
+            },
+          },
+        ],
+        "teacherSpecializations": [
+          {
+            "id": "teacher-specialization-id",
+            "teacherId": "teacher-id",
+            "specializationId": "specialization-id",
+            "isActive": true,
+            "specialization": {
+              "id": "specialization-id",
+              "code": "english",
+              "name": "Tiếng Anh",
+              "isActive": true,
+            },
+          },
+        ],
+      },
+    },
+    "accessToken": "jwt",
+    "refreshToken": "jwt",
+  },
+}
+```
+
+Với `GET /auth/me`, bỏ lớp `user`, `accessToken`, `refreshToken` bên ngoài: object user trong ví dụ là chính `data`.
+
+#### Quy tắc scope và dữ liệu active
+
+- `teacher.classes` chỉ chứa teacher-class membership active mà class, center và specialization đều active.
+- `teacher.teacherSpecializations` chỉ chứa teacher-specialization membership và specialization active.
+- `student.classes` được trả theo cùng nguyên tắc và mỗi item cũng có `class.center`, `class.specialization`.
+- Teacher profile luôn dùng hai mảng `classes` và `teacherSpecializations`; mảng rỗng nghĩa là không có phân công active, không phải lỗi API.
+- Không dùng `GET /api/v1/classes` làm danh sách lớp giao bài. API đó không giới hạn theo teacher đăng nhập, nên có thể chứa lớp mà BE sẽ từ chối khi giao bài.
+
+#### Hướng dẫn FE cho modal “Giao Bài Thi Mới”
+
+1. Sau login/refresh, lưu `data.user` vào auth state. Khi reload app, thay bằng kết quả `GET /auth/me`.
+2. Lấy dropdown lớp từ `user.teacher?.classes ?? []`; `Select.value` là `item.classId` và label khuyến nghị là `item.class.name + ' (' + item.class.specialization.name + ')'`.
+3. Khi teacher chọn lớp, lấy `item.class.specializationId` để chỉ hiển thị các đề cùng môn.
+4. Gửi đúng `classId` tới `POST /api/v1/learning/teacher/exam-assignments`; không cho tạo value từ một class ngoài auth profile.
+5. Nếu admin đổi phân công teacher trong khi teacher đang đăng nhập, gọi lại `GET /api/v1/auth/me` trước lần giao bài tiếp theo để lấy scope mới.
+
+BE vẫn kiểm tra độc lập, nên FE cần xử lý các lỗi sau nếu scope đã cũ hoặc request bị can thiệp:
+
+| Điều kiện                          | HTTP  | `message`                                  |
+| ---------------------------------- | ----- | ------------------------------------------ |
+| Teacher không phụ trách lớp        | `403` | `Giáo viên không phụ trách lớp này`        |
+| Teacher không phụ trách môn của đề | `403` | `Giáo viên không phụ trách môn học này`    |
+| Lớp khác môn với đề                | `400` | `Lớp không thuộc cùng môn học với bài thi` |
+
+#### Acceptance checklist
+
+- Đăng nhập bằng teacher có phân công class và xác nhận `data.user.teacher.classes[].class.specialization` có dữ liệu.
+- Reload trang, gọi `/auth/me` và xác nhận dữ liệu/shape teacher không đổi ngoài vị trí `data`.
+- Dropdown chỉ hiện class trong `teacher.classes`; chọn từng class chỉ hiển thị đề cùng `specializationId`.
+- Giao bài với class trong dropdown và đề cùng môn thành công; không phát sinh `400` khác môn hoặc `403` không phụ trách lớp.
+- Gỡ một teacher-class hoặc teacher-specialization rồi gọi lại `/auth/me`: relationship vừa inactive không còn trong profile.
+
+---
+
 ## 2026-09-04
 
 ### Bổ sung CMS settings cho Homepage

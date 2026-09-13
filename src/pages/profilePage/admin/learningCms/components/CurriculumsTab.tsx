@@ -1,4 +1,3 @@
-import { Button, Space, Table, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -6,6 +5,7 @@ import {
   EditOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
+import { Can } from "../../../../../components/Can";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -89,45 +89,53 @@ function buildColumns(
       align: "right" as const,
       render: (_: unknown, record: Curriculum) => (
         <Space size="small">
-          <Button
-            type="dashed"
-            size="small"
-            onClick={() => onConfigExams(record)}
-            className="text-xs font-semibold border-purple-200 text-purple-600 rounded-lg hover:border-purple-500"
-          >
-            Cấu hình đề thi
-          </Button>
-          <Tooltip
-            title={
-              record.status === "published"
-                ? "Chuyển về Nháp"
-                : "Phát hành giáo trình (cần ít nhất 1 đề thi đã phát hành)"
-            }
-          >
+          <Can perform="learning.write">
+            <Button
+              type="dashed"
+              size="small"
+              onClick={() => onConfigExams(record)}
+              className="text-xs font-semibold border-purple-200 text-purple-600 rounded-lg hover:border-purple-500"
+            >
+              Cấu hình đề thi
+            </Button>
+          </Can>
+          <Can perform="learning.publish">
+            <Tooltip
+              title={
+                record.status === "published"
+                  ? "Chuyển về Nháp"
+                  : "Phát hành giáo trình (cần ít nhất 1 đề thi đã phát hành)"
+              }
+            >
+              <Button
+                type="text"
+                size="small"
+                icon={
+                  record.status === "published"
+                    ? <CloseCircleOutlined className="text-orange-400" />
+                    : <CheckCircleOutlined className="text-emerald-500" />
+                }
+                onClick={() => onToggle(record)}
+              />
+            </Tooltip>
+          </Can>
+          <Can perform="learning.write">
             <Button
               type="text"
               size="small"
-              icon={
-                record.status === "published"
-                  ? <CloseCircleOutlined className="text-orange-400" />
-                  : <CheckCircleOutlined className="text-emerald-500" />
-              }
-              onClick={() => onToggle(record)}
+              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+              onClick={() => onEdit(record)}
             />
-          </Tooltip>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => onEdit(record)}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => onDelete(record)}
-          />
+          </Can>
+          <Can perform="learning.delete">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+              onClick={() => onDelete(record)}
+            />
+          </Can>
         </Space>
       ),
     },
@@ -165,14 +173,16 @@ export default function CurriculumsTab({
           Giáo trình đào tạo —{" "}
           <strong>{publishedCount}/{curriculums.length}</strong> đang phát hành
         </span>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={onCreateClick}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-        >
-          Tạo giáo trình mới
-        </Button>
+        <Can perform="learning.write">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={onCreateClick}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+          >
+            Tạo giáo trình mới
+          </Button>
+        </Can>
       </div>
 
       <Table rowKey="id" dataSource={curriculums} columns={columns} />

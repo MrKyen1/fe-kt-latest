@@ -150,9 +150,30 @@ export function getErrorMessage(error: unknown, fallback = "Đã có lỗi xảy
   if (!error) return fallback;
   if (typeof error === "string") return error;
   const anyErr = error as any;
-  if (anyErr?.response?.data?.message) {
-    const msg = anyErr.response.data.message;
-    return Array.isArray(msg) ? msg.join(", ") : String(msg);
+  const resData = anyErr?.response?.data;
+  if (resData?.message) {
+    const msg = resData.message;
+    const mainMsg = Array.isArray(msg) ? msg.join(", ") : String(msg);
+    if (resData.fieldErrors && typeof resData.fieldErrors === "object") {
+      const fieldMsgs = Object.values(resData.fieldErrors)
+        .filter(Boolean)
+        .map((f: any) => (Array.isArray(f) ? f.join(", ") : String(f)))
+        .join("; ");
+      if (fieldMsgs && !mainMsg.includes(fieldMsgs)) {
+        return `${mainMsg}: ${fieldMsgs}`;
+      }
+    }
+    return mainMsg;
+  }
+  if (resData?.fieldErrors && typeof resData.fieldErrors === "object") {
+    const fieldMsgs = Object.values(resData.fieldErrors)
+      .filter(Boolean)
+      .map((f: any) => (Array.isArray(f) ? f.join(", ") : String(f)))
+      .join("; ");
+    if (fieldMsgs) return fieldMsgs;
+  }
+  if (resData?.error) {
+    return String(resData.error);
   }
   if (anyErr?.message) {
     const msg = anyErr.message;

@@ -6,9 +6,10 @@ interface ProtectedRouteProps {
   children: ReactNode;
   roles?: string[];
   permissions?: string[];
+  permissionMode?: 'all' | 'any';
 }
 
-export function ProtectedRoute({ children, roles, permissions }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, roles, permissions, permissionMode = 'all' }: ProtectedRouteProps) {
   const { isLoggedIn, isInitializing, hasRole, hasPermission } = useAuth();
 
   if (isInitializing) {
@@ -27,7 +28,7 @@ export function ProtectedRoute({ children, roles, permissions }: ProtectedRouteP
     return <Navigate to="/home" replace />;
   }
 
-  if (permissions?.length && !hasPermission(permissions)) {
+  if (permissions?.length && !hasPermission(permissions, { mode: permissionMode })) {
     return <Navigate to="/home" replace />;
   }
 

@@ -9,6 +9,7 @@ import {
   PlusOutlined,
   SendOutlined,
 } from "@ant-design/icons";
+import { Can } from "../../../../../components/Can";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -74,18 +75,20 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
 
       {/* Hàng 2: Nút Xuất bản bản mới (Highlight đỏ nổi bật, căn giữa hoàn hảo) */}
       {exam.hasUnpublishedChanges && (
-        <Tooltip title="Nhấn để lưu và phát hành phiên bản mới ngay lập tức">
-          <Button
-            type="primary"
-            danger
-            size="small"
-            icon={<SendOutlined className="text-xs" />}
-            onClick={() => onRepublish(exam)}
-            className="rounded-full font-bold text-xs shadow-md shadow-rose-200 hover:shadow-rose-400 bg-rose-600 hover:bg-rose-700 border-none px-4 py-1 h-auto flex items-center gap-1.5 transition-all duration-200 transform hover:scale-105 active:scale-95 text-white whitespace-nowrap"
-          >
-            Xuất bản bản mới
-          </Button>
-        </Tooltip>
+        <Can perform="learning.publish">
+          <Tooltip title="Nhấn để lưu và phát hành phiên bản mới ngay lập tức">
+            <Button
+              type="primary"
+              danger
+              size="small"
+              icon={<SendOutlined className="text-xs" />}
+              onClick={() => onRepublish(exam)}
+              className="rounded-full font-bold text-xs shadow-md shadow-rose-200 hover:shadow-rose-400 bg-rose-600 hover:bg-rose-700 border-none px-4 py-1 h-auto flex items-center gap-1.5 transition-all duration-200 transform hover:scale-105 active:scale-95 text-white whitespace-nowrap"
+            >
+              Xuất bản bản mới
+            </Button>
+          </Tooltip>
+        </Can>
       )}
     </div>
   );
@@ -158,14 +161,16 @@ function buildColumns(
       align: "right" as const,
       render: (_: unknown, record: Exam) => (
         <Space size="small">
-          <Button
-            type="dashed"
-            size="small"
-            onClick={() => onConfigQuestions(record)}
-            className="text-xs font-semibold border-indigo-200 text-indigo-600 rounded-lg hover:border-indigo-500"
-          >
-            Cấu hình câu hỏi
-          </Button>
+          <Can perform="learning.write">
+            <Button
+              type="dashed"
+              size="small"
+              onClick={() => onConfigQuestions(record)}
+              className="text-xs font-semibold border-indigo-200 text-indigo-600 rounded-lg hover:border-indigo-500"
+            >
+              Cấu hình câu hỏi
+            </Button>
+          </Can>
           <Button
             type="dashed"
             size="small"
@@ -174,31 +179,37 @@ function buildColumns(
           >
             Lịch sử phiên bản
           </Button>
-          <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
+          <Can perform="learning.publish">
+            <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
+              <Button
+                type="text"
+                size="small"
+                icon={
+                  record.status === "published"
+                    ? <CloseCircleOutlined className="text-orange-400" />
+                    : <CheckCircleOutlined className="text-emerald-500" />
+                }
+                onClick={() => onToggle(record)}
+              />
+            </Tooltip>
+          </Can>
+          <Can perform="learning.write">
             <Button
               type="text"
               size="small"
-              icon={
-                record.status === "published"
-                  ? <CloseCircleOutlined className="text-orange-400" />
-                  : <CheckCircleOutlined className="text-emerald-500" />
-              }
-              onClick={() => onToggle(record)}
+              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+              onClick={() => onEdit(record)}
             />
-          </Tooltip>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => onEdit(record)}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => onDelete(record)}
-          />
+          </Can>
+          <Can perform="learning.delete">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+              onClick={() => onDelete(record)}
+            />
+          </Can>
         </Space>
       ),
     },
@@ -240,14 +251,16 @@ export default function ExamsTab({
           Quản lý đề thi —{" "}
           <strong>{publishedCount}/{exams.length}</strong> đang phát hành
         </span>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={onCreateClick}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-        >
-          Tạo đề thi mới
-        </Button>
+        <Can perform="learning.write">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={onCreateClick}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+          >
+            Tạo đề thi mới
+          </Button>
+        </Can>
       </div>
 
       <Table rowKey="id" dataSource={exams} columns={columns} />

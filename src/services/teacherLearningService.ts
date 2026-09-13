@@ -5,6 +5,7 @@ import {
   CurriculumAssignmentAnalytics,
   ExamAssignment,
   ExamAssignmentAnalytics,
+  TeacherAttemptDetail,
 } from "../types/backend";
 import {
   ClassCurriculumQuery,
@@ -116,6 +117,14 @@ export const teacherLearningService = {
         await apiClient.get<ApiEnvelope<Attempt[]>>(
           `/learning/teacher/exam-assignments/${assignmentId}/attempts`,
           { params },
+        ),
+      );
+    },
+
+    async attemptDetail(assignmentId: string, attemptId: string): Promise<TeacherAttemptDetail> {
+      return unwrapData(
+        await apiClient.get<ApiEnvelope<TeacherAttemptDetail>>(
+          `/learning/teacher/exam-assignments/${assignmentId}/attempts/${attemptId}`,
         ),
       );
     },

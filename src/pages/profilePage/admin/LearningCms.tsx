@@ -44,6 +44,8 @@ import { BookOpenIcon, Pencil, Trash2 } from "lucide-react";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { academicService } from "../../../services/academicService";
 import { useAuth } from "../../../contexts/AuthContext";
+import { Can } from "../../../components/Can";
+import { getErrorMessage } from "../../../services/apiClient";
 
 // ── Constants ────────────────────────────────────────────────
 import {
@@ -113,22 +115,7 @@ export function statusTag(status: string) {
  * Prioritizes backend response message (even if array of validation errors),
  * then backend error, then network/client error message, and finally fallback.
  */
-function extractErrorMsg(error: any, fallback = "Thao tác thất bại"): string {
-  if (!error) return fallback;
-  if (typeof error === "string") return error;
-  const resData = error?.response?.data;
-  if (resData?.message) {
-    const msg = resData.message;
-    return Array.isArray(msg) ? msg.join(", ") : String(msg);
-  }
-  if (resData?.error) {
-    return String(resData.error);
-  }
-  if (error?.message) {
-    return String(error.message);
-  }
-  return fallback;
-}
+const extractErrorMsg = getErrorMessage;
 
 // ============================================================
 // Main Component
@@ -406,14 +393,18 @@ export default function LearningCms() {
       align: "right" as const,
       render: (_: any, record: any) => (
         <Space size="small">
-          <Button type="text" size="small"
-            icon={<Pencil size={14} className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => handleTaxEdit(record)}
-          />
-          <Button type="text" size="small" danger
-            icon={<Trash2 size={14} className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => handleTaxDelete(record)}
-          />
+          <Can perform="learning.write">
+            <Button type="text" size="small"
+              icon={<Pencil size={14} className="text-slate-400 hover:text-indigo-600" />}
+              onClick={() => handleTaxEdit(record)}
+            />
+          </Can>
+          <Can perform="learning.delete">
+            <Button type="text" size="small" danger
+              icon={<Trash2 size={14} className="text-slate-400 hover:text-rose-600" />}
+              onClick={() => handleTaxDelete(record)}
+            />
+          </Can>
         </Space>
       ),
     },
@@ -875,13 +866,25 @@ export default function LearningCms() {
         tagIds: values.tagIds ?? [],
         status: editingItem?.status ?? "draft",
         mediaIds: (values.mediaIds ?? [])
-          .filter((m: any) => m?.mediaId && m?.role)
+          .filter((m: any) => m?.mediaId)
           .map((m: any, idx: number) => ({
             mediaId: m.mediaId,
-            role: m.role,
+            role: m.role || (qType === "image_choice" ? "prompt_image" : qType === "audio_choice" ? "prompt_audio" : "prompt_image"),
             orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
           })),
       };
+
+      // Đảm bảo loại câu hỏi hình ảnh / âm thanh luôn chuẩn hóa vai trò media
+      if (qType === "image_choice" && payload.mediaIds.length > 0) {
+        if (!payload.mediaIds.some((m: any) => m.role === "prompt_image")) {
+          payload.mediaIds[0].role = "prompt_image";
+        }
+      }
+      if (qType === "audio_choice" && payload.mediaIds.length > 0) {
+        if (!payload.mediaIds.some((m: any) => m.role === "prompt_audio")) {
+          payload.mediaIds[0].role = "prompt_audio";
+        }
+      }
 
       if (CHOICE_TYPES.includes(qType)) {
         payload.options = (values.options ?? []).map((o: any, i: number) => ({
@@ -912,7 +915,10 @@ export default function LearningCms() {
 
       if (editingItem) {
         const { type, status, ...updatePayload } = payload;
-        await learningCmsService.questions.update(editingItem.id, updatePayload);
+        await learningCmsService.questions.update(editingItem.id, {
+          ...updatePayload,
+          expectedUpdatedAt: editingItem.updatedAt,
+        });
         message.success("Cập nhật câu hỏi thành công");
       } else {
         await learningCmsService.questions.create({ ...payload, specializationId: selectedSpecializationId });

@@ -2,6 +2,7 @@ import { Button, Space, Table, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { BookOpen, Target } from "lucide-react";
 import { PAGE_SIZE_PASSAGES } from "../constants";
+import { Can } from "../../../../../components/Can";
 
 const { Paragraph } = Typography;
 
@@ -68,19 +69,23 @@ function buildColumns(
       align: "right" as const,
       render: (_: unknown, record: Passage) => (
         <Space size="small">
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => onEdit(record)}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => onDelete(record)}
-          />
+          <Can perform="learning.write">
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+              onClick={() => onEdit(record)}
+            />
+          </Can>
+          <Can perform="learning.delete">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+              onClick={() => onDelete(record)}
+            />
+          </Can>
         </Space>
       ),
     },
@@ -103,14 +108,16 @@ export default function PassagesTab({ passages, onCreateClick, onEditClick, onDe
         <span className="text-slate-500">
           Danh sách bài đọc cho phần Đọc hiểu ({passages.length} bài)
         </span>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={onCreateClick}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-        >
-          Tạo bài đọc mới
-        </Button>
+        <Can perform="learning.write">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={onCreateClick}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+          >
+            Tạo bài đọc mới
+          </Button>
+        </Can>
       </div>
 
       <Table

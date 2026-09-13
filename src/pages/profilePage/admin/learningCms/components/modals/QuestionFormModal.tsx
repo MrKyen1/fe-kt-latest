@@ -443,6 +443,14 @@ function MediaItemRow({
           )}
         </div>
 
+        {/* Hidden Form Items to guarantee Ant Design registers mediaId and fileName */}
+        <Form.Item {...restField} name={[name, "mediaId"]} noStyle hidden>
+          <Input />
+        </Form.Item>
+        <Form.Item {...restField} name={[name, "fileName"]} noStyle hidden>
+          <Input />
+        </Form.Item>
+
         {/* Role & Delete */}
         <div className="flex items-center gap-2 shrink-0">
           <Form.Item
@@ -524,19 +532,18 @@ function MediaItemRow({
               const defaultRole =
                 availableRoles.length === 1
                   ? availableRoles[0].value
-                  : fileType === "image"
+                  : currentType === "image_choice" || fileType === "image"
                   ? "prompt_image"
-                  : "prompt_audio";
+                  : currentType === "audio_choice" || fileType === "audio"
+                  ? "prompt_audio"
+                  : "prompt_image";
 
               form.setFieldValue(["mediaIds", name, "file"], file);
               form.setFieldValue(["mediaIds", name, "previewUrl"], previewUrl);
               form.setFieldValue(["mediaIds", name, "fileName"], file.name);
               form.setFieldValue(["mediaIds", name, "fileType"], fileType);
               form.setFieldValue(["mediaIds", name, "mediaId"], undefined);
-
-              if (!form.getFieldValue(["mediaIds", name, "role"])) {
-                form.setFieldValue(["mediaIds", name, "role"], defaultRole);
-              }
+              form.setFieldValue(["mediaIds", name, "role"], defaultRole);
 
               // Update local state -> triggers instant re-render!
               setItemState({
@@ -547,7 +554,7 @@ function MediaItemRow({
                 mediaId: undefined,
               });
 
-              message.success(`Đã chọn "${file.name}"! Xem trước hiển thị ngay bên dưới.`);
+              message.success(`Đã chọn "${file.name}"! Tệp sẽ được tải lên khi bạn nhấn "Lưu lại".`);
               return false;
             }}
             className="bg-slate-50/70 hover:bg-indigo-50/20 border-dashed border-slate-200 hover:border-indigo-300 rounded-xl transition-all p-3"
@@ -592,12 +599,12 @@ function MediaItemRow({
                 const defaultRole =
                   availableRoles.length === 1
                     ? availableRoles[0].value
-                    : isImageFile
+                    : currentType === "image_choice" || isImageFile
                     ? "prompt_image"
-                    : "prompt_audio";
-                if (!form.getFieldValue(["mediaIds", name, "role"])) {
-                  form.setFieldValue(["mediaIds", name, "role"], defaultRole);
-                }
+                    : currentType === "audio_choice" || chosen.type === "audio"
+                    ? "prompt_audio"
+                    : "prompt_image";
+                form.setFieldValue(["mediaIds", name, "role"], defaultRole);
               }
 
               // Update local state -> triggers instant re-render!
@@ -877,35 +884,77 @@ export default function QuestionFormModal({
     try {
       setSubmitting(true);
 
-      const rawMediaList = values.mediaIds ?? [];
+      // Đọc trực tiếp từ Form store để giữ nguyên File cục bộ và mediaId (không bị AntD lọc mất)
+      const formMediaList = form.getFieldValue("mediaIds");
+      const rawMediaList = Array.isArray(formMediaList) && formMediaList.length > 0
+        ? formMediaList
+        : (values.mediaIds ?? []);
+
       const processedMediaIds: Array<{ mediaId: string; role: string; orderIndex: number }> = [];
 
       for (let i = 0; i < rawMediaList.length; i++) {
         const item = rawMediaList[i];
         if (!item) continue;
 
-        if (item.file) {
-          const fileName = item.fileName || item.file.name;
-          let uploaded: MediaItem | null = null;
+        const rowStore = form.getFieldValue(["mediaIds", i]) || {};
+        const file: File | undefined = item.file || rowStore.file;
+        const mediaId: string | undefined = item.mediaId || rowStore.mediaId;
+        const fileName: string = item.fileName || rowStore.fileName || file?.name || "media-file";
+        const role: string =
+          item.role ||
+          rowStore.role ||
+          (currentType === "image_choice"
+            ? "prompt_image"
+            : currentType === "audio_choice"
+            ? "prompt_audio"
+            : "prompt_image");
+
+        if (file) {
+          // Chỉ khi người dùng nhấn "Lưu lại" (submit) mới tiến hành tải tệp lên server
+          let uploaded: any = null;
           if (onUploadMedia) {
-            uploaded = await onUploadMedia(item.file, fileName);
+            uploaded = await onUploadMedia(file, fileName);
           } else {
-            uploaded = await learningCmsService.mediaAssets.upload(item.file, fileName);
+            uploaded = await learningCmsService.mediaAssets.upload(file, fileName);
           }
 
-          if (uploaded?.id) {
+          const uploadedId = uploaded?.id || uploaded?.data?.id;
+          if (uploadedId) {
             processedMediaIds.push({
-              mediaId: uploaded.id,
-              role: item.role,
+              mediaId: uploadedId,
+              role,
               orderIndex: i,
             });
+          } else {
+            throw new Error(`Không thể tải lên tệp "${fileName}"!`);
           }
-        } else if (item.mediaId) {
+        } else if (mediaId) {
           processedMediaIds.push({
-            mediaId: item.mediaId,
-            role: item.role,
+            mediaId,
+            role,
             orderIndex: i,
           });
+        }
+      }
+
+      // Đảm bảo loại câu hỏi hình ảnh / âm thanh luôn chuẩn hóa vai trò media
+      if (currentType === "image_choice") {
+        const hasPromptImg = processedMediaIds.some((m) => m.role === "prompt_image");
+        if (!hasPromptImg) {
+          if (processedMediaIds.length > 0) {
+            processedMediaIds[0].role = "prompt_image";
+          } else {
+            throw new Error("Câu hỏi lựa chọn hình ảnh cần ít nhất một hình ảnh đề bài!");
+          }
+        }
+      } else if (currentType === "audio_choice") {
+        const hasPromptAud = processedMediaIds.some((m) => m.role === "prompt_audio");
+        if (!hasPromptAud) {
+          if (processedMediaIds.length > 0) {
+            processedMediaIds[0].role = "prompt_audio";
+          } else {
+            throw new Error("Câu hỏi lựa chọn âm thanh cần ít nhất một tệp âm thanh đề bài!");
+          }
         }
       }
 

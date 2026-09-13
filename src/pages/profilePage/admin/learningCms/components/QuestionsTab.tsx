@@ -9,6 +9,7 @@ import {
   QuestionCircleOutlined,
 } from "@ant-design/icons";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, PAGE_SIZE_QUESTIONS } from "../constants";
+import { Can } from "../../../../../components/Can";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -96,31 +97,37 @@ function buildColumns(
       align: "right" as const,
       render: (_: unknown, record: Question) => (
         <Space size="small">
-          <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
+          <Can perform="learning.publish">
+            <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
+              <Button
+                type="text"
+                size="small"
+                icon={
+                  record.status === "published"
+                    ? <CloseCircleOutlined className="text-orange-400" />
+                    : <CheckCircleOutlined className="text-emerald-500" />
+                }
+                onClick={() => onToggle(record)}
+              />
+            </Tooltip>
+          </Can>
+          <Can perform="learning.write">
             <Button
               type="text"
               size="small"
-              icon={
-                record.status === "published"
-                  ? <CloseCircleOutlined className="text-orange-400" />
-                  : <CheckCircleOutlined className="text-emerald-500" />
-              }
-              onClick={() => onToggle(record)}
+              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+              onClick={() => onEdit(record)}
             />
-          </Tooltip>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => onEdit(record)}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => onDelete(record)}
-          />
+          </Can>
+          <Can perform="learning.delete">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+              onClick={() => onDelete(record)}
+            />
+          </Can>
         </Space>
       ),
     },
@@ -162,14 +169,16 @@ export default function QuestionsTab({
           Ngân hàng câu hỏi —{" "}
           <strong>{publishedCount}/{questions.length}</strong> đã duyệt
         </span>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={onCreateClick}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-        >
-          Tạo câu hỏi mới
-        </Button>
+        <Can perform="learning.write">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={onCreateClick}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+          >
+            Tạo câu hỏi mới
+          </Button>
+        </Can>
       </div>
 
       <Table

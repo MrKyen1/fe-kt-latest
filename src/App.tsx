@@ -98,9 +98,23 @@ export default function App() {
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="profile" element={<UserProfile />} />
               <Route path="dashboard/*" element={<AdminDashboard />} />
-              <Route path="cms/*" element={<LearningCms />} />
+              <Route
+                path="cms/*"
+                element={
+                  <ProtectedRoute permissions={["learning.read"]}>
+                    <LearningCms />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="ranking/*" element={<Leaderboard />} />
-              <Route path="rbac/*" element={<RbacManagement />} />
+              <Route
+                path="rbac/*"
+                element={
+                  <ProtectedRoute permissions={["rbac.manage"]}>
+                    <RbacManagement />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="about/*" element={<AdminHomepageCms />} />
               <Route path="homepage-cms/*" element={<AdminHomepageCms />} />
               <Route path="homepage/*" element={<AdminHomepageCms />} />
@@ -117,8 +131,22 @@ export default function App() {
             >
               <Route index element={<Navigate to="/teacher/profile" replace />} />
               <Route path="profile" element={<UserProfile />} />
-              <Route path="cms/*" element={<LearningCms />} />
-              <Route path="assignments/*" element={<TeacherAssignments />} />
+              <Route
+                path="cms/*"
+                element={
+                  <ProtectedRoute permissions={["learning.read"]}>
+                    <LearningCms />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="assignments/*"
+                element={
+                  <ProtectedRoute permissions={["learning.assign"]}>
+                    <TeacherAssignments />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="ranking/*" element={<Leaderboard />} />
             </Route>
 

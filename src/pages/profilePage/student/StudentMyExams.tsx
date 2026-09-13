@@ -289,7 +289,11 @@ export default function StudentMyExams() {
         const examTitle = currentExam?.title || currentExam?.code || `Bài thi ${idx + 1}`;
         const attemptsCount = ep.attemptsCount ?? 0;
         const attemptsList = row.attempts || [];
-        const examAttempts = attemptsList.filter((att: any) => att.examId === examId && att.status === "submitted");
+        const examAttempts = attemptsList.filter((att: any) => (att.examId === examId || !att.examId) && att.status === "submitted");
+        const inProgressAttempts = attemptsList.filter((att: any) => (att.examId === examId || !att.examId) && att.status === "in_progress");
+        const hasInProgress = inProgressAttempts.length > 0 || ep.status === "in_progress" || ((row.summary?.attemptsCount ?? 0) > 0 && examAttempts.length === 0);
+        const resolvedAttemptsCount = Math.max(attemptsCount, examAttempts.length);
+        const totalAttemptsCount = Math.max(resolvedAttemptsCount, row.summary?.attemptsCount ?? 0, attemptsList.length);
         const bestAttempt = examAttempts.reduce((best: any, current: any) => {
           return (!best || parseFloat(current.percentage) > parseFloat(best.percentage)) ? current : best;
         }, null);
@@ -302,10 +306,10 @@ export default function StudentMyExams() {
 
         const pctVal = parseFloat(bestPct ?? "0");
         const mastered = ep.mastered ?? bestAttempt?.mastered ?? (pctVal >= 100);
-        const requiresRemediation = ep.requiresRemediation ?? bestAttempt?.requiresRemediation ?? (!mastered && attemptsCount >= 1 && isExamType);
+        const requiresRemediation = ep.requiresRemediation ?? bestAttempt?.requiresRemediation ?? (!mastered && resolvedAttemptsCount >= 1 && isExamType);
 
         const isPracticeCompleted = !isExamType && (ep.status === "completed" || ep.status === "finished" || pctVal >= 100 || mastered);
-        const isExamCompleted = isExamType && (mastered || (!requiresRemediation && (ep.status === "completed" || ep.status === "finished" || attemptsCount >= (maxAttempts || 1))));
+        const isExamCompleted = isExamType && (mastered || (!requiresRemediation && (ep.status === "completed" || ep.status === "finished" || resolvedAttemptsCount >= (maxAttempts || 1))));
         const isCompleted = isExamType ? isExamCompleted : isPracticeCompleted;
 
         list.push({
@@ -320,7 +324,9 @@ export default function StudentMyExams() {
           currentExam,
           timeLimitSeconds: currentExam?.timeLimitSeconds,
           maxAttempts,
-          attemptsCount,
+          attemptsCount: resolvedAttemptsCount,
+          totalAttemptsCount,
+          hasInProgress,
           bestPct,
           bestScore,
           bestPctVal: pctVal,
@@ -553,6 +559,10 @@ export default function StudentMyExams() {
                             <Tag color="orange" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
                               Đang ôn tập ({item.bestPctVal.toFixed(0)}%)
                             </Tag>
+                          ) : item.hasInProgress ? (
+                            <Tag color="processing" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
+                              Đang làm dở
+                            </Tag>
                           ) : (
                             <Tag color="default" className="rounded-full border-none text-xs px-2.5 py-0.5">
                               Chưa ôn tập
@@ -565,7 +575,7 @@ export default function StudentMyExams() {
 
                   {/* Right Action buttons */}
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                    {item.attemptsCount > 0 && (
+                    {(item.attemptsCount > 0 || item.totalAttemptsCount > 0) && (
                       <Tooltip title="Xem lịch sử các lần làm">
                         <Button
                           size="small"
@@ -601,7 +611,7 @@ export default function StudentMyExams() {
                           ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
                           : "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20"}`}
                       >
-                        {item.isCompleted ? "Xem bài làm" : item.requiresRemediation ? "Ôn tập câu sai" : item.attemptsCount > 0 ? "Làm tiếp" : "Làm bài"}
+                        {item.isCompleted ? "Xem bài làm" : item.requiresRemediation ? "Ôn tập câu sai" : (item.attemptsCount > 0 || item.hasInProgress) ? "Làm tiếp" : "Làm bài"}
                       </Button>
                     </Tooltip>
                   </div>

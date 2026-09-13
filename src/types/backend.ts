@@ -59,12 +59,86 @@ export interface User {
   roleId?: string;
   role?: Role;
   citizenId?: string | null;
+  teacher?: TeacherAuthProfile;
+  student?: StudentAuthProfile;
   teacherProfile?: TeacherProfile;
   studentProfile?: StudentProfile;
   startDate?: string;
   endDate?: string | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface TeacherAuthClass {
+  id: string;
+  teacherId: string;
+  classId: string;
+  isActive: boolean;
+  class: {
+    id: string;
+    name: string;
+    centerId: string;
+    specializationId: string;
+    center?: {
+      id: string;
+      name: string;
+      isActive?: boolean;
+    };
+    specialization?: {
+      id: string;
+      code?: string;
+      name: string;
+      isActive?: boolean;
+    };
+  };
+}
+
+export interface TeacherAuthSpecialization {
+  id: string;
+  teacherId: string;
+  specializationId: string;
+  isActive: boolean;
+  specialization?: {
+    id: string;
+    code?: string;
+    name: string;
+    isActive?: boolean;
+  };
+}
+
+export interface TeacherAuthProfile {
+  id: string;
+  classes?: TeacherAuthClass[];
+  teacherSpecializations?: TeacherAuthSpecialization[];
+}
+
+export interface StudentAuthClass {
+  id: string;
+  studentId: string;
+  classId: string;
+  isActive: boolean;
+  class: {
+    id: string;
+    name: string;
+    centerId: string;
+    specializationId: string;
+    center?: {
+      id: string;
+      name: string;
+      isActive?: boolean;
+    };
+    specialization?: {
+      id: string;
+      code?: string;
+      name: string;
+      isActive?: boolean;
+    };
+  };
+}
+
+export interface StudentAuthProfile {
+  id: string;
+  classes?: StudentAuthClass[];
 }
 
 export interface TeacherProfile {
@@ -524,9 +598,74 @@ export interface Attempt {
   taskStatus?: "in_progress" | "mastered" | "remediation_required";
 }
 
+export interface ExamAssignmentStudentStat {
+  studentId: string;
+  assignmentStudentId?: string;
+  code?: string;
+  fullName: string;
+  email?: string;
+  status: "assigned" | "in_progress" | "finished" | "submitted" | string;
+  attemptsCount: number;
+  latestScore?: number | null;
+  maxScore?: number | null;
+  latestPercentage?: number | null;
+  bestScore?: number | null;
+  bestPercentage?: number | null;
+  submittedAt?: string | null;
+  durationSeconds?: number | null;
+  latestAttemptId?: string | null;
+}
+
+export interface TeacherAttemptDetailAnswer {
+  id: string;
+  questionId: string;
+  orderIndex: number;
+  questionType?: string;
+  questionSnapshot?: {
+    prompt?: string;
+    instruction?: string;
+    options?: Array<{ id: string; content?: string; text?: string; isCorrect?: boolean; key?: string }>;
+    [key: string]: unknown;
+  };
+  studentAnswer?: unknown;
+  correctAnswer?: unknown;
+  isCorrect?: boolean;
+  score?: number | string;
+  maxScore?: number | string;
+  feedback?: unknown;
+  answeredAt?: string | null;
+}
+
+export interface TeacherAttemptDetail {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  attemptNumber: number;
+  status: string;
+  score: string | number;
+  maxScore: string | number;
+  percentage: string | number;
+  startedAt?: string;
+  submittedAt?: string;
+  durationSeconds?: number;
+  student?: {
+    id?: string;
+    user?: {
+      id?: string;
+      code?: string;
+      fullName?: string;
+      email?: string;
+    };
+  };
+  answers: TeacherAttemptDetailAnswer[];
+}
+
 export interface ExamAssignmentAnalytics {
   assignedCount: number;
   submittedCount: number;
+  notStartedCount?: number;
+  inProgressCount?: number;
+  finishedCount?: number;
   attemptsCount: number;
   averageScore: number;
   bestScore: number;
@@ -535,17 +674,33 @@ export interface ExamAssignmentAnalytics {
   scoreDistribution: Record<string, number>;
   perQuestion: Array<{
     questionId: string;
+    orderIndex?: number;
+    prompt?: string;
+    questionType?: string;
     total: number;
     correct: number;
     correctnessRate: number;
   }>;
+  students?: ExamAssignmentStudentStat[];
 }
 
 export interface CurriculumAssignmentAnalytics {
   assignedCount: number;
   completedCount: number;
   inProgressCount: number;
+  notStartedCount?: number;
   averageProgress: number;
+  students?: Array<{
+    studentId: string;
+    code?: string;
+    fullName: string;
+    email?: string;
+    status: "assigned" | "in_progress" | "finished" | string;
+    progressPercentage: number;
+    finishedExamsCount: number;
+    totalRequiredExamsCount: number;
+    finishedAt?: string | null;
+  }>;
 }
 
 export interface RequestLog {

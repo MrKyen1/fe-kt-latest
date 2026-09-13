@@ -284,7 +284,7 @@ function StudentRanking({ students, role, currentStudentId }: RankingProps) {
 ========================================================= */
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, hasPermission, hasRole } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const outlet = useOutlet();
@@ -520,9 +520,35 @@ export default function Profile() {
   ===================================================== */
 
   const getMenuItems = () => {
-    if (user?.role === "student") return studentMenu;
-    if (user?.role === "teacher") return teacherMenu;
-    return adminMenu;
+    let baseMenu = adminMenu;
+    if (user?.role === "student") {
+      baseMenu = studentMenu;
+    } else if (user?.role === "teacher") {
+      baseMenu = teacherMenu;
+    }
+
+    return baseMenu.filter((item) => {
+      if (item.key === "profile" || item.key === "ranking") return true;
+      if (item.key === "cms") {
+        return hasPermission("learning.read");
+      }
+      if (item.key === "assignments") {
+        return hasPermission("learning.assign");
+      }
+      if (item.key === "rbac") {
+        return hasPermission("rbac.manage");
+      }
+      if (item.key === "dashboard") {
+        return hasPermission(["classes.read", "users.read", "classes.manage"], { mode: "any" });
+      }
+      if (item.key === "homepage-cms") {
+        return hasRole("admin") || hasPermission("classes.manage");
+      }
+      if (item.key === "my-exams") {
+        return hasRole("student") || hasPermission("learning.attempt");
+      }
+      return true;
+    });
   };
 
   const renderContent = () => {

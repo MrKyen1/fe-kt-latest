@@ -6,6 +6,7 @@ import { MatchingQuestion } from "./MatchingQuestion";
 import { tokenStorage } from "../../services/tokenStorage";
 import { learningCmsService } from "../../services/learningCmsService";
 import { AppImage } from "../../components/AppImagePreview";
+import { useAuth } from "../../contexts/AuthContext";
 
 const CHOICE_TYPES = ["multiple_choice", "audio_choice", "image_choice", "reading_comprehension", "multiple-choice", "listening"];
 
@@ -37,6 +38,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [regradeModalOpen, setRegradeModalOpen] = React.useState(false);
   const [regradeLoading, setRegradeLoading] = React.useState(false);
   const [regradeForm] = Form.useForm();
+  const { hasPermission } = useAuth();
 
   React.useEffect(() => {
     if (regradeModalOpen) {
@@ -530,8 +532,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const renderFeedbackBox = () => {
     if (!showFeedback) return null;
-    const user = tokenStorage.getUser();
-    const hasManagePerm = user?.role?.permissions?.includes("learning.manage") || user?.role?.code === "admin" || user?.role?.code === "teacher";
+    const hasManagePerm = hasPermission(["learning.manage", "learning.write"], { mode: "any" });
     const correctAnsText = formatCorrectAnswer(question.correctAnswer);
 
     return (

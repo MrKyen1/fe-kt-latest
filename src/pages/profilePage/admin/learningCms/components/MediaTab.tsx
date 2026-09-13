@@ -3,6 +3,7 @@ import { DeleteOutlined, EyeOutlined, SoundOutlined, UploadOutlined } from "@ant
 import { Video } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../services/apiClient";
 import { AppImage } from "../../../../../components/AppImagePreview";
+import { Can } from "../../../../../components/Can";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -45,14 +46,16 @@ export default function MediaTab({ media, onUploadClick, onDeleteClick, onPrevie
         <span className="text-slate-500">
           Thư viện hình ảnh, tệp tin âm thanh hoặc video cho câu hỏi ({media.length} tệp)
         </span>
-        <Button
-          type="primary"
-          icon={<UploadOutlined />}
-          onClick={onUploadClick}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-        >
-          Tải lên tệp
-        </Button>
+        <Can perform="learning.media.upload">
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={onUploadClick}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+          >
+            Tải lên tệp
+          </Button>
+        </Can>
       </div>
 
       {/* Gallery grid */}
@@ -110,13 +113,15 @@ export default function MediaTab({ media, onUploadClick, onDeleteClick, onPrevie
                           />
                         </Tooltip>
                       )}
-                      <Button
-                        type="text"
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => onDeleteClick(asset)}
-                      />
+                      <Can perform="learning.delete">
+                        <Button
+                          type="text"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => onDeleteClick(asset)}
+                        />
+                      </Can>
                     </Space>
                   </div>
                 }
