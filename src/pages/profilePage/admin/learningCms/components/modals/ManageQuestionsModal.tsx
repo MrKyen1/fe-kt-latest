@@ -452,7 +452,7 @@ export default function ManageQuestionsModal({
                   </List.Item>
                 );
               }}
-              locale={{ emptyText: <Empty description="Đề thi chưa có câu hỏi nào" imageStyle={{ height: 40 }} /> }}
+              locale={{ emptyText: <Empty description="Đề thi chưa có câu hỏi nào" styles={{ image: { height: 40 } }} /> }}
             />
           </Card>
         </Col>
@@ -576,7 +576,7 @@ export default function ManageQuestionsModal({
                       </Popover>
                     </List.Item>
                   )}
-                  locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" imageStyle={{ height: 40 }} /> }}
+                  locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" styles={{ image: { height: 40 } }} /> }}
                 />
               </>
             ) : (

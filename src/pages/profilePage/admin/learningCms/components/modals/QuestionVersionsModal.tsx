@@ -142,7 +142,7 @@ export default function QuestionVersionsModal({
       footer={null}
       width={850}
       className="rounded-2xl"
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="py-2 space-y-3 font-sans">
         {/* Architecture Note */}
@@ -151,7 +151,7 @@ export default function QuestionVersionsModal({
           showIcon
           icon={<Info size={16} className="text-blue-500 mt-0.5" />}
           className="rounded-xl border-blue-100 bg-blue-50/70 text-xs text-slate-600"
-          message={
+          title={
             <span>
               <strong>Cơ chế Versioning:</strong> Phiên bản câu hỏi được tự động cắt bất biến và lưu trữ trong bảng <code className="bg-white/80 px-1 py-0.5 rounded border border-blue-200 text-blue-700">question_versions</code> mỗi khi một Đề thi chứa câu hỏi này được <strong>Xuất bản (Publish)</strong>.
             </span>

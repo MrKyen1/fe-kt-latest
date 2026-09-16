@@ -37,7 +37,9 @@ type ExamAssignmentRow = {
     attemptsCount?: number;
     bestPercentage?: string | null;
     status?: string;
-    maxAttempts?: number | null;
+    // NOTE: maxAttempts da bi xoa (migration 1780000030000).
+    finished?: boolean;
+    mastered?: boolean;
   }>;
   /** legacy: single exam */
   exam?: AssignmentExam;
@@ -422,9 +424,11 @@ export default function ExamList() {
                       const attemptsCount = ep.attemptsCount ?? 0;
                       const bestScore = ep.bestScore;
                       const bestPct = ep.bestPercentage;
-                      const isCompleted = ep.status === "completed" || ep.completedAt != null || attemptsCount > 0;
-                      const maxAttempts = ep.maxAttempts ?? selectedCurriculum.maxAttempts;
-                      const isExhausted = maxAttempts && attemptsCount >= maxAttempts;
+                      const isExam = ep.exam?.examType === "exam";
+                      const bestPctVal = parseFloat(bestPct ?? "0");
+                      // Mastery Learning: Ca De thi va De on tap deu chi hoan thanh khi dat 100% hoac mastered
+                      const isCompleted = ep.mastered === true || ep.status === "mastered" || bestPctVal >= 100 || ep.completedAt != null;
+                      const isNeedsRetry = !isCompleted && attemptsCount > 0;
                       const totalQuestions = getQuestionCount(exam);
 
                       return (
@@ -494,7 +498,6 @@ export default function ExamList() {
                                 type={isCompleted ? "default" : "primary"}
                                 size="large"
                                 icon={isCompleted ? <ReloadOutlined /> : <PlayCircleOutlined />}
-                                disabled={isExhausted}
                                 loading={startingId === examId}
                                 onClick={() => handleStartCurriculumExam(selectedCurriculum.curriculumId, examId)}
                                 className={`w-full md:w-auto font-bold h-12 px-6 rounded-xl border-none shadow-sm ${isCompleted
@@ -502,11 +505,12 @@ export default function ExamList() {
                                   : "bg-blue-600 hover:bg-blue-500 text-white"
                                   }`}
                               >
-                                {isExhausted ? "Hết lượt" : isCompleted ? "Làm lại" : "Làm bài ngay"}
+                                {isCompleted ? "Luyện tập lại" : isNeedsRetry ? "Làm lại câu sai" : "Làm bài ngay"}
                               </Button>
                             </div>
                           </div>
                         </Col>
+
                       );
                     })}
                 </Row>

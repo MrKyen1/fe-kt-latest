@@ -998,7 +998,8 @@ export default function LearningCms() {
 
   const handleExamSubmit = async (values: any) => {
     try {
-      const timeLimitSeconds = values.timeLimitMinutes ? values.timeLimitMinutes * 60 : undefined;
+      const isExam = values.examType === "exam";
+      const timeLimitSeconds = isExam && values.timeLimitMinutes ? values.timeLimitMinutes * 60 : undefined;
       if (editingItem) {
         await learningCmsService.exams.update(editingItem.id, {
           title: values.title,

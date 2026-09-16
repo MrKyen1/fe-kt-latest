@@ -1084,13 +1084,22 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }
 
   if (isExamComplete && !isReviewMode) {
+    const isMastered = (submitResult as any)?.mastered;
+    const remainingCount = (submitResult as any)?.remainingQuestionCount ?? 0;
+    const isExamType = examData.examType === "exam";
+
     return (
       <div className="min-h-screen bg-slate-50  p-6 md:p-10 transition-colors">
         <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-700">
           <div className="p-8 md:p-10 text-center">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-4">
-              Kết quả bài thi
+              {isMastered ? "Hoàn thành 100%!" : isExamType ? "Kết quả bài kiểm tra" : "Kết quả bài thi"}
             </h1>
+            {isExamType && !isMastered && (
+              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3 font-medium">
+                Điểm bài kiểm tra lượt đầu đã được ghi nhận. Bạn cần làm lại các câu chưa đúng để hoàn thành bài thi 100%.
+              </p>
+            )}
             <p className="text-lg text-slate-600 dark:text-slate-300 mb-6">
               Backend đã chấm điểm{" "}
               {submitResult?.displayResult ? (
@@ -1157,7 +1166,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               >
                 Xem lại đáp án
               </button>
-              {examData.examType !== "exam" && (
+              {!isMastered && (
                 <button
                   onClick={handleRetryNewAttempt}
                   disabled={isRetrying}
@@ -1165,10 +1174,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 >
                   {isRetrying
                     ? "Đang tạo lượt mới..."
-                    : (submitResult as any)?.mastered
-                    ? "Ôn tập lại bài này"
-                    : (submitResult as any)?.remainingQuestionCount > 0
-                    ? `Làm tiếp (còn ${(submitResult as any)?.remainingQuestionCount} câu chưa đúng)`
+                    : remainingCount > 0
+                    ? `Làm lại câu sai (còn ${remainingCount} câu)`
                     : "Làm tiếp / Làm lại"}
                 </button>
               )}

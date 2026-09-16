@@ -291,6 +291,11 @@ export default function CurriculumExams() {
                   const qCount = examQuestionCounts[eid] ?? exam?.examQuestions?.length ?? exam?.questions?.length ?? 0;
                   const isStarting = startingExamId === (exam?.id ?? entry.examId);
 
+                  const attemptsCount = (entry as any).attemptsCount ?? 0;
+                  const bestPctVal = parseFloat((entry as any).bestPercentage ?? "0");
+                  const isMastered = (entry as any).mastered === true || (entry as any).status === "mastered" || bestPctVal >= 100;
+                  const isNeedsRetry = !isMastered && attemptsCount > 0;
+
                   return (
                     <Col xs={24} key={entry.examId}>
                       <motion.div
@@ -322,8 +327,8 @@ export default function CurriculumExams() {
                                   Bắt buộc
                                 </Tag>
                               )}
-                              {isStudent && ((entry as any).attemptsCount ?? 0) > 0 && (
-                                <span className="text-slate-400 text-xs">{(entry as any).attemptsCount} lần đã làm</span>
+                              {isStudent && attemptsCount > 0 && (
+                                <span className="text-slate-400 text-xs">{attemptsCount} lần đã làm</span>
                               )}
                               {isStudent && (entry as any).bestPercentage != null && (
                                 <span className="text-xs font-semibold" style={{ color: percentColor((entry as any).bestPercentage) }}>
@@ -335,7 +340,7 @@ export default function CurriculumExams() {
                         </div>
 
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                          {isStudent && ((entry as any).attemptsCount ?? 0) > 0 && (
+                          {isStudent && attemptsCount > 0 && (
                             <Tooltip title="Xem lịch sử làm bài">
                               <Button
                                 size="large"
@@ -351,43 +356,32 @@ export default function CurriculumExams() {
                             </Tooltip>
                           )}
                           <Button
-                            type={isStudent && ((entry as any).attemptsCount ?? 0) > 0 ? "default" : "primary"}
+                            type={isStudent && attemptsCount > 0 ? "default" : "primary"}
                             size="large"
                             icon={
-                              isStudent && ((entry as any).attemptsCount ?? 0) > 0
-                                ? (exam?.examType === "exam" ? <History size={18} /> : <RotateCcw size={18} />)
+                              isStudent && attemptsCount > 0
+                                ? <RotateCcw size={18} />
                                 : <PlayCircle size={18} />
                             }
                             loading={isStarting}
-                            disabled={isStarting || (!canDoExam && isStudent) || (isStudent && curriculum?.maxAttempts && ((entry as any).attemptsCount ?? 0) >= curriculum.maxAttempts && exam?.examType !== "exam")}
+                            disabled={isStarting || (!canDoExam && isStudent)}
                             className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 justify-center ${
-                              isStudent && curriculum?.maxAttempts && ((entry as any).attemptsCount ?? 0) >= curriculum.maxAttempts && exam?.examType !== "exam"
-                                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                                : isStudent && ((entry as any).attemptsCount ?? 0) > 0
-                                ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
-                                : canDoExam || !isStudent
-                                ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
-                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                              isStudent && attemptsCount > 0
+                              ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
+                              : canDoExam || !isStudent
+                              ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
                             }`}
                             onClick={() => {
-                              if (isStudent && exam?.examType === "exam" && ((entry as any).attemptsCount ?? 0) > 0) {
-                                setHistoryAssignmentStudentId(studentAssignmentId);
-                                setHistoryExamId(exam?.id ?? entry.examId);
-                                setHistoryTitle(exam?.title ?? exam?.code ?? `Bài thi`);
-                                setHistoryModalOpen(true);
-                              } else {
-                                handleStartExam(exam?.id ?? entry.examId);
-                              }
+                              handleStartExam(exam?.id ?? entry.examId);
                             }}
                           >
                             {isStudent
-                              ? isStudent && exam?.examType === "exam" && ((entry as any).attemptsCount ?? 0) > 0
-                                ? "Xem bài làm"
-                                : isStudent && curriculum?.maxAttempts && ((entry as any).attemptsCount ?? 0) >= curriculum.maxAttempts
-                                ? "Hết lượt"
-                                : canDoExam
-                                ? ((entry as any).attemptsCount ?? 0) > 0
-                                  ? "Làm lại"
+                              ? canDoExam
+                                ? isMastered
+                                  ? "Luyện tập lại"
+                                  : isNeedsRetry
+                                  ? "Làm lại câu sai"
                                   : "Làm bài ngay"
                                 : "Chưa được giao"
                               : "Xem trước (chỉ HS)"}

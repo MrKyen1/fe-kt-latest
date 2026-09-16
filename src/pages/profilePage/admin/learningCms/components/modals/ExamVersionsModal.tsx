@@ -120,7 +120,7 @@ export default function ExamVersionsModal({
       footer={null}
       width={700}
       className="rounded-2xl"
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="py-2 space-y-4 font-sans">
         {/* Unpublished-changes banner */}

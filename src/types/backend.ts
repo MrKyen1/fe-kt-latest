@@ -437,7 +437,7 @@ export interface TeacherAssignment {
   class?: ClassRoom;
   teacherId?: string;
   studentIds?: string[];
-  maxAttempts?: number | null;
+  // NOTE: maxAttempts da bi xoa (migration 1780000030000). Khong con ton tai trong response.
   status: AssignmentStatus;
   isActive?: boolean;
   createdAt?: string;
@@ -469,12 +469,12 @@ export interface CurriculumAssignment extends TeacherAssignment {
 }
 
 export interface StudentExamAssignment {
-  /** assignmentStudentId (dùng để start attempt) */
+  /** assignmentStudentId (dung de start attempt) */
   id: string;
   assignmentId?: string;
   assignment?: ExamAssignment;
   class?: ClassRoom;
-  /** Mỗi exam trong assignment có progress riêng */
+  /** Moi exam trong assignment co progress rieng */
   exams?: Array<{
     examId: string;
     exam?: Exam;
@@ -482,13 +482,19 @@ export interface StudentExamAssignment {
     bestScore?: string | null;
     bestPercentage?: string | null;
     status?: string;
-    maxAttempts?: number | null;
+    /** true khi da co it nhat 1 luot submitted (exam type) hoac dat 100% (practice type) */
+    finished?: boolean;
+    /** mastered = da dung 100% cau */
+    mastered?: boolean;
+    taskStatus?: "in_progress" | "finished" | "mastered";
+    requiresRemediation?: boolean;
+    // NOTE: maxAttempts da bi xoa (migration 1780000030000).
   }>;
-  /** Điểm tiến tổng assignment */
+  /** Diem tien tong assignment */
   progressPercentage?: string;
   completedExamsCount?: number;
   totalExamsCount?: number;
-  maxAttempts?: number | null;
+  // NOTE: maxAttempts da bi xoa (migration 1780000030000).
   /** Legacy single-exam summary */
   exam?: Exam;
   summary?: {
@@ -515,7 +521,7 @@ export interface StudentCurriculumAssignment {
   progressPercentage?: string;
   completedExamsCount?: number;
   totalRequiredExamsCount?: number;
-  maxAttempts?: number | null;
+  // NOTE: maxAttempts da bi xoa (migration 1780000030000).
   isActive?: boolean;
   curriculum?: Curriculum;
   /** Exam progress list (populated on detail endpoint) */
@@ -530,6 +536,12 @@ export interface StudentCurriculumAssignment {
     bestPercentage?: string | null;
     lastAttemptId?: string | null;
     completedAt?: string | null;
+    /** true khi finished (theo logic examType) */
+    finished?: boolean;
+    /** true khi dat 100% */
+    mastered?: boolean;
+    taskStatus?: "in_progress" | "finished" | "mastered";
+    requiresRemediation?: boolean;
     exam?: Exam;
     curriculumExam?: { id: string; orderIndex: number; isRequired: boolean };
   }>;

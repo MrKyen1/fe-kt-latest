@@ -19,6 +19,9 @@ interface Props {
  * Create / Edit Exam modal.
  */
 export default function ExamFormModal({ open, onCancel, form, onFinish, isEditing }: Props) {
+  const examType = Form.useWatch("examType", form) ?? "practice";
+  const isExam = examType === "exam";
+
   return (
     <Modal
       title={
@@ -55,21 +58,34 @@ export default function ExamFormModal({ open, onCancel, form, onFinish, isEditin
         >
           <Select className="rounded-xl">
             <Select.Option value="practice">
-              Đề ôn tập (Làm nhiều lần cho tới khi đúng hết 100%)
+              Đề ôn tập
             </Select.Option>
             <Select.Option value="exam">
-              Đề kiểm tra (Làm 1 lần duy nhất)
+              Đề kiểm tra
             </Select.Option>
           </Select>
         </Form.Item>
 
-        <Form.Item
-          name="timeLimitMinutes"
-          label="Thời gian làm bài (phút)"
-          rules={[{ required: true, message: "Nhập thời gian làm bài!" }]}
-        >
-          <InputNumber style={{ width: "100%" }} min={1} placeholder="Ví dụ: 45" className="rounded-xl" />
-        </Form.Item>
+        {isExam && (
+          <Form.Item
+            name="timeLimitMinutes"
+            label="Thời gian làm bài (phút)"
+            rules={[
+              {
+                required: true,
+                message: "Vui lòng nhập thời gian làm bài cho đề kiểm tra!",
+              },
+            ]}
+            extra="Đề kiểm tra sẽ tính giờ và tự động thu bài khi hết giờ ở lượt đầu."
+          >
+            <InputNumber
+              style={{ width: "100%" }}
+              min={1}
+              placeholder="Ví dụ: 45"
+              className="rounded-xl"
+            />
+          </Form.Item>
+        )}
 
         <Form.Item name="description" label="Mô tả chi tiết">
           <Input.TextArea placeholder="Mô tả đề thi..." rows={3} className="rounded-xl" />

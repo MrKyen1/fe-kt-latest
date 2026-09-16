@@ -72,8 +72,7 @@ export interface ExamAssignmentRequest {
   classId?: string;
   /** ID học sinh cụ thể (tùy chọn – bỏ trống = toàn bộ lớp) */
   studentIds?: string[];
-  /** Số lần làm tối đa (bỏ trống = vĩnh viễn) */
-  maxAttempts?: number;
+  // NOTE: maxAttempts đã bị xóa (migration 1780000030000). Backend từ chối field này với HTTP 400.
   title?: string;
   instructions?: string;
 }
@@ -85,8 +84,7 @@ export interface CurriculumAssignmentRequest {
   studentIds: string[];
   /** ID lớp học (tùy chọn) */
   classId?: string;
-  /** Số lần làm tối đa (bỏ trống = vĩnh viễn) */
-  maxAttempts?: number;
+  // NOTE: maxAttempts đã bị xóa (migration 1780000030000). Backend từ chối field này với HTTP 400.
   title?: string;
   instructions?: string;
 }
@@ -95,8 +93,7 @@ export interface CurriculumAssignmentRequest {
 export interface ClassCurriculumRequest {
   classId: string;
   curriculumId: string;
-  /** Số lần làm tối đa (bỏ trống = vĩnh viễn) */
-  maxAttempts?: number;
+  // NOTE: maxAttempts đã bị xóa (migration 1780000030000). Backend từ chối field này với HTTP 400.
 }
 
 export interface ClassCurriculumQuery extends PaginationQuery {

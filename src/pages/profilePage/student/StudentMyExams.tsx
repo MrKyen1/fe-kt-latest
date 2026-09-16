@@ -302,15 +302,14 @@ export default function StudentMyExams() {
         const bestScore = bestAttempt?.score;
         const examType = currentExam?.examType ?? ep.examType ?? "practice";
         const isExamType = examType === "exam";
-        const maxAttempts = ep.maxAttempts ?? row.maxAttempts ?? row.assignment?.maxAttempts;
+        // NOTE: maxAttempts da bi xoa (migration 1780000030000).
 
         const pctVal = parseFloat(bestPct ?? "0");
         const mastered = ep.mastered ?? bestAttempt?.mastered ?? (pctVal >= 100);
-        const requiresRemediation = ep.requiresRemediation ?? bestAttempt?.requiresRemediation ?? (!mastered && resolvedAttemptsCount >= 1 && isExamType);
+        const requiresRemediation = ep.requiresRemediation ?? bestAttempt?.requiresRemediation ?? (!mastered && resolvedAttemptsCount >= 1);
 
-        const isPracticeCompleted = !isExamType && (ep.status === "completed" || ep.status === "finished" || pctVal >= 100 || mastered);
-        const isExamCompleted = isExamType && (mastered || (!requiresRemediation && (ep.status === "completed" || ep.status === "finished" || resolvedAttemptsCount >= (maxAttempts || 1))));
-        const isCompleted = isExamType ? isExamCompleted : isPracticeCompleted;
+        // Mastery Learning: Ca De thi va De on tap deu chi hoan thanh khi dat 100% hoac mastered
+        const isCompleted = mastered || pctVal >= 100 || ep.status === "completed" || ep.status === "finished" || ep.status === "mastered";
 
         list.push({
           id: `${assignmentStudentId}_${examId}_${idx}`,
@@ -323,7 +322,7 @@ export default function StudentMyExams() {
           isExamType,
           currentExam,
           timeLimitSeconds: currentExam?.timeLimitSeconds,
-          maxAttempts,
+          // NOTE: maxAttempts removed
           attemptsCount: resolvedAttemptsCount,
           totalAttemptsCount,
           hasInProgress,
@@ -333,7 +332,6 @@ export default function StudentMyExams() {
           mastered,
           requiresRemediation,
           isCompleted,
-          isPracticeCompleted,
         });
       });
     });
@@ -516,11 +514,6 @@ export default function StudentMyExams() {
                             <ClockCircleOutlined /> {Math.ceil(item.timeLimitSeconds / 60)} phút
                           </span>
                         ) : null}
-                        {item.maxAttempts ? (
-                          <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0">Tối đa {item.maxAttempts} lần</Tag>
-                        ) : (
-                          <Tag color="blue" className="rounded-full border-none text-[10px] px-2 m-0">Không giới hạn</Tag>
-                        )}
                         {item.attemptsCount > 0 && (
                           <span className="text-slate-400">{item.attemptsCount} lần đã làm</span>
                         )}
@@ -529,17 +522,13 @@ export default function StudentMyExams() {
                       {/* Status badge */}
                       <div className="pt-1 flex items-center gap-2">
                         {item.isExamType ? (
-                          item.mastered ? (
+                          item.isCompleted ? (
                             <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              Đã đạt (100%)
+                              Đã hoàn thành (100%)
                             </Tag>
                           ) : item.requiresRemediation ? (
                             <Tag color="volcano" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              Cần ôn tập ({item.bestPctVal.toFixed(0)}%)
-                            </Tag>
-                          ) : item.isCompleted ? (
-                            <Tag color="green" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                              Đã nộp bài
+                              Cần làm lại câu sai ({item.bestPctVal.toFixed(0)}%)
                             </Tag>
                           ) : item.attemptsCount > 0 ? (
                             <Tag color="orange" className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
@@ -611,7 +600,7 @@ export default function StudentMyExams() {
                           ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
                           : "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20"}`}
                       >
-                        {item.isCompleted ? "Xem bài làm" : item.requiresRemediation ? "Ôn tập câu sai" : (item.attemptsCount > 0 || item.hasInProgress) ? "Làm tiếp" : "Làm bài"}
+                        {item.isCompleted ? "Xem bài làm" : item.requiresRemediation ? "Làm lại câu sai" : (item.attemptsCount > 0 || item.hasInProgress) ? "Làm tiếp" : "Làm bài"}
                       </Button>
                     </Tooltip>
                   </div>
@@ -647,7 +636,7 @@ export default function StudentMyExams() {
           const completedCount = item.completedExamsCount ?? 0;
           const totalRequired = item.totalRequiredExamsCount ?? 0;
           const exams: any[] = item.exams ?? [];
-          const maxAttempts = item.maxAttempts;
+          // NOTE: maxAttempts da bi xoa (migration 1780000030000).
 
           return (
             <Card key={curriculumId}
@@ -669,9 +658,6 @@ export default function StudentMyExams() {
                     <div className="text-white font-bold text-xl">{title}</div>
                     <div className="text-white/60 text-sm mt-1 flex items-center gap-3">
                       {curriculum?.code && <span className="font-mono">{curriculum.code}</span>}
-                      {maxAttempts
-                        ? <span>Tối đa {maxAttempts} lần/bài</span>
-                        : <span>Không giới hạn</span>}
                     </div>
                   </div>
                   <div className="text-center">
@@ -707,13 +693,12 @@ export default function StudentMyExams() {
                       const bestPctVal = parseFloat(bestPct ?? "0");
                       const isPracticeMode = !isExamType;
                       const isMastered = ep.mastered ?? (bestPctVal >= 100);
-                      const requiresRemediation = ep.requiresRemediation ?? (!isMastered && attemptsCount >= 1 && isExamType);
-                      const isPracticeCompleted = isPracticeMode && (ep.status === "completed" || ep.status === "finished" || ep.completedAt != null || bestPctVal >= 100 || isMastered);
-                      const isExamCompleted = isExamType && (isMastered || (!requiresRemediation && (ep.status === "completed" || ep.status === "finished" || ep.completedAt != null || attemptsCount >= (maxAttempts || 1))));
-                      const isCompleted = isExamType ? isExamCompleted : isPracticeCompleted;
+                      const requiresRemediation = ep.requiresRemediation ?? (!isMastered && attemptsCount >= 1);
+                      // Mastery Learning: Ca De thi va De on tap deu chi hoan thanh khi dat 100% hoac mastered
+                      const isCompleted = isMastered || bestPctVal >= 100 || ep.status === "completed" || ep.status === "finished" || ep.status === "mastered";
                       const startKey = `${curriculumId}:${examId}`;
                       const isStarting = startingId === startKey;
-                      const isExhausted = (isExamType && !requiresRemediation && attemptsCount >= 1) || (maxAttempts && attemptsCount >= maxAttempts);
+                      const isExhausted = false;
 
                       return (
                         <div key={examId || idx}
@@ -740,7 +725,7 @@ export default function StudentMyExams() {
                                   <span className="text-slate-400 text-xs">{attemptsCount} lần đã làm</span>
                                 )}
                                 {isPracticeMode ? (
-                                  isPracticeCompleted ? (
+                                  isCompleted ? (
                                     <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
                                       Đã hoàn thành (100%)
                                     </Tag>
@@ -754,17 +739,13 @@ export default function StudentMyExams() {
                                     </Tag>
                                   )
                                 ) : (
-                                  isMastered ? (
+                                  isCompleted ? (
                                     <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      Đã đạt (100%)
+                                      Đã hoàn thành (100%)
                                     </Tag>
                                   ) : requiresRemediation ? (
                                     <Tag color="volcano" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      Cần ôn tập ({bestPctVal.toFixed(0)}%)
-                                    </Tag>
-                                  ) : isExamCompleted ? (
-                                    <Tag color="green" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
-                                      Đã nộp bài
+                                      Cần làm lại câu sai ({bestPctVal.toFixed(0)}%)
                                     </Tag>
                                   ) : attemptsCount > 0 ? (
                                     <Tag color="orange" className="rounded-full border-none text-[10px] px-2 m-0 font-bold">
@@ -812,7 +793,7 @@ export default function StudentMyExams() {
                                   ? "border-emerald-200 text-emerald-600 hover:border-emerald-400"
                                   : "shadow-sm shadow-indigo-500/20"}`}
                               >
-                                {isCompleted ? "Xem bài làm" : requiresRemediation ? "Ôn tập câu sai" : attemptsCount > 0 ? "Làm tiếp" : "Làm bài"}
+                                {isCompleted ? "Xem bài làm" : requiresRemediation ? "Làm lại câu sai" : attemptsCount > 0 ? "Làm tiếp" : "Làm bài"}
                               </Button>
                             </Tooltip>
                           </div>

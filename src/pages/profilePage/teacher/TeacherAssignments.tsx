@@ -102,9 +102,9 @@ const statusTag = (status: AssignmentStatus) => {
 
 const maxAttemptsTag = (n?: number | null) => {
   if (n === 1) {
-    return <Tag color="purple" className="rounded-full border-none text-xs font-semibold">Kiểm tra (1 lần)</Tag>;
+    return <Tag color="purple" className="rounded-full border-none text-xs font-semibold">Đề kiểm tra</Tag>;
   }
-  return <Tag color="blue" className="rounded-full border-none text-xs font-semibold">Ôn tập (Làm lại tới khi 100%)</Tag>;
+  return <Tag color="blue" className="rounded-full border-none text-xs font-semibold">Đề ôn tập</Tag>;
 };
 
 // ==================== HELPER FORMATTERS ====================
@@ -396,7 +396,7 @@ function TeacherAttemptDetailModal({
             type="info"
             showIcon
             className="rounded-2xl mb-4"
-            message="Thông tin lượt làm bài"
+            title="Thông tin lượt làm bài"
             description={
               <div>
                 <p className="mb-2">
@@ -481,9 +481,8 @@ function ExamAnalyticsModal({
       .finally(() => setLoading(false));
   }, [open, assignmentId]);
 
-  // Phân biệt rõ Đề thi (làm 1 lần duy nhất) vs Đề ôn tập (luyện tập tới khi 100%)
+  // Phan biet De thi vs De on tap dua vao examType (maxAttempts da bi xoa)
   const isExamType = useMemo(() => {
-    if (assignmentDetail?.maxAttempts === 1) return true;
     if (assignmentDetail?.exams?.some((e: any) => e.exam?.examType === "exam")) return true;
     if (attemptsList?.some((a: any) => a.examType === "exam" || a.examTypeSnapshot === "exam")) return true;
     return false;
@@ -526,26 +525,21 @@ function ExamAnalyticsModal({
 
       const submittedAtts = atts.filter((a: any) => a.status === "submitted");
       const latest = submittedAtts[0] || atts[0];
+      // Tim attempt luot 1 (attemptNumber = 1) de lay diem thi chinh thuc
+      const firstAttempt = submittedAtts.find((a: any) => a.attemptNumber === 1) || submittedAtts[submittedAtts.length - 1];
 
       const scores = submittedAtts.map((a: any) => Number(a.score)).filter((n) => !isNaN(n));
       const pcts = submittedAtts.map((a: any) => Number(a.percentage)).filter((n) => !isNaN(n));
       const bestScore = scores.length > 0 ? Math.max(...scores) : null;
       const bestPercentage = pcts.length > 0 ? Math.max(...pcts) : null;
 
-      // Status resolution
+      // Mastery Learning (100%): Ca De thi va De on tap deu chi hoan thanh khi dat 100%
+      const isMastered = bestPercentage === 100 || item.status === "finished" || submittedAtts.some((a: any) => a.mastered === true || Number(a.percentage) >= 100);
       let computedStatus = "assigned";
-      if (submittedAtts.length > 0) {
-        if (isExamType) {
-          // Đề thi (EXAM): Học sinh chỉ làm 1 lần, đã nộp bài là hoàn thành (bất kể điểm số)
-          computedStatus = "finished";
-        } else {
-          // Đề ôn tập (PRACTICE): Cần đạt 100% mới tính là hoàn thành
-          if (bestPercentage === 100 || item.status === "finished") {
-            computedStatus = "finished";
-          } else {
-            computedStatus = "submitted";
-          }
-        }
+      if (isMastered) {
+        computedStatus = "finished";
+      } else if (submittedAtts.length > 0) {
+        computedStatus = "submitted"; // da nop nhung chua dat 100%, can lam lai
       } else if (atts.some((a: any) => a.status === "in_progress") || item.status === "in_progress") {
         computedStatus = "in_progress";
       }
@@ -560,6 +554,10 @@ function ExamAnalyticsModal({
         rawAssignmentStatus: item.status,
         attemptsCount: atts.length,
         submittedCount: submittedAtts.length,
+        isMastered,
+        firstAttemptScore: firstAttempt?.score != null ? Number(firstAttempt.score) : null,
+        firstAttemptMaxScore: firstAttempt?.maxScore != null ? Number(firstAttempt.maxScore) : null,
+        firstAttemptPercentage: firstAttempt?.percentage != null ? Number(firstAttempt.percentage) : null,
         latestScore: latest?.score != null ? Number(latest.score) : null,
         maxScore: latest?.maxScore != null ? Number(latest.maxScore) : null,
         latestPercentage: latest?.percentage != null ? Number(latest.percentage) : null,
@@ -578,32 +576,22 @@ function ExamAnalyticsModal({
   const totalFinished = studentStats.filter((s: any) => s.status === "finished").length;
   const totalSubmitted = studentStats.filter((s: any) => s.submittedCount > 0).length;
   const totalInProgress = studentStats.filter((s: any) => 
-    isExamType 
-      ? (s.status === "in_progress" && s.submittedCount === 0) 
-      : (s.status === "in_progress" || s.status === "submitted")
+    s.status === "in_progress" || (s.submittedCount > 0 && s.status !== "finished")
   ).length;
   const totalNotStarted = studentStats.filter((s: any) => s.attemptsCount === 0 && s.status === "assigned").length;
   const completionRate = totalAssigned > 0 
-    ? Math.round(((isExamType ? totalSubmitted : totalFinished) / totalAssigned) * 100) 
+    ? Math.round((totalFinished / totalAssigned) * 100) 
     : 0;
 
   // Filter student rows
   const filteredStudents = useMemo(() => {
     return studentStats.filter((s: any) => {
       if (studentStatusFilter !== "all") {
-        if (studentStatusFilter === "finished" || studentStatusFilter === "submitted") {
-          if (isExamType) {
-            if (s.submittedCount === 0) return false;
-          } else {
-            if (s.status !== "finished" && s.bestPercentage !== 100) return false;
-          }
+        if (studentStatusFilter === "finished") {
+          if (s.status !== "finished") return false;
         }
         if (studentStatusFilter === "in_progress") {
-          if (isExamType) {
-            if (s.status !== "in_progress" || s.submittedCount > 0) return false;
-          } else {
-            if (s.status === "finished" || s.bestPercentage === 100 || s.attemptsCount === 0) return false;
-          }
+          if (s.status === "finished" || s.attemptsCount === 0) return false;
         }
         if (studentStatusFilter === "not_started") {
           if (s.attemptsCount > 0 || s.status !== "assigned") return false;
@@ -664,7 +652,7 @@ function ExamAnalyticsModal({
                 <span className="font-bold text-base">Thống kê bài thi được giao</span>
                 {isExamType ? (
                   <Tag color="purple" className="rounded-full text-[10px] font-semibold border-none px-2.5 m-0">
-                    Đề kiểm tra (1 lần duy nhất)
+                    Đề kiểm tra (Cần đạt 100%)
                   </Tag>
                 ) : (
                   <Tag color="blue" className="rounded-full text-[10px] font-semibold border-none px-2.5 m-0">
@@ -723,10 +711,10 @@ function ExamAnalyticsModal({
                             <Statistic
                               title={
                                 <span className="text-emerald-800 text-xs font-semibold">
-                                  {isExamType ? "Đã hoàn thành" : "Hoàn thành 100%"}
+                                  Đã hoàn thành 100%
                                 </span>
                               }
-                              value={isExamType ? totalSubmitted : totalFinished}
+                              value={totalFinished}
                               prefix={<CheckCircleOutlined className="text-emerald-500" />}
                               valueStyle={{ color: "#059669", fontWeight: 700 }}
                             />
@@ -737,10 +725,10 @@ function ExamAnalyticsModal({
                             <Statistic
                               title={
                                 <span className="text-amber-800 text-xs font-semibold">
-                                  {isExamType ? "Đang làm / Chưa làm" : "Cần ôn tiếp / Chưa làm"}
+                                  Cần làm lại / Đang làm
                                 </span>
                               }
-                              value={`${totalInProgress} / ${totalNotStarted}`}
+                              value={totalInProgress}
                               prefix={<ClockCircleOutlined className="text-amber-500" />}
                               valueStyle={{ color: "#d97706", fontWeight: 700 }}
                             />
@@ -897,15 +885,11 @@ function ExamAnalyticsModal({
                             options={[
                               { label: `Tất cả (${studentStats.length})`, value: "all" },
                               {
-                                label: isExamType
-                                  ? `Đã hoàn thành (${totalSubmitted})`
-                                  : `Đã hoàn thành 100% (${totalFinished})`,
+                                label: `Đã hoàn thành 100% (${totalFinished})`,
                                 value: "finished",
                               },
                               {
-                                label: isExamType
-                                  ? `Đang làm (${totalInProgress})`
-                                  : `Cần ôn / Đang làm (${totalInProgress})`,
+                                label: `Cần làm lại / Đang làm (${totalInProgress})`,
                                 value: "in_progress",
                               },
                               { label: `Chưa làm (${totalNotStarted})`, value: "not_started" },
@@ -957,61 +941,42 @@ function ExamAnalyticsModal({
                           },
                           {
                             title: "Trạng thái",
-                            width: 180,
+                            width: 220,
                             render: (_: any, r: any) => {
-                              if (isExamType) {
-                                // Đề thi (EXAM): Làm 1 lần duy nhất, đã nộp là hoàn thành bài thi
-                                if (r.submittedCount > 0 || r.status === "finished") {
-                                  return (
-                                    <Tag color="success" className="rounded-full font-semibold text-xs border-none px-2.5">
-                                      <CheckCircleOutlined className="mr-1" /> Đã hoàn thành ({r.latestPercentage != null ? `${Math.round(r.latestPercentage)}%` : "Đã nộp"})
-                                    </Tag>
-                                  );
-                                }
-                                if (r.status === "in_progress" || r.attemptsCount > 0) {
-                                  return (
-                                    <Tag color="warning" className="rounded-full font-semibold text-xs border-none px-2.5">
-                                      <ClockCircleOutlined className="mr-1" /> Đang làm bài
-                                    </Tag>
-                                  );
-                                }
+                              if (r.status === "finished" || r.bestPercentage === 100 || r.isMastered) {
                                 return (
-                                  <Tag color="default" className="rounded-full font-medium text-xs border-none px-2.5 text-slate-400">
-                                    Chưa bắt đầu
-                                  </Tag>
-                                );
-                              } else {
-                                // Đề ôn tập (PRACTICE): Phải làm tới khi đạt 100% mới tính hoàn thành
-                                if (r.status === "finished" || r.bestPercentage === 100) {
-                                  return (
-                                    <Tag color="success" className="rounded-full font-semibold text-xs border-none px-2.5">
-                                      <CheckCircleOutlined className="mr-1" /> Đã hoàn thành (100%)
-                                    </Tag>
-                                  );
-                                }
-                                if (r.submittedCount > 0) {
-                                  return (
-                                    <div className="flex flex-col gap-0.5">
-                                      <Tag color="cyan" className="rounded-full font-semibold text-xs border-none px-2.5 w-fit">
-                                        <CheckCircleOutlined className="mr-1" /> Đã nộp ({r.latestPercentage != null ? `${Math.round(r.latestPercentage)}%` : "0%"})
-                                      </Tag>
-                                      <span className="text-[10px] text-amber-600 font-medium pl-1">Cần ôn tập tiếp tới 100%</span>
-                                    </div>
-                                  );
-                                }
-                                if (r.status === "in_progress" || r.attemptsCount > 0) {
-                                  return (
-                                    <Tag color="warning" className="rounded-full font-semibold text-xs border-none px-2.5">
-                                      <ClockCircleOutlined className="mr-1" /> Đang làm bài
-                                    </Tag>
-                                  );
-                                }
-                                return (
-                                  <Tag color="default" className="rounded-full font-medium text-xs border-none px-2.5 text-slate-400">
-                                    Chưa bắt đầu
+                                  <Tag color="success" className="rounded-full font-semibold text-xs border-none px-2.5">
+                                    <CheckCircleOutlined className="mr-1" /> Đã hoàn thành (100%)
                                   </Tag>
                                 );
                               }
+                              if (r.submittedCount > 0) {
+                                const scorePct = isExamType && r.firstAttemptPercentage != null
+                                  ? Math.round(r.firstAttemptPercentage)
+                                  : Math.round(r.latestPercentage || r.bestPercentage || 0);
+                                return (
+                                  <div className="flex flex-col gap-0.5">
+                                    <Tag color="cyan" className="rounded-full font-semibold text-xs border-none px-2.5 w-fit">
+                                      <CheckCircleOutlined className="mr-1" /> {isExamType ? `Đã nộp lượt 1 (${scorePct}%)` : `Đã nộp (${scorePct}%)`}
+                                    </Tag>
+                                    <span className="text-[10px] text-amber-600 font-medium pl-1">
+                                      Cần làm lại câu sai tới 100%
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (r.status === "in_progress" || r.attemptsCount > 0) {
+                                return (
+                                  <Tag color="warning" className="rounded-full font-semibold text-xs border-none px-2.5">
+                                    <ClockCircleOutlined className="mr-1" /> Đang làm bài
+                                  </Tag>
+                                );
+                              }
+                              return (
+                                <Tag color="default" className="rounded-full font-medium text-xs border-none px-2.5 text-slate-400">
+                                  Chưa bắt đầu
+                                </Tag>
+                              );
                             },
                           },
                           {
@@ -1025,15 +990,21 @@ function ExamAnalyticsModal({
                             ),
                           },
                           {
-                            title: "Điểm số",
-                            width: 120,
+                            title: isExamType ? "Điểm thi (Lượt 1)" : "Điểm cao nhất",
+                            width: 130,
                             render: (_: any, r: any) => {
-                              if (r.latestScore == null) return <span className="text-slate-400 text-xs">—</span>;
-                              const pct = r.latestPercentage != null ? Math.round(r.latestPercentage) : null;
+                              const score = isExamType && r.firstAttemptScore != null ? r.firstAttemptScore : r.bestScore ?? r.latestScore;
+                              const maxScore = isExamType && r.firstAttemptMaxScore != null ? r.firstAttemptMaxScore : r.maxScore;
+                              const pct = isExamType && r.firstAttemptPercentage != null
+                                ? Math.round(r.firstAttemptPercentage)
+                                : r.bestPercentage != null ? Math.round(r.bestPercentage) : r.latestPercentage != null ? Math.round(r.latestPercentage) : null;
+
+                              if (score == null) return <span className="text-slate-400 text-xs">—</span>;
+
                               return (
                                 <div>
                                   <div className="font-bold text-slate-800 text-xs">
-                                    {r.latestScore} {r.maxScore != null ? `/ ${r.maxScore}` : ""}
+                                    {score} {maxScore != null ? `/ ${maxScore}` : ""}
                                   </div>
                                   {pct != null && (
                                     <div className="text-[10px] text-emerald-600 font-semibold">
@@ -1871,26 +1842,12 @@ export default function TeacherAssignments() {
         examVersionId: examVersions[examId] || undefined,
       }));
 
-      // Tự động xác định quy tắc làm bài:
-      // Nếu tất cả bài thi được chọn là Đề kiểm tra (examType === "exam") -> maxAttempts = 1
-      // Ngược lại (Đề ôn tập hoặc kết hợp) -> maxAttempts = undefined (Làm tới khi đúng 100%)
-      const selectedExamsObjs = examIds.map((id) => exams.find((e) => e.id === id)).filter(Boolean);
-      const isAllExamType = selectedExamsObjs.length > 0 && selectedExamsObjs.every((e) => e?.examType === "exam");
-      const calculatedMaxAttempts = isAllExamType ? 1 : undefined;
-
-      if (isTeacher && values.classId) {
-        const isAllowedClass = teacherAssignedClasses.some((c) => c.id === values.classId);
-        if (!isAllowedClass) {
-          message.error("Giáo viên không phụ trách lớp này");
-          return;
-        }
-      }
-
+      // NOTE: maxAttempts da bi xoa (migration 1780000030000).
+      // Backend tu dong biet day la de kiem tra hay on tap qua examType.
       await teacherLearningService.examAssignments.create({
         exams: examsPayload,
         classId: values.classId || undefined,
         studentIds: rawStudentIds.length ? Array.from(new Set(rawStudentIds)) : undefined,
-        maxAttempts: calculatedMaxAttempts,
         title: values.title || undefined,
         instructions: values.instructions || undefined,
       });
@@ -2007,10 +1964,7 @@ export default function TeacherAssignments() {
         <Tag color="blue" className="rounded-full">{r.class?.name || r.classId}</Tag>
       ),
     },
-    {
-      title: "Số lần làm",
-      render: (_: any, r: ClassCurriculum) => maxAttemptsTag(r.maxAttempts),
-    },
+
     {
       title: "Ngày tạo",
       render: (_: any, r: ClassCurriculum) => r.createdAt
@@ -2127,8 +2081,20 @@ export default function TeacherAssignments() {
       },
     },
     {
-      title: "Số lần làm",
-      render: (_: any, record: any) => maxAttemptsTag(record.maxAttempts),
+      title: "Hình thức",
+      render: (_: any, record: any) => {
+        const examItems = record.exams || [];
+        const isExam = examItems.some((e: any) => e.exam?.examType === "exam");
+        return isExam ? (
+          <Tag color="purple" className="rounded-full border-none text-xs font-semibold">
+            Đề kiểm tra
+          </Tag>
+        ) : (
+          <Tag color="blue" className="rounded-full border-none text-xs font-semibold">
+            Đề ôn tập
+          </Tag>
+        );
+      },
     },
     { title: "Trạng thái", render: (_: any, record: any) => statusTag(record.status) },
     {
@@ -2245,10 +2211,7 @@ export default function TeacherAssignments() {
         return <span className="text-sm text-slate-400">—</span>;
       },
     },
-    {
-      title: "Số lần làm",
-      render: (_: any, record: any) => maxAttemptsTag(record.maxAttempts),
-    },
+
     { title: "Trạng thái", render: (_: any, record: any) => statusTag(record.status) },
     {
       title: "Ngày tạo",
@@ -2343,7 +2306,7 @@ export default function TeacherAssignments() {
                     />
                   </div>
 
-                  <Divider type="vertical" className="h-6 hidden sm:block" />
+                  <Divider orientation="vertical" className="h-6 hidden sm:block" />
 
                   {/* Scope Segmented */}
                   <div className="flex items-center gap-2">
@@ -2441,7 +2404,7 @@ export default function TeacherAssignments() {
                         type="info"
                         showIcon
                         className="mb-4 rounded-xl"
-                        message="Gắn giáo trình vào lớp học"
+                        title="Gắn giáo trình vào lớp học"
                         description="Khi gắn một giáo trình vào lớp, toàn bộ học sinh trong lớp sẽ tự động thấy và có thể tự vào làm tất cả bài thi trong giáo trình đó."
                       />
                       <div className="flex justify-end mb-4">
@@ -2487,7 +2450,7 @@ export default function TeacherAssignments() {
                         type="info"
                         showIcon
                         className="mb-4 rounded-xl"
-                        message="Giao bài thi cho học sinh"
+                        title="Giao bài thi cho học sinh"
                         description="Có thể chọn nhiều bài thi cùng lúc. Hãy chọn lớp học trước để hệ thống tự động lọc các đề thi thuộc đúng môn học của lớp."
                       />
                       <div className="flex justify-end mb-4">
@@ -2533,7 +2496,7 @@ export default function TeacherAssignments() {
                         type="warning"
                         showIcon
                         className="mb-4 rounded-xl"
-                        message="Giao giáo trình trực tiếp cho học sinh"
+                        title="Giao giáo trình trực tiếp cho học sinh"
                         description="Khác với 'Gắn Giáo Trình vào Lớp', tính năng này giao giáo trình trực tiếp cho học sinh cụ thể (bất kể lớp). Học sinh được giao sẽ thấy giáo trình dù không thuộc lớp đó."
                       />
                       <div className="flex justify-end mb-4">

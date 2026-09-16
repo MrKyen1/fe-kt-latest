@@ -112,10 +112,12 @@ export default function UserProfile() {
     }
   };
 
+  const avatarSrc = previewAvatar || (avatar ? resolveMediaUrl(avatar) : undefined);
+
   return (
     <div className="flex justify-center">
       <Card
-        bordered={false}
+        variant="borderless"
         className="w-full max-w-3xl rounded-xl"
         style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}
       >
@@ -131,8 +133,8 @@ export default function UserProfile() {
             <div className="relative">
               <Avatar
                 size={120}
-                src={previewAvatar || resolveMediaUrl(avatar)}
-                icon={!avatar && <UserOutlined />}
+                src={avatarSrc}
+                icon={!avatarSrc && <UserOutlined />}
                 crossOrigin="anonymous"
               />
 

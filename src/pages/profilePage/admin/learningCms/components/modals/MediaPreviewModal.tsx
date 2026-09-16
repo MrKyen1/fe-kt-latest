@@ -36,7 +36,7 @@ export default function MediaPreviewModal({ open, asset, onCancel }: Props) {
       footer={null}
       onCancel={onCancel}
       centered
-      destroyOnClose
+      destroyOnHidden
       className="rounded-2xl"
     >
       {asset && (

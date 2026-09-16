@@ -30,7 +30,7 @@ export interface ClassCurriculum {
   id: string;
   classId: string;
   curriculumId: string;
-  maxAttempts?: number | null;
+  // NOTE: maxAttempts da bi xoa (migration 1780000030000).
   class?: { id: string; name?: string };
   curriculum?: { id: string; title?: string; code?: string };
   isActive?: boolean;
