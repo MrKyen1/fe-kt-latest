@@ -289,6 +289,14 @@ export const learningCmsService = {
       "/learning/curriculums",
     ),
 
+    async popular(limit: number = 5): Promise<Curriculum[]> {
+      return unwrapData(
+        await apiClient.get<ApiEnvelope<Curriculum[]>>("/learning/curriculums/popular", {
+          params: { limit },
+        }),
+      );
+    },
+
     async updateStatus(id: string, payload: StatusUpdateRequest): Promise<Curriculum> {
       return unwrapData(
         await apiClient.patch<ApiEnvelope<Curriculum>>(

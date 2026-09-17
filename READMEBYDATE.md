@@ -14,6 +14,34 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-09-17
+
+### 1. Fix phân quyền Homepage Admin (Lỗi 403 Forbidden: Vai trò không đủ quyền)
+
+- **Nguyên nhân**: `HomepageAdminController` (`src/modules/homepage/homepage.controller.ts`) trước đây dùng decorator `@Roles('ADMIN')` (chữ HOA), trong khi bảng `roles` và user token trong hệ thống lưu mã role là `'admin'` (chữ thường). `PermissionsGuard` kiểm tra phân biệt hoa thường nên tài khoản Admin bị từ chối truy cập (403).
+- **Khắc phục**:
+  - `homepage.controller.ts`: Đổi decorator thành `@Roles('admin', 'ADMIN')`.
+  - `permissions.guard.ts`: Chuẩn hóa so sánh `roleCode` không phân biệt hoa thường (`some(r => r.toLowerCase() === user.roleCode?.toLowerCase())`).
+- **Endpoint ảnh hưởng**: `GET /api/v1/admin/homepage`, `GET /api/v1/admin/homepage/media` và các API quản trị homepage.
+
+### 2. Thêm Public API lấy Top giáo trình phân công nhiều nhất cho học sinh
+
+- **Endpoint mới**: `GET /api/v1/learning/curriculums/popular?limit=5`
+- **Quyền hạn**: `@Public()` (Truy cập công khai không bắt buộc token, dùng cho Homepage/Trang chủ).
+- **Query Params**:
+  - `limit` (number, tùy chọn, mặc định 5): Số lượng giáo trình cần lấy.
+- **Logic sắp xếp**:
+  - Đếm số lượng học sinh được phân công (`COUNT(DISTINCT assignmentStudent.id)` từ `curriculum_assignment_students`).
+  - Lọc các giáo trình có `status = 'published'` và `is_active = true`.
+  - Sắp xếp giảm dần theo số học sinh được gán (`assigned_students_count DESC`) và ngày tạo (`createdAt DESC`).
+- **Dữ liệu trả về**: Mảng các giáo trình đầy đủ thông tin kèm:
+  - `assignedStudentsCount`: Số lượng học sinh đã được phân công giáo trình này.
+  - `examsCount`: Số lượng đề thi trong giáo trình.
+  - `level`, `specialization`, `exams`, `image`, v.v.
+- **Áp dụng Frontend**: Phần "Khóa Luyện Thi Nổi Bật" trên trang chủ gọi API này để hiển thị các khóa học / giáo trình thực tế có nhiều học viên theo học nhất thay vì dùng mockData tĩnh.
+
+---
+
 ## 2026-09-16
 
 ### Curriculum có một ảnh bìa
