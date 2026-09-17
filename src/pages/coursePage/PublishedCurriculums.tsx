@@ -5,6 +5,7 @@ import { BookOpen, ChevronRight, ArrowLeft, GraduationCap, ListChecks } from "lu
 import { useEffect, useState } from "react";
 import { learningCmsService } from "../../services/learningCmsService";
 import { Curriculum } from "../../types/backend";
+import { AppImage } from "../../components/AppImagePreview";
 
 const { Title, Text } = Typography;
 
@@ -90,50 +91,72 @@ export default function PublishedCurriculums() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.07 }}
                     whileHover={{ y: -4, boxShadow: "0 16px 40px rgba(99,102,241,0.13)" }}
-                    className="bg-white rounded-2xl border border-slate-100 p-7 cursor-pointer transition-all duration-300 flex flex-col gap-4 group relative overflow-hidden"
+                    className="bg-white rounded-3xl border border-slate-100 cursor-pointer transition-all duration-300 flex flex-col group relative overflow-hidden"
                     onClick={() => navigate(`/courses/published-curriculums/${curriculum.id}`)}
                     style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
                   >
-                    {/* Accent bar */}
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500 rounded-l-2xl" />
-
-                    <div className="flex items-start justify-between gap-4 pl-2">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600 shrink-0">
-                          <BookOpen size={24} />
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-bold text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight mb-1">
-                            {curriculum.title}
-                          </h3>
-                          <span className="text-sm text-slate-400 font-mono">{curriculum.code}</span>
+                    {/* Cover image if available */}
+                    {curriculum.image && (
+                      <div className="w-full h-48 overflow-hidden bg-slate-100 relative">
+                        <AppImage
+                          src={curriculum.image}
+                          alt={curriculum.title}
+                          className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500"
+                          rootClassName="w-full h-full"
+                        />
+                        <div className="absolute top-3 right-3 z-10">
+                          <Tag color="green" className="rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">
+                            Published
+                          </Tag>
                         </div>
                       </div>
-                      <Tag color="green" className="shrink-0 mt-1 rounded-full px-3">
-                        Published
-                      </Tag>
-                    </div>
-
-                    {curriculum.description && (
-                      <p className="text-slate-500 text-sm leading-relaxed pl-2 line-clamp-2">
-                        {curriculum.description}
-                      </p>
                     )}
 
-                    <div className="flex items-center justify-between pl-2 mt-1">
-                      <div className="flex items-center gap-2 text-slate-500 text-sm font-medium">
-                        <ListChecks size={16} className="text-indigo-400" />
-                        <span>{examCount} bài thi</span>
-                        {curriculum.level && (
-                          <>
-                            <span className="text-slate-300">•</span>
-                            <span className="text-indigo-500">{curriculum.level.name}</span>
-                          </>
+                    <div className="p-7 flex flex-col gap-4 flex-1 justify-between">
+                      <div>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            {!curriculum.image && (
+                              <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600 shrink-0">
+                                <BookOpen size={24} />
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-xs text-slate-400 font-mono block mb-1">{curriculum.code}</span>
+                              <h3 className="text-xl font-bold text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight m-0">
+                                {curriculum.title}
+                              </h3>
+                            </div>
+                          </div>
+                          {!curriculum.image && (
+                            <Tag color="green" className="shrink-0 mt-1 rounded-full px-3">
+                              Published
+                            </Tag>
+                          )}
+                        </div>
+
+                        {curriculum.description && (
+                          <p className="text-slate-500 text-sm leading-relaxed line-clamp-2 mt-3 mb-0">
+                            {curriculum.description}
+                          </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 text-indigo-500 font-semibold text-sm group-hover:gap-2 transition-all">
-                        Xem bài thi
-                        <ChevronRight size={16} />
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-500 text-sm font-medium">
+                          <ListChecks size={16} className="text-indigo-400" />
+                          <span>{examCount} bài thi</span>
+                          {curriculum.level && (
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-indigo-500">{curriculum.level.name}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 text-indigo-500 font-semibold text-sm group-hover:gap-2 transition-all">
+                          Xem bài thi
+                          <ChevronRight size={16} />
+                        </div>
                       </div>
                     </div>
                   </motion.div>

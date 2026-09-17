@@ -14,6 +14,33 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-09-16
+
+### Curriculum có một ảnh bìa
+
+**Migration cần chạy:**
+
+```bash
+npm run migration:run
+```
+
+Migration `1780000031000-add-curriculum-image` thêm cột `curriculums.image`.
+
+`POST /api/v1/learning/curriculums` và `PATCH /api/v1/learning/curriculums/:id` nhận thêm field tùy chọn `image` (string URL). Mỗi curriculum chỉ có một ảnh bìa.
+
+```jsonc
+{
+  "specializationId": "specialization-id",
+  "code": "CURR_A1",
+  "title": "A1 Curriculum",
+  "image": "/api/v1/learning/media-assets/files/a1-cover.jpg",
+}
+```
+
+Ảnh không được upload trực tiếp trong request tạo/cập nhật curriculum. FE upload file ảnh trước qua `POST /api/v1/learning/media-assets/upload` (`multipart/form-data`, field `file`), sau đó lấy URL ảnh từ response và gửi URL đó vào `image`. Field `image` cũng được trả trong response curriculum.
+
+---
+
 ## 2026-09-09
 
 ### Tách quyền đọc dữ liệu học vụ và người dùng

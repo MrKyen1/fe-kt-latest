@@ -1175,7 +1175,13 @@ export default function LearningCms() {
 
   const handleCurriculumEdit = (record: any) => {
     setEditingItem(record);
-    curriculumForm.setFieldsValue({ code: record.code, title: record.title, levelId: record.levelId, description: record.description });
+    curriculumForm.setFieldsValue({
+      code: record.code,
+      title: record.title,
+      levelId: record.levelId,
+      description: record.description,
+      image: record.image || null,
+    });
     setCurriculumModalOpen(true);
   };
 
@@ -1200,10 +1206,20 @@ export default function LearningCms() {
   const handleCurriculumSubmit = async (values: any) => {
     try {
       if (editingItem) {
-        await learningCmsService.curriculums.update(editingItem.id, { title: values.title, levelId: values.levelId, description: values.description });
+        await learningCmsService.curriculums.update(editingItem.id, {
+          title: values.title,
+          levelId: values.levelId,
+          description: values.description,
+          image: values.image || null,
+        });
         message.success("Cập nhật giáo trình thành công");
       } else {
-        await learningCmsService.curriculums.create({ ...values, specializationId: selectedSpecializationId, status: "draft" });
+        await learningCmsService.curriculums.create({
+          ...values,
+          image: values.image || undefined,
+          specializationId: selectedSpecializationId,
+          status: "draft",
+        });
         message.success("Tạo giáo trình thành công");
       }
       loadAllData();

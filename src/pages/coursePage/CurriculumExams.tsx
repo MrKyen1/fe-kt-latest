@@ -18,6 +18,7 @@ import { learningCmsService } from "../../services/learningCmsService";
 import { studentLearningService } from "../../services/studentLearningService";
 import { useAuth } from "../../contexts/AuthContext";
 import { Curriculum, Exam } from "../../types/backend";
+import { AppImage } from "../../components/AppImagePreview";
 
 const { Title, Text } = Typography;
 
@@ -140,13 +141,7 @@ export default function CurriculumExams() {
 
   const handleStartExam = async (examId: string) => {
     if (!isStudent) {
-      message.info("Chỉ học sinh mới có thể làm bài thi. Bạn đang xem ở chế độ preview.");
-      return;
-    }
-    if (!studentAssignmentId && !hasAccess) {
-      message.warning(
-        "Bạn chưa được giao giáo trình này. Vui lòng liên hệ giáo viên để được phân công.",
-      );
+      message.info("Tài khoản giáo viên / quản trị viên chỉ có thể xem trước danh sách đề thi. Chỉ học sinh mới có quyền làm bài.");
       return;
     }
     try {
@@ -160,12 +155,26 @@ export default function CurriculumExams() {
       navigate(`/exam/${attemptId}`);
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
-      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      const errorMsg = String(err?.message || "");
+      const is409 = statusCode === 409 || errorMsg.includes("409") || errorMsg.includes("submitted") || errorMsg.includes("đã nộp");
+      
       if (is409) {
         message.warning("Bài kiểm tra này đã được nộp.");
         setHistoryAssignmentStudentId(studentAssignmentId);
         setHistoryExamId(examId);
         setHistoryModalOpen(true);
+      } else if (statusCode === 403 || errorMsg.includes("không thuộc lớp") || errorMsg.includes("cấp quyền") || errorMsg.includes("hồ sơ")) {
+        Modal.warning({
+          title: "Chưa được cấp quyền làm bài",
+          content: (
+            <div className="space-y-2 pt-2 text-slate-600">
+              <p>Bạn chưa được phân công vào lớp học có giáo trình này.</p>
+              <p className="text-xs text-slate-400">Vui lòng liên hệ giáo viên hoặc ban quản trị trung tâm để được thêm vào lớp học tương ứng nhằm mở quyền làm bài và ghi nhận kết quả học tập.</p>
+            </div>
+          ),
+          okText: "Đã hiểu",
+          className: "rounded-2xl",
+        });
       } else {
         message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
       }
@@ -195,11 +204,11 @@ export default function CurriculumExams() {
     <div className="w-full bg-slate-50 py-16 px-6 md:px-16 min-h-screen">
       <div className="max-w-5xl mx-auto">
         <button
-          onClick={() => navigate("/courses/published-curriculums")}
+          onClick={() => navigate("/courses")}
           className="mb-8 flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-medium transition-colors group"
         >
           <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-          Quay lại danh sách giáo trình
+          Quay lại danh sách khóa học
         </button>
 
         {isLoading ? (
@@ -210,60 +219,75 @@ export default function CurriculumExams() {
           <Alert type="error" showIcon message={error} />
         ) : !curriculum ? null : (
           <>
-            {/* Header */}
-            <div className="bg-white rounded-3xl border border-slate-100 p-8 mb-10 shadow-sm">
-              <div className="flex items-start gap-5">
-                <div className="bg-indigo-100 p-4 rounded-2xl text-indigo-600 shrink-0">
-                  <BookOpen size={36} />
+            {/* Header with cover image */}
+            <div className="bg-white rounded-3xl border border-slate-100 mb-10 shadow-sm overflow-hidden">
+              {curriculum.image && (
+                <div className="w-full h-52 md:h-72 overflow-hidden bg-slate-100 relative">
+                  <AppImage
+                    src={curriculum.image}
+                    alt={curriculum.title}
+                    className="w-full h-52 md:h-72 object-cover"
+                    rootClassName="w-full h-full"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent pointer-events-none" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span className="text-sm font-mono text-slate-400">{curriculum.code}</span>
-                    <Tag color="green" className="rounded-full px-3">
-                      Published
-                    </Tag>
-                    {curriculum.level && (
-                      <Tag color="blue" className="rounded-full px-3">
-                        {curriculum.level.name}
-                      </Tag>
-                    )}
-                  </div>
-                  <Title level={1} className="!text-3xl !font-bold !text-slate-800 !mb-3 !mt-0">
-                    {curriculum.title}
-                  </Title>
-                  {curriculum.description && (
-                    <Text className="text-slate-500 text-base">{curriculum.description}</Text>
+              )}
+              <div className="p-8">
+                <div className="flex items-start gap-5">
+                  {!curriculum.image && (
+                    <div className="bg-indigo-100 p-4 rounded-2xl text-indigo-600 shrink-0">
+                      <BookOpen size={36} />
+                    </div>
                   )}
-
-                  {/* Student assignment status */}
-                  {isStudent && (
-                    <div
-                      className={`mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit ${
-                        canDoExam
-                          ? "bg-green-50 text-green-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {canDoExam ? (
-                        <>
-                          <CheckCircle2 size={16} />
-                          Bạn đã được giao giáo trình này — sẵn sàng làm bài!
-                        </>
-                      ) : (
-                        <>
-                          <Lock size={16} />
-                          Chưa được giao giáo trình — liên hệ giáo viên để được phân công.
-                        </>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="text-sm font-mono text-slate-400">{curriculum.code}</span>
+                      <Tag color="green" className="rounded-full px-3">
+                        Published
+                      </Tag>
+                      {curriculum.level && (
+                        <Tag color="blue" className="rounded-full px-3">
+                          {curriculum.level.name}
+                        </Tag>
                       )}
                     </div>
-                  )}
+                    <Title level={1} className="!text-3xl !font-bold !text-slate-800 !mb-3 !mt-0">
+                      {curriculum.title}
+                    </Title>
+                    {curriculum.description && (
+                      <Text className="text-slate-500 text-base block leading-relaxed">{curriculum.description}</Text>
+                    )}
 
-                  {!isStudent && (
-                    <div className="mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit bg-slate-50 text-slate-500">
-                      <Lock size={16} />
-                      Bạn đang xem ở chế độ preview — chỉ học sinh mới có thể làm bài thi.
-                    </div>
-                  )}
+                    {/* Student assignment status */}
+                    {isStudent && (
+                      <div
+                        className={`mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit ${
+                          canDoExam
+                            ? "bg-green-50 text-green-700"
+                            : "bg-blue-50 text-blue-700"
+                        }`}
+                      >
+                        {canDoExam ? (
+                          <>
+                            <CheckCircle2 size={16} />
+                            Bạn đã được phân công giáo trình này — sẵn sàng làm bài!
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen size={16} />
+                            Giáo trình phát hành công khai — chọn đề thi bên dưới để bắt đầu làm bài.
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {!isStudent && (
+                      <div className="mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit bg-slate-50 text-slate-500">
+                        <Lock size={16} />
+                        Bạn đang xem ở chế độ preview (Xem trước) — chỉ học sinh mới có thể làm bài thi.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

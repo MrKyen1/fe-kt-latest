@@ -7,6 +7,7 @@ import {
   PlusOutlined,
 } from "@ant-design/icons";
 import { Can } from "../../../../../components/Can";
+import { AppImage } from "../../../../../components/AppImagePreview";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -24,6 +25,8 @@ interface Curriculum {
   id: string;
   code?: string;
   title: string;
+  description?: string;
+  image?: string | null;
   status: string;
   level?: Level;
   exams?: CurriculumExam[];
@@ -51,11 +54,27 @@ function buildColumns(
       title: "Giáo trình",
       dataIndex: "title",
       render: (val: string, record: Curriculum) => (
-        <div>
-          <div className="font-bold text-slate-800">{val}</div>
-          <div className="text-xs text-slate-400 font-mono mt-0.5">
-            {record.code}
-            {record.level && ` • Level: ${record.level.name}`}
+        <div className="flex items-center gap-3">
+          {record.image ? (
+            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-100 flex items-center justify-center">
+              <AppImage
+                src={record.image}
+                alt={val}
+                className="w-12 h-12 object-cover"
+                rootClassName="w-full h-full flex items-center justify-center"
+              />
+            </div>
+          ) : (
+            <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 shrink-0 flex items-center justify-center font-bold text-xs border border-purple-100">
+              {record.code ? record.code.slice(0, 4).toUpperCase() : "CURR"}
+            </div>
+          )}
+          <div>
+            <div className="font-bold text-slate-800">{val}</div>
+            <div className="text-xs text-slate-400 font-mono mt-0.5">
+              {record.code}
+              {record.level && ` • Level: ${record.level.name}`}
+            </div>
           </div>
         </div>
       ),

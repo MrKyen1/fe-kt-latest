@@ -400,6 +400,7 @@ export interface Curriculum {
   code: string;
   title: string;
   description?: string;
+  image?: string | null;
   levelId?: string;
   level?: LearningTaxonomy;
   status: LearningStatus;
