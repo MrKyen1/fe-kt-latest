@@ -1,10 +1,11 @@
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, App } from "antd";
 import { UserOutlined, MailOutlined, LockOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import logoImg from "../../assets/logo/logo.png";
 
 const Register = () => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
 
   const onFinish = () => {
     message.success("Đăng ký thành công! Vui lòng đăng nhập.");

@@ -1,7 +1,7 @@
 import { Typography, Row, Col, Button, Spin } from "antd";
 import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, ListChecks, PlayCircle, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { Curriculum } from "../../../types/backend";
@@ -79,13 +79,12 @@ export default function CourseHighlights() {
               Các giáo trình được thiết kế chuẩn hoá và được phân công học nhiều nhất.
             </Text>
           </div>
-          <Button
-            type="link"
-            className="text-blue-600 font-medium text-lg hidden md:flex items-center"
-            onClick={() => navigate("/courses")}
+          <Link
+            to="/courses"
+            className="text-blue-600 hover:text-blue-700 font-medium text-lg hidden md:flex items-center no-underline"
           >
             Xem tất cả <ArrowRight className="ml-1 w-5 h-5" />
-          </Button>
+          </Link>
         </div>
 
         {loading ? (
@@ -100,12 +99,15 @@ export default function CourseHighlights() {
 
               return (
                 <Col xs={24} sm={12} lg={8} key={course.id}>
-                  <motion.div
-                    whileHover={{ y: -8 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-slate-100 h-full flex flex-col group cursor-pointer"
-                    onClick={() => navigate(`/courses/published-curriculums/${course.id}`)}
+                  <Link
+                    to={`/courses/published-curriculums/${course.id}`}
+                    className="block h-full no-underline text-inherit"
                   >
+                    <motion.div
+                      whileHover={{ y: -8 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-slate-100 h-full flex flex-col group cursor-pointer"
+                    >
                     {/* Image Cover */}
                     <div className="relative aspect-[16/9] w-full overflow-hidden bg-slate-100">
                       {course.image ? (
@@ -188,6 +190,7 @@ export default function CourseHighlights() {
                       </div>
                     </div>
                   </motion.div>
+                </Link>
                 </Col>
               );
             })}

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, App } from "antd";
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -7,6 +7,7 @@ import loginImg from "../../assets/login/login.png";
 import logoImg from "../../assets/logo/logo.png";
 
 const Login = () => {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const { login } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);

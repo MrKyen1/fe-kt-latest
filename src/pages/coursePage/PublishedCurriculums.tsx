@@ -1,5 +1,5 @@
 import { Typography, Row, Col, Spin, Alert, Tag, Empty } from "antd";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { BookOpen, ChevronRight, ArrowLeft, GraduationCap, ListChecks } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -86,15 +86,18 @@ export default function PublishedCurriculums() {
               const examCount = curriculum.exams?.length ?? 0;
               return (
                 <Col xs={24} md={12} key={curriculum.id}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.07 }}
-                    whileHover={{ y: -4, boxShadow: "0 16px 40px rgba(99,102,241,0.13)" }}
-                    className="bg-white rounded-3xl border border-slate-100 cursor-pointer transition-all duration-300 flex flex-col group relative overflow-hidden"
-                    onClick={() => navigate(`/courses/published-curriculums/${curriculum.id}`)}
-                    style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
+                  <Link
+                    to={`/courses/published-curriculums/${curriculum.id}`}
+                    className="block h-full no-underline text-inherit"
                   >
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.07 }}
+                      whileHover={{ y: -4, boxShadow: "0 16px 40px rgba(99,102,241,0.13)" }}
+                      className="bg-white rounded-3xl border border-slate-100 cursor-pointer transition-all duration-300 flex flex-col group relative overflow-hidden"
+                      style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
+                    >
                     {/* Cover image if available */}
                     {curriculum.image && (
                       <div className="w-full h-48 overflow-hidden bg-slate-100 relative">
@@ -160,6 +163,7 @@ export default function PublishedCurriculums() {
                       </div>
                     </div>
                   </motion.div>
+                </Link>
                 </Col>
               );
             })}

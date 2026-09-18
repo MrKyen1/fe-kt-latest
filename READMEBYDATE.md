@@ -14,6 +14,57 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-09-18
+
+### 1. Báo cáo lỗi Backend: `GET /api/v1/learning/curriculums/popular` trả về HTTP 500 (DATABASE_QUERY_ERROR)
+
+- **Endpoint bị lỗi:** `GET /api/v1/learning/curriculums/popular?limit=5`
+- **Mức độ nghiêm trọng:** Cao (Ảnh hưởng đến khối "Khóa Luyện Thi Nổi Bật" tại Trang chủ).
+- **Chi tiết phản hồi lỗi từ Backend:**
+  ```json
+  {
+    "success": false,
+    "statusCode": 500,
+    "errorCode": "DATABASE_QUERY_ERROR",
+    "message": "Lỗi thực thi truy vấn cơ sở dữ liệu",
+    "path": "/api/v1/learning/curriculums/popular?limit=5"
+  }
+  ```
+- **Hiện tượng và nguyên nhân dự kiến phía Backend:**
+  1. **Lỗi thực thi SQL (DATABASE_QUERY_ERROR):**
+     - Endpoint `popular` (thêm ngày 17/09/2026) thực hiện đếm số học sinh qua `COUNT(DISTINCT assignmentStudent.id)` từ `curriculum_assignment_students`, kết hợp lọc `status = 'published'` và sắp xếp theo alias `assigned_students_count DESC`.
+     - Trong TypeORM / PostgreSQL, câu truy vấn này đang vấp phải lỗi cú pháp SQL hoặc thiếu các cột trong mệnh đề `GROUP BY` bắt buộc của PostgreSQL, dẫn đến exception `DATABASE_QUERY_ERROR`.
+  2. **Vấn đề phân quyền `@Public()`:**
+     - Khi gọi không kèm Bearer token, backend trả về `401 Unauthorized` (`Access token là bắt buộc`), dù tài liệu quy định endpoint này là `@Public()` để phục vụ khách vãng lai xem trang chủ.
+- **Tác động phía Frontend:**
+  - Trình duyệt tự động in log đỏ `GET http://localhost:.../api/v1/learning/curriculums/popular 500 (Internal Server Error)` trong Console DevTools khi vào trang chủ.
+- **Trạng thái Frontend:**
+  - Phía FE đã sẵn sàng khối hiển thị và cơ chế fallback an toàn, hiện đang tạm hoãn can thiệp sâu để **đợi Backend kiểm tra, hiệu chỉnh lại câu lệnh query SQL & cờ `@Public()`** cho endpoint này.
+
+### 2. Báo cáo lỗi Backend: `POST /api/v1/auth/logout` bị treo (hang/timeout vô hạn) khi truyền token hợp lệ
+
+- **Endpoint bị lỗi:** `POST /api/v1/auth/logout`
+- **Body:** `{ "refreshToken": "<token>" }` | **Header:** `Authorization: Bearer <accessToken>`
+- **Hiện tượng phía Backend:**
+  - Khi gửi request có đầy đủ `Authorization: Bearer <accessToken>`, request bị **treo vô hạn không phản hồi** (socket hang up sau 4-15 giây).
+  - Kiểm tra cổng kết nối phát hiện: Redis trên cổng `6379` (`localhost:6379`) hiện đang không hoạt động (TCP connection failed). Có khả năng `AuthService.logout` phía Backend cố gắng ghi token vào Redis Blacklist nhưng thư viện Redis client không cấu hình timeout hoặc retry vô hạn.
+  - Ngược lại, nếu gửi request thiếu `Authorization`, Backend phản hồi ngay lập tức `401 {"errorCode": "UNAUTHORIZED", "message": "Access token là bắt buộc"}`.
+- **Xử lý phía Frontend:**
+  - Frontend đã tối ưu hóa logic Logout chuẩn chuyên gia: Chụp snapshot `accessToken` + `refreshToken`, xóa sạch session cục bộ ngay lập tức để bảo đảm UX người dùng luôn tức thì và an toàn, đồng thời gửi request logout lên server với timeout an toàn (2s) và silent handling để không gây treo giao diện và không làm bẩn Console.
+- **Đề xuất cho Backend:**
+  - Bổ sung timeout và fallback an toàn khi thao tác với Redis trong `AuthService.logout` để tránh treo kết nối khi Redis offline.
+
+### 3. Đề xuất Backend: Cung cấp API Public lấy danh sách Đội ngũ Giáo viên hiển thị Trang chủ
+
+- **Vấn đề:**
+  - Trang chủ (`/home`) là trang công khai (Public) dành cho cả Khách vãng lai, Học sinh, Giáo viên và Quản trị viên.
+  - Hiện tại, endpoint duy nhất để lấy thông tin giáo viên là `GET /api/v1/users?roleCode=teacher`. Tuy nhiên, endpoint `/users` lại yêu cầu bắt buộc quyền `users.read` (chỉ Admin và Teacher có).
+  - Khi học sinh (Student) hoặc khách vãng lai (Guest) vào trang chủ, request bị Backend trả về `403 Forbidden` hoặc `401 Unauthorized`.
+- **Đề xuất Backend:**
+  - Bổ sung endpoint công khai, ví dụ: `GET /api/v1/homepage/teachers` hoặc gán cờ `@Public()` cho truy vấn lấy danh sách giáo viên đang active, trả về các thông tin công khai (họ tên, ảnh đại diện, chuyên môn, số năm kinh nghiệm, trung tâm trực thuộc) mà không để lộ các trường nhạy cảm (số CCCD, ngày sinh, điện thoại, email riêng).
+
+---
+
 ## 2026-09-17
 
 ### 1. Fix phân quyền Homepage Admin (Lỗi 403 Forbidden: Vai trò không đủ quyền)

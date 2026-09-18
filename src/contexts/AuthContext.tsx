@@ -52,24 +52,58 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ============================================================================
+// HARDCODED RBAC PERMISSIONS MATRIX
+// Phân quyền cố định (hardcoded) cho từng vai trò người dùng trong hệ thống
+// ============================================================================
+export const HARDCODED_ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: [
+    "*",
+    "users.read", "users.write", "users.delete", "users.manage",
+    "classes.read", "classes.write", "classes.delete", "classes.manage",
+    "centers.read", "centers.write", "centers.delete", "centers.manage",
+    "specializations.read", "specializations.write", "specializations.delete", "specializations.manage",
+    "learning.read", "learning.write", "learning.delete", "learning.publish", "learning.assign", "learning.attempt", "learning.manage", "learning.media.upload",
+    "rbac.manage"
+  ],
+  teacher: [
+    "classes.read",
+    "centers.read",
+    "specializations.read",
+    "learning.read",
+    "learning.write",
+    "learning.assign",
+    "learning.publish",
+    "learning.media.upload"
+  ],
+  student: [
+    "learning.read",
+    "learning.attempt"
+  ]
+};
+
 function checkSinglePermission(userPermissions: string[], userRole: string, requiredPerm: string): boolean {
   if (userRole === "admin") return true;
-  if (userPermissions.includes(requiredPerm)) return true;
+
+  const rolePerms = HARDCODED_ROLE_PERMISSIONS[userRole] || [];
+  const allPerms = Array.from(new Set([...userPermissions, ...rolePerms]));
+
+  if (allPerms.includes("*") || allPerms.includes(requiredPerm)) return true;
 
   // Hierarchical super-permissions (matching Backend PermissionsGuard)
-  if (requiredPerm.startsWith("learning.") && userPermissions.includes("learning.manage")) {
+  if (requiredPerm.startsWith("learning.") && (allPerms.includes("learning.manage") || (requiredPerm === "learning.read" && allPerms.includes("learning.write")))) {
     return true;
   }
   if (
     (requiredPerm === "classes.read" || requiredPerm === "centers.read" || requiredPerm === "specializations.read") &&
-    userPermissions.includes("classes.manage")
+    allPerms.includes("classes.manage")
   ) {
     return true;
   }
-  if (requiredPerm === "users.read" && userPermissions.includes("users.manage")) {
+  if (requiredPerm === "users.read" && allPerms.includes("users.manage")) {
     return true;
   }
-  if (requiredPerm.startsWith("rbac.") && userPermissions.includes("rbac.manage")) {
+  if (requiredPerm.startsWith("rbac.") && allPerms.includes("rbac.manage")) {
     return true;
   }
 
@@ -92,7 +126,9 @@ function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>
     studentProfile?.centerId;
 
   const roleCode = typeof mapped.role === "object" ? (mapped.role as any)?.code : mapped.role;
-  const permissions = (mapped.role as any)?.permissions ?? (mapped as any).permissions ?? [];
+  const dynamicPermissions = (mapped.role as any)?.permissions ?? (mapped as any).permissions ?? [];
+  const hardcodedPermissions = HARDCODED_ROLE_PERMISSIONS[roleCode] || [];
+  const permissions = Array.from(new Set([...dynamicPermissions, ...hardcodedPermissions]));
 
   return {
     id: mapped.id,
@@ -132,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           currentUser.centerId ||
           detail.teacherProfile?.centerId ||
           detail.teacherProfile?.classes?.[0]?.centerId ||
-          detail.teacherProfile?.classes?.[0]?.class?.centerId;
+          (detail.teacherProfile?.classes?.[0] as any)?.class?.centerId;
         const merged: User = {
           ...currentUser,
           centerId: resolvedCenterId,
@@ -209,13 +245,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     const refreshToken = tokenStorage.getRefreshToken();
-    if (refreshToken) {
-      authService.logout(refreshToken).catch((error) => {
-        console.error("Background logout failed:", error);
-      });
-    }
+    const accessToken = tokenStorage.getAccessToken();
+
+    // 1. Clear client credentials and user state immediately for instant, secure UX
     tokenStorage.clear();
     setUser(null);
+
+    // 2. Best-effort server-side token revocation with token snapshots
+    if (refreshToken) {
+      authService.logout(refreshToken, accessToken).catch(() => {
+        // Silently handled: local session is already cleared cleanly
+      });
+    }
   };
 
   const hasRole = useCallback((roles: string | string[]) => {

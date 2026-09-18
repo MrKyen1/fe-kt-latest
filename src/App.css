@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 .header {
-    background-color: white !important;
+  background-color: white !important;
 }
 
 body {
@@ -31,13 +31,16 @@ html.dark {
   width: 6px;
   height: 6px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
   border-radius: 20px;
 }
+
 html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #334155;
 }

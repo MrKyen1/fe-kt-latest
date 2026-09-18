@@ -1,4 +1,4 @@
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, App } from "antd";
 import { UserOutlined, LockOutlined, KeyOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -9,6 +9,7 @@ import logoImg from "../../assets/logo/logo.png";
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleFinish = async (values: any) => {

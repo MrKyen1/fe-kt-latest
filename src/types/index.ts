@@ -50,6 +50,11 @@ export interface ExamQuestion {
 
 export interface ExamData {
   id: string;
+  examId?: string;
+  assignmentStudentId?: string;
+  curriculumAssignmentStudentId?: string;
+  source?: "assignment" | "curriculum_assignment" | "self_study" | string;
+  curriculumId?: string;
   title: string;
   timeLimit: number; // in seconds
   examType?: "practice" | "exam";
@@ -60,7 +65,7 @@ export interface ExamData {
   questions: ExamQuestion[];
   expiresAt?: string | null;
   attemptPhase?: "initial" | "remediation";
-  taskStatus?: "in_progress" | "mastered" | "remediation_required";
+  taskStatus?: "in_progress" | "finished" | "mastered" | "remediation_required";
   mastered?: boolean;
   requiresRemediation?: boolean;
   remainingQuestionCount?: number;
@@ -91,8 +96,7 @@ export interface Student {
   class?: string;
   startDate?: string;
   endDate?: string;
-  // Removed progress field as requested
-  // New ranking fields
+  progress?: number;
   totalTimeSpent?: number; // in minutes
   correctAnswers?: number;
   totalExams?: number;

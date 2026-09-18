@@ -815,7 +815,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       rules={[{ required: true, message: "Chọn mục ghép đôi phù hợp!" }]}
                     >
                       <Select placeholder="Chọn mục bên phải..." className="rounded-xl">
-                        {question.rightItems.map((right: any) => {
+                        {(question.rightItems ?? []).map((right: any) => {
                           const rightId = right.id || right;
                           const rightText = right.text || right;
                           return (

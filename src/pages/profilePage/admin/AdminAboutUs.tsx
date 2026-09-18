@@ -97,7 +97,7 @@ export default function AdminAboutUs() {
       )}
 
       {/* Edit Form */}
-      <Card title="Chỉnh sửa Thông tin" icon={<FileTextOutlined />}>
+      <Card title={<span className="flex items-center gap-2"><FileTextOutlined /> Chỉnh sửa Thông tin</span>}>
         <Form
           form={form}
           layout="vertical"

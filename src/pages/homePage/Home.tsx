@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import HeroSlideshow from "./components/HeroSlideshow";
 import AboutUs from "../aboutPage/AboutUs";
 import CourseHighlights from "./components/CourseHighlights";
-import Teachers from "../teacherPage/Teachers";
+import HomeTeachers from "./components/HomeTeachers";
 import FacilitiesActivities from "../facilitiesPage/FacilitiesActivities";
 import { homepageService } from "../../services/homepageService";
 import { HomepageData } from "../../types/homepage";
 
 export default function Home() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [homepageData, setHomepageData] = useState<HomepageData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,24 +38,25 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const scrollTo = searchParams.get("scrollTo");
-    if (scrollTo) {
+    const hash = location.hash ? location.hash.replace("#", "") : null;
+    const targetId = hash || searchParams.get("scrollTo");
+    if (targetId && !isLoading) {
       const timer = setTimeout(() => {
-        const element = document.getElementById(scrollTo);
+        const element = document.getElementById(targetId);
         if (element) {
           element.scrollIntoView({ behavior: "smooth" });
         }
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [searchParams]);
+  }, [location.hash, searchParams, isLoading]);
 
   return (
     <div className="w-full bg-slate-50">
       <HeroSlideshow slides={homepageData?.slider} loading={isLoading} />
       <AboutUs about={homepageData?.about} />
       <CourseHighlights />
-      <Teachers />
+      <HomeTeachers />
       <FacilitiesActivities facilities={homepageData?.facilities} />
     </div>
   );

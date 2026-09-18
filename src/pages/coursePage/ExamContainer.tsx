@@ -850,7 +850,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     questionResults,
   ]);
 
-  const getQuestionStatus = (question: typeof currentQuestion) => {
+  const getQuestionStatus = (question: { id: string }) => {
     const answer = userAnswers[question.id];
     if ((isPracticeMode || isReviewMode) && questionResults[question.id]) {
       return questionResults[question.id];
@@ -945,21 +945,23 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       setIsRetrying(true);
       let attemptResult: any = null;
       if (examData.source === "teacher_assigned") {
-        if (!examData.assignmentStudentId || !examData.examId) {
-          throw new Error("Thông tin lượt giao bài thi không hợp lệ.");
+        const targetExamId = examData.examId || examData.id;
+        if (!examData.assignmentStudentId || !targetExamId) {
+          throw new Error("Thông tin bài giao không hợp lệ.");
         }
         attemptResult = await studentLearningService.examAssignments.startAttempt(
           examData.assignmentStudentId,
-          examData.examId
+          targetExamId
         );
       } else if (examData.source === "self_study") {
         const curriculumId = (examData as any).curriculumId;
-        if (!curriculumId || !examData.examId) {
+        const targetExamId = examData.examId || examData.id;
+        if (!curriculumId || !targetExamId) {
           throw new Error("Thông tin lộ trình học không hợp lệ.");
         }
         attemptResult = await studentLearningService.curriculums.startAttempt(
           curriculumId,
-          examData.examId
+          targetExamId
         );
       } else {
         throw new Error("Nguồn bài thi không hỗ trợ làm lại.");

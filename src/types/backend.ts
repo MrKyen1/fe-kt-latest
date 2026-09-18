@@ -49,6 +49,7 @@ export interface RolePermissionMatrix {
 export interface User {
   id: string;
   code: string;
+  username?: string;
   fullName?: string;
   dateOfBirth?: string;
   phone?: string;
@@ -56,6 +57,7 @@ export interface User {
   address?: string;
   avatar?: string;
   isActive?: boolean;
+  centerId?: string;
   roleId?: string;
   role?: Role;
   citizenId?: string | null;
@@ -73,6 +75,7 @@ export interface TeacherAuthClass {
   id: string;
   teacherId: string;
   classId: string;
+  centerId?: string;
   isActive: boolean;
   class: {
     id: string;
@@ -116,6 +119,7 @@ export interface StudentAuthClass {
   id: string;
   studentId: string;
   classId: string;
+  centerId?: string;
   isActive: boolean;
   class: {
     id: string;
@@ -143,6 +147,7 @@ export interface StudentAuthProfile {
 
 export interface TeacherProfile {
   id?: string;
+  centerId?: string;
   yearsOfExperience?: number;
   description?: string;
   bankAccountNumber?: string;
@@ -341,6 +346,7 @@ export interface Question {
   skillId?: string;
   topicId?: string;
   tagIds?: string[];
+  tags?: Array<{ id: string; name?: string }>;
   status: LearningStatus;
   options?: QuestionOption[];
   mediaIds?: QuestionMediaMapping[];
@@ -403,6 +409,10 @@ export interface Curriculum {
   image?: string | null;
   levelId?: string;
   level?: LearningTaxonomy;
+  specialization?: LearningTaxonomy;
+  subject?: { id?: string; name?: string; code?: string };
+  assignedStudentsCount?: number;
+  examsCount?: number;
   status: LearningStatus;
   exams?: Array<{
     examId: string;
@@ -551,6 +561,7 @@ export interface StudentCurriculumAssignment {
 export interface AttemptAnswer {
   id?: string;
   questionId: string;
+  questionVersionId?: string;
   questionType?: QuestionType;
   orderIndex?: number;
   question?: {
@@ -602,13 +613,15 @@ export interface Attempt {
   cumulativeCorrectCount?: number;
   gradingStatus?: string;
   answers?: AttemptAnswer[];
+  examType?: "practice" | "exam";
+  finished?: boolean;
   attemptPhase?: "initial" | "remediation";
   expiresAt?: string | null;
   firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
   remainingQuestionCount?: number;
   mastered?: boolean;
   requiresRemediation?: boolean;
-  taskStatus?: "in_progress" | "mastered" | "remediation_required";
+  taskStatus?: "in_progress" | "finished" | "mastered" | "remediation_required";
 }
 
 export interface ExamAssignmentStudentStat {

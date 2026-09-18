@@ -1,32 +1,47 @@
 import { Layout } from "antd";
+import { Link } from "react-router-dom";
 import {
   LayoutDashboard,
   User,
   BookOpen,
   Trophy,
   ShieldCheck,
-  Info,
+  Globe,
   ChevronRight,
   Users,
+  ClipboardList,
+  GraduationCap,
 } from "lucide-react";
 
 const { Content } = Layout;
 
-// Map AntD icon display names → Lucide icons
-const ICON_MAP: Record<string, React.ReactNode> = {
-  BarChartOutlined: <LayoutDashboard size={17} />,
-  ProfileOutlined: <User size={17} />,
-  BookOutlined: <BookOpen size={17} />,
-  TrophyOutlined: <Trophy size={17} />,
-  CrownOutlined: <ShieldCheck size={17} />,
-  FileTextOutlined: <Info size={17} />,
-  TeamOutlined: <Users size={17} />,
+// Map keys directly to crisp Lucide icons
+const KEY_ICON_MAP: Record<string, React.ReactNode> = {
+  profile: <User size={18} />,
+  dashboard: <LayoutDashboard size={18} />,
+  cms: <BookOpen size={18} />,
+  ranking: <Trophy size={18} />,
+  "homepage-cms": <Globe size={18} />,
+  assignments: <ClipboardList size={18} />,
+  "my-exams": <GraduationCap size={18} />,
 };
 
-interface NavItem {
+// Map AntD icon display names → Lucide icons (fallback)
+const ICON_MAP: Record<string, React.ReactNode> = {
+  BarChartOutlined: <LayoutDashboard size={18} />,
+  ProfileOutlined: <User size={18} />,
+  BookOutlined: <BookOpen size={18} />,
+  TrophyOutlined: <Trophy size={18} />,
+  CrownOutlined: <ShieldCheck size={18} />,
+  FileTextOutlined: <Globe size={18} />,
+  TeamOutlined: <Users size={18} />,
+};
+
+export interface NavItem {
   key: string;
   icon?: React.ReactNode;
   label: React.ReactNode;
+  href?: string;
 }
 
 interface Props {
@@ -43,43 +58,87 @@ function SidebarNavItem({
 }: {
   item: NavItem;
   isActive: boolean;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
-  const resolvedIcon = (() => {
-    if (!item.icon) return null;
-    const el = item.icon as React.ReactElement;
-    const typeName =
-      (el.type as any)?.displayName || (el.type as any)?.name || "";
-    return ICON_MAP[typeName] ?? el;
-  })();
+  const resolvedIcon =
+    KEY_ICON_MAP[item.key] ??
+    (() => {
+      if (!item.icon) return null;
+      const el = item.icon as React.ReactElement;
+      const typeName =
+        (el.type as any)?.displayName || (el.type as any)?.name || "";
+      return ICON_MAP[typeName] ?? el;
+    })();
 
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-left group",
-        isActive
-          ? "bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent",
-      ].join(" ")}
-      style={{ outline: "none" }}
-    >
+  const itemClassName = [
+    "relative w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-all duration-150 text-left group no-underline select-none",
+    isActive
+      ? "bg-indigo-50/90 !text-indigo-700 font-semibold border border-indigo-100 shadow-xs"
+      : "!text-slate-600 hover:!text-slate-900 hover:bg-slate-100/80 border border-transparent font-medium",
+  ].join(" ");
+
+  const innerContent = (
+    <>
       <span
         className={[
-          "flex-shrink-0 transition-colors",
+          "flex-shrink-0 transition-colors flex items-center justify-center",
           isActive
-            ? "text-indigo-600"
-            : "text-slate-400 group-hover:text-slate-600",
+            ? "!text-indigo-600"
+            : "!text-slate-400 group-hover:!text-slate-600",
         ].join(" ")}
       >
         {resolvedIcon}
       </span>
 
-      <span className="flex-1 leading-tight">{item.label}</span>
+      <span
+        className={[
+          "flex-1 leading-tight text-[13.5px] transition-colors",
+          isActive
+            ? "!text-indigo-700 font-semibold"
+            : "!text-slate-600 group-hover:!text-slate-900 font-medium",
+        ].join(" ")}
+      >
+        {item.label}
+      </span>
 
-      {isActive && (
-        <ChevronRight size={13} className="text-indigo-400 flex-shrink-0" />
+      {isActive ? (
+        <ChevronRight size={14} className="!text-indigo-500 flex-shrink-0" />
+      ) : (
+        <ChevronRight
+          size={14}
+          className="text-transparent group-hover:text-slate-400 flex-shrink-0 transition-colors"
+        />
       )}
+    </>
+  );
+
+  const styleProps: React.CSSProperties = {
+    outline: "none",
+    textDecoration: "none",
+    color: isActive ? "#4338ca" : "#475569",
+  };
+
+  if (item.href) {
+    return (
+      <Link
+        to={item.href}
+        onClick={onClick}
+        className={itemClassName}
+        style={styleProps}
+      >
+        {innerContent}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={itemClassName}
+      style={styleProps}
+    >
+      {innerContent}
     </button>
   );
 }
@@ -105,8 +164,8 @@ export default function ProfileLayout({
         className="flex flex-col bg-white border-r border-slate-200"
       >
         {/* Scrollable nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5 custom-scrollbar">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-2 select-none">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1 custom-scrollbar">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2.5 select-none">
             Navigation
           </div>
           {menuItems.map((item) => (

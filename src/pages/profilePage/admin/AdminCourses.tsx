@@ -19,11 +19,7 @@ type ResourceKey = "levels" | "skills" | "topics" | "tags" | "exams" | "curricul
 type ResourceConfig = {
   key: ResourceKey;
   label: string;
-  service: {
-    list: (params?: any) => Promise<{ data: unknown[] }>;
-    create: (payload: unknown) => Promise<unknown>;
-    updateStatus?: (id: string, payload: { status: "draft" | "published" | "archived" }) => Promise<unknown>;
-  };
+  service: any;
 };
 
 const resources: ResourceConfig[] = [

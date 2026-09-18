@@ -151,34 +151,36 @@ const Header = memo(function Header() {
   }, [isLoggedIn, isStudent, location.pathname]);
 
   const activeMenuKey = useMemo(() => {
+    if (location.pathname === "/courses") {
+      return "/courses";
+    }
     if (location.pathname === "/" || location.pathname === "/home") {
+      if (location.hash === "#about") return "/home#about";
+      if (location.hash === "#teachers") return "/home#teachers";
+      if (location.hash === "#contact") return "/home#contact";
       return "/home";
     }
     return location.pathname;
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   const handleMenuClick = (e: any) => {
     if (e.key === "/home" || e.key === "/") {
       window.scrollTo({ top: 0, behavior: "smooth" });
       navigate("/home");
-    } else if (
-      e.key === "about" ||
-      e.key === "teachers" ||
-      e.key === "contact"
-    ) {
-      // Nếu đang ở trang khác, điều hướng về /home?scrollTo=...
-      // Nếu đã ở trang chủ, cuộn luôn
-      if (location.pathname !== "/" && location.pathname !== "/home") {
-        navigate(`/home?scrollTo=${e.key}`);
-      } else {
-        const element = document.getElementById(e.key);
-        if (element) {
-          element.scrollIntoView({ behavior: "smooth" });
-        }
-      }
-    } else {
-      navigate(e.key);
+      return;
     }
+
+    if (e.key.startsWith("/home#")) {
+      const targetId = e.key.replace("/home#", "");
+      navigate(e.key);
+      const element = document.getElementById(targetId);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+      return;
+    }
+
+    navigate(e.key);
   };
 
   const handleLogout = async () => {
@@ -187,18 +189,36 @@ const Header = memo(function Header() {
   };
 
   const items = [
-    { key: "/home", label: "Trang chủ" },
-    { key: "/courses", label: "Khóa học" },
-    { key: "about", label: "Về chúng tôi" },
-    { key: "teachers", label: "Giáo viên" },
-    { key: "contact", label: "Liên hệ" },
+    {
+      key: "/home",
+      label: (
+        <Link to="/home" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+          Trang chủ
+        </Link>
+      ),
+    },
+    {
+      key: "/courses",
+      label: <Link to="/courses">Khóa học</Link>,
+    },
+    {
+      key: "/home#about",
+      label: <Link to="/home#about">Về chúng tôi</Link>,
+    },
+    {
+      key: "/home#teachers",
+      label: <Link to="/home#teachers">Giáo viên</Link>,
+    },
+    {
+      key: "/home#contact",
+      label: <Link to="/home#contact">Liên hệ</Link>,
+    },
   ];
 
   const userMenuItems: MenuProps["items"] = [
     {
       key: "profile",
-      label: `${user?.fullName}`,
-      onClick: () => navigate("/profile"),
+      label: <Link to="/profile">{user?.fullName}</Link>,
     },
     {
       type: "divider",
@@ -213,10 +233,10 @@ const Header = memo(function Header() {
 
   return (
     <AntHeader className="sticky top-0 z-50 flex items-center justify-between bg-white px-4 md:px-12 shadow-sm header">
-      <div
+      <Link
+        to="/home"
         className="flex items-center gap-3 cursor-pointer group"
         onClick={() => {
-          navigate("/home");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
       >
@@ -225,7 +245,7 @@ const Header = memo(function Header() {
           alt="Logo"
           className="h-14 object-contain m-0"
         />
-      </div>
+      </Link>
 
       <Menu
         mode="horizontal"
@@ -288,15 +308,16 @@ const Header = memo(function Header() {
             </Dropdown>
           </div>
         ) : (
-          <Button
-            type="primary"
-            shape="round"
-            size="large"
-            onClick={() => navigate("/login")}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Đăng nhập
-          </Button>
+          <Link to="/login">
+            <Button
+              type="primary"
+              shape="round"
+              size="large"
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Đăng nhập
+            </Button>
+          </Link>
         )}
       </div>
     </AntHeader>

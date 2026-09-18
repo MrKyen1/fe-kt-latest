@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
+import { App as AntApp, ConfigProvider } from "antd";
 import Layout from "./components/Layout";
 import ExamLayout from "./pages/coursePage/ExamLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -20,7 +21,6 @@ const Profile = lazy(() => import("./pages/profilePage/Profile"));
 const UserProfile = lazy(() => import("./pages/profilePage/userProfile"));
 const AdminDashboard = lazy(() => import("./pages/profilePage/admin/AdminDashboard"));
 const LearningCms = lazy(() => import("./pages/profilePage/admin/LearningCms"));
-const RbacManagement = lazy(() => import("./pages/profilePage/admin/RbacManagement"));
 const AdminAboutUs = lazy(() => import("./pages/profilePage/admin/AdminAboutUs"));
 const AdminHomepageCms = lazy(() => import("./pages/profilePage/admin/AdminHomepageCms"));
 const TeacherAssignments = lazy(() => import("./pages/profilePage/teacher/TeacherAssignments"));
@@ -30,8 +30,18 @@ const Leaderboard = lazy(() => import("./pages/profilePage/Leaderboard"));
 export default function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   return (
-    <BrowserRouter>
-      <ScrollToTop />
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: "#4f46e5",
+          fontFamily: "'Inter', sans-serif",
+          borderRadius: 10,
+        },
+      }}
+    >
+      <AntApp className="w-full h-full">
+        <BrowserRouter>
+          <ScrollToTop />
       <Suspense
         fallback={
           <div className="flex justify-center items-center h-screen">
@@ -75,7 +85,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            
+
             {/* Legacy Profile Route */}
             <Route
               path="profile"
@@ -107,14 +117,7 @@ export default function App() {
                 }
               />
               <Route path="ranking/*" element={<Leaderboard />} />
-              <Route
-                path="rbac/*"
-                element={
-                  <ProtectedRoute permissions={["rbac.manage"]}>
-                    <RbacManagement />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="rbac/*" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="about/*" element={<AdminHomepageCms />} />
               <Route path="homepage-cms/*" element={<AdminHomepageCms />} />
               <Route path="homepage/*" element={<AdminHomepageCms />} />
@@ -185,6 +188,8 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+        </BrowserRouter>
+      </AntApp>
+    </ConfigProvider>
   );
 }

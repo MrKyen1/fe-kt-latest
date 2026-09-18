@@ -12,7 +12,7 @@ interface ExamVersion {
   isCurrent?: boolean;
   questionCount?: number;
   timeLimitSeconds?: number;
-  createdAt: string;
+  createdAt?: string;
 }
 
 interface Exam {

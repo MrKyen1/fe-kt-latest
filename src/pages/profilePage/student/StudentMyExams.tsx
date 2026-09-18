@@ -690,7 +690,8 @@ export default function StudentMyExams() {
                       const isRequired = ep.isRequired ?? ep.curriculumExam?.isRequired ?? true;
                       const examType = exam?.examType ?? ep.examType ?? "practice";
                       const isExamType = examType === "exam";
-                      const bestPctVal = parseFloat(bestPct ?? "0");
+                      const bestPctVal = parseFloat(ep.bestPercentage ?? ep.bestScorePct ?? ep.bestScore ?? "0");
+                      const attemptsCount = ep.attemptsCount ?? ep.attemptCount ?? ep.attempts?.length ?? 0;
                       const isPracticeMode = !isExamType;
                       const isMastered = ep.mastered ?? (bestPctVal >= 100);
                       const requiresRemediation = ep.requiresRemediation ?? (!isMastered && attemptsCount >= 1);

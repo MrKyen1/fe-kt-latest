@@ -38,7 +38,6 @@ import {
   ClockCircleOutlined,
   LinkOutlined,
   ReloadOutlined,
-  InfinityOutlined,
   BankOutlined,
   SearchOutlined,
   FilterOutlined,
@@ -266,11 +265,10 @@ function TeacherAttemptDetailModal({
                 return (
                   <div
                     key={ans.id || idx}
-                    className={`p-4 rounded-2xl border transition-all ${
-                      isCorrect
-                        ? "border-emerald-200 bg-emerald-50/20"
-                        : "border-rose-200 bg-rose-50/20"
-                    }`}
+                    className={`p-4 rounded-2xl border transition-all ${isCorrect
+                      ? "border-emerald-200 bg-emerald-50/20"
+                      : "border-rose-200 bg-rose-50/20"
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
@@ -516,7 +514,7 @@ function ExamAnalyticsModal({
       const student = item.student;
       const user = student?.user;
       const sId = item.studentId || student?.id;
-      
+
       const attsByAssignId = attemptsByStudent.get(item.id) || [];
       const attsByStudentId = attemptsByStudent.get(sId) || [];
       const attsMap = new Map<string, any>();
@@ -575,12 +573,12 @@ function ExamAnalyticsModal({
   const totalAssigned = analyticsData?.assignedCount ?? studentStats.length;
   const totalFinished = studentStats.filter((s: any) => s.status === "finished").length;
   const totalSubmitted = studentStats.filter((s: any) => s.submittedCount > 0).length;
-  const totalInProgress = studentStats.filter((s: any) => 
+  const totalInProgress = studentStats.filter((s: any) =>
     s.status === "in_progress" || (s.submittedCount > 0 && s.status !== "finished")
   ).length;
   const totalNotStarted = studentStats.filter((s: any) => s.attemptsCount === 0 && s.status === "assigned").length;
-  const completionRate = totalAssigned > 0 
-    ? Math.round((totalFinished / totalAssigned) * 100) 
+  const completionRate = totalAssigned > 0
+    ? Math.round((totalFinished / totalAssigned) * 100)
     : 0;
 
   // Filter student rows
@@ -815,7 +813,7 @@ function ExamAnalyticsModal({
                                 title: "Nội dung câu hỏi",
                                 dataIndex: "displayPrompt",
                                 render: (prompt: string, r: any) => (
-                                  <Tooltip title={<div className="text-xs max-w-sm">{prompt}<br/><span className="text-slate-400 font-mono text-[10px]">ID: {r.questionId}</span></div>}>
+                                  <Tooltip title={<div className="text-xs max-w-sm">{prompt}<br /><span className="text-slate-400 font-mono text-[10px]">ID: {r.questionId}</span></div>}>
                                     <span className="text-slate-700 font-medium text-xs line-clamp-1 cursor-default">
                                       {prompt}
                                     </span>
@@ -1468,8 +1466,8 @@ export default function TeacherAssignments() {
       const hasMyStudent = allStudents.some((s) => {
         if (!targetStudentIds.includes(s.id) && !targetStudentIds.includes(s.studentProfile?.id)) return false;
         const studentClassIds = [
-          ...(s.studentProfile?.classIds ?? []),
-          ...(s.studentProfile?.classes?.map((c: any) => c.id || c.classId) ?? []),
+          ...((s.studentProfile as any)?.classIds ?? []),
+          ...((s.studentProfile as any)?.classes?.map((c: any) => c.id || c.classId) ?? []),
         ];
         return studentClassIds.some((cid) => teacherClassIds.includes(cid));
       });
@@ -1771,7 +1769,7 @@ export default function TeacherAssignments() {
       }
 
       const results = await Promise.allSettled(
-        curriculumIds.map((cId) =>
+        curriculumIds.map((cId: string) =>
           teacherLearningService.classCurriculums.create({
             classId: values.classId,
             curriculumId: cId,
@@ -2249,7 +2247,7 @@ export default function TeacherAssignments() {
   return (
     <ConfigProvider
       theme={{
-        token: { borderRadius: 12, colorPrimary: "#4f46e5", fontFamily: "Inter, system-ui, -apple-system, sans-serif" },
+        token: { borderRadius: 12, colorPrimary: "#0891b2", fontFamily: "Inter, system-ui, -apple-system, sans-serif" },
         components: { Table: { headerBg: "#f8fafc", headerColor: "#475569", rowHoverBg: "#f1f5f9" } },
       }}
     >
@@ -2288,7 +2286,7 @@ export default function TeacherAssignments() {
                       onChange={(val) => setSelectedCenterId(val)}
                       className="min-w-[210px]"
                       options={[
-                        { value: "all", label: "🌐 Tất cả trung tâm (All)" },
+                        { value: "all", label: "Tất cả trung tâm (All)" },
                         ...centers.map((c) => ({
                           value: c.id,
                           label: (
@@ -2320,14 +2318,14 @@ export default function TeacherAssignments() {
                       options={
                         isTeacher
                           ? [
-                              { label: "Bài của tôi", value: "my" },
-                              { label: "Toàn trung tâm", value: "center" },
-                              { label: "Tất cả (All)", value: "all" },
-                            ]
+                            { label: "Bài của tôi", value: "my" },
+                            { label: "Toàn trung tâm", value: "center" },
+                            { label: "Tất cả (All)", value: "all" },
+                          ]
                           : [
-                              { label: "Theo trung tâm", value: "center" },
-                              { label: "Tất cả hệ thống (All)", value: "all" },
-                            ]
+                            { label: "Theo trung tâm", value: "center" },
+                            { label: "Tất cả hệ thống (All)", value: "all" },
+                          ]
                       }
                     />
                   </div>
@@ -2380,155 +2378,158 @@ export default function TeacherAssignments() {
               </div>
             </div>
 
-            {/* Tabs */}
-            <Tabs
-              activeKey={activeTab}
-              onChange={setActiveTab}
-              type="card"
-              size="large"
-              className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
-              tabBarStyle={{ padding: "16px 16px 0", background: "white", marginBottom: 0 }}
-              items={[
-                // ======= TAB 1: CLASS-CURRICULUM =======
-                {
-                  key: "class-curriculum",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
-                      <LinkOutlined />
-                      <span>Giáo Trình → Lớp</span>
-                    </span>
-                  ),
-                  children: (
-                    <div className="p-6">
-                      <Alert
-                        type="info"
-                        showIcon
-                        className="mb-4 rounded-xl"
-                        title="Gắn giáo trình vào lớp học"
-                        description="Khi gắn một giáo trình vào lớp, toàn bộ học sinh trong lớp sẽ tự động thấy và có thể tự vào làm tất cả bài thi trong giáo trình đó."
-                      />
-                      <div className="flex justify-end mb-4">
-                        <Can perform="learning.assign">
-                          <Button type="primary" icon={<PlusOutlined />}
-                            onClick={() => {
-                              refreshProfile().catch(() => {});
-                              classCurriculumForm.resetFields();
-                              setClassCurriculumFormOpen(true);
-                            }}
-                            className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
-                            style={{ background: "#0891b2", borderColor: "#0891b2" }}
-                          >
-                            Gắn Giáo Trình vào Lớp
-                          </Button>
-                        </Can>
-                      </div>
-                      {filteredClassCurriculums.length === 0 ? (
-                        <div className="py-16 text-center">
-                          <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Gắn Giáo Trình vào Lớp".</span>} />
+            {/* Tabs - ConfigProvider sets cardGutter so card tabs have visible spacing */}
+            <ConfigProvider theme={{ components: { Tabs: { cardGutter: 8 } } }}>
+              <Tabs
+                activeKey={activeTab}
+                onChange={setActiveTab}
+                type="card"
+                size="large"
+                className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
+                tabBarStyle={{ padding: "16px 16px 0", background: "white", marginBottom: 0 }}
+                items={[
+                  // ======= TAB 1: CLASS-CURRICULUM =======
+                  {
+                    key: "class-curriculum",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <LinkOutlined />
+                        <span>Giáo Trình → Lớp</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-4 rounded-xl"
+                          title="Gắn giáo trình vào lớp học"
+                          description="Khi gắn một giáo trình vào lớp, toàn bộ học sinh trong lớp sẽ tự động thấy và có thể tự vào làm tất cả bài thi trong giáo trình đó."
+                        />
+                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                          <Can perform="learning.assign">
+                            <Button type="primary" icon={<PlusOutlined />}
+                              onClick={() => {
+                                refreshProfile().catch(() => { });
+                                classCurriculumForm.resetFields();
+                                setClassCurriculumFormOpen(true);
+                              }}
+                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
+                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+                            >
+                              Gắn Giáo Trình vào Lớp
+                            </Button>
+                          </Can>
                         </div>
-                      ) : (
-                        <Table dataSource={filteredClassCurriculums} columns={classCurriculumColumns} rowKey="id"
-                          pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
-                          className="rounded-2xl overflow-hidden" />
-                      )}
-                    </div>
-                  ),
-                },
+                        {filteredClassCurriculums.length === 0 ? (
+                          <div className="py-16 text-center">
+                            <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Gắn Giáo Trình vào Lớp".</span>} />
+                          </div>
+                        ) : (
+                          <Table dataSource={filteredClassCurriculums} columns={classCurriculumColumns} rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
+                            className="rounded-2xl overflow-hidden" />
+                        )}
+                      </div>
+                    ),
+                  },
 
-                // ======= TAB 2: EXAM ASSIGNMENT =======
-                {
-                  key: "exam",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
-                      <FileTextOutlined />
-                      <span>Giao Bài Thi</span>
-                    </span>
-                  ),
-                  children: (
-                    <div className="p-6">
-                      <Alert
-                        type="info"
-                        showIcon
-                        className="mb-4 rounded-xl"
-                        title="Giao bài thi cho học sinh"
-                        description="Có thể chọn nhiều bài thi cùng lúc. Hãy chọn lớp học trước để hệ thống tự động lọc các đề thi thuộc đúng môn học của lớp."
-                      />
-                      <div className="flex justify-end mb-4">
-                        <Can perform="learning.assign">
-                          <Button type="primary" icon={<PlusOutlined />}
-                            onClick={() => {
-                              refreshProfile().catch(() => {});
-                              examForm.resetFields();
-                              setSelectedClassForExam(undefined);
-                              setExamFormOpen(true);
-                            }}
-                            className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-indigo-500/20"
-                          >
-                            Giao Bài Thi Mới
-                          </Button>
-                        </Can>
-                      </div>
-                      {filteredExamAssignments.length === 0 ? (
-                        <div className="py-16 text-center">
-                          <Empty description={<span className="text-slate-400">Không tìm thấy bài thi nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Bài Thi Mới".</span>} />
+                  // ======= TAB 2: EXAM ASSIGNMENT =======
+                  {
+                    key: "exam",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <FileTextOutlined />
+                        <span>Giao Bài Thi</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-4 rounded-xl"
+                          title="Giao bài thi cho học sinh"
+                          description="Có thể chọn nhiều bài thi cùng lúc. Hãy chọn lớp học trước để hệ thống tự động lọc các đề thi thuộc đúng môn học của lớp."
+                        />
+                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                          <Can perform="learning.assign">
+                            <Button type="primary" icon={<PlusOutlined />}
+                              onClick={() => {
+                                refreshProfile().catch(() => { });
+                                examForm.resetFields();
+                                setSelectedClassForExam(undefined);
+                                setExamFormOpen(true);
+                              }}
+                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
+                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+                            >
+                              Giao Bài Thi Mới
+                            </Button>
+                          </Can>
                         </div>
-                      ) : (
-                        <Table dataSource={filteredExamAssignments} columns={examAssignmentColumns} rowKey="id"
-                          pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
-                          className="rounded-2xl overflow-hidden" />
-                      )}
-                    </div>
-                  ),
-                },
+                        {filteredExamAssignments.length === 0 ? (
+                          <div className="py-16 text-center">
+                            <Empty description={<span className="text-slate-400">Không tìm thấy bài thi nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Bài Thi Mới".</span>} />
+                          </div>
+                        ) : (
+                          <Table dataSource={filteredExamAssignments} columns={examAssignmentColumns} rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
+                            className="rounded-2xl overflow-hidden" />
+                        )}
+                      </div>
+                    ),
+                  },
 
-                // ======= TAB 3: CURRICULUM ASSIGNMENT (DIRECT) =======
-                {
-                  key: "curriculum",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
-                      <BookOutlined />
-                      <span>Giao Giáo Trình (Trực tiếp)</span>
-                    </span>
-                  ),
-                  children: (
-                    <div className="p-6">
-                      <Alert
-                        type="warning"
-                        showIcon
-                        className="mb-4 rounded-xl"
-                        title="Giao giáo trình trực tiếp cho học sinh"
-                        description="Khác với 'Gắn Giáo Trình vào Lớp', tính năng này giao giáo trình trực tiếp cho học sinh cụ thể (bất kể lớp). Học sinh được giao sẽ thấy giáo trình dù không thuộc lớp đó."
-                      />
-                      <div className="flex justify-end mb-4">
-                        <Can perform="learning.assign">
-                          <Button type="primary" icon={<PlusOutlined />}
-                            onClick={() => {
-                              refreshProfile().catch(() => {});
-                              curriculumForm.resetFields();
-                              setSelectedClassForCurriculum(undefined);
-                              setCurriculumFormOpen(true);
-                            }}
-                            className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-purple-500/20"
-                            style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-                          >
-                            Giao Giáo Trình Trực Tiếp
-                          </Button>
-                        </Can>
-                      </div>
-                      {filteredCurriculumAssignments.length === 0 ? (
-                        <div className="py-16 text-center">
-                          <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được giao trực tiếp phù hợp với bộ lọc.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Giáo Trình Trực Tiếp".</span>} />
+                  // ======= TAB 3: CURRICULUM ASSIGNMENT (DIRECT) =======
+                  {
+                    key: "curriculum",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <BookOutlined />
+                        <span>Giao Giáo Trình (Trực tiếp)</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <Alert
+                          type="warning"
+                          showIcon
+                          className="mb-4 rounded-xl"
+                          title="Giao giáo trình trực tiếp cho học sinh"
+                          description="Khác với 'Gắn Giáo Trình vào Lớp', tính năng này giao giáo trình trực tiếp cho học sinh cụ thể (bất kể lớp). Học sinh được giao sẽ thấy giáo trình dù không thuộc lớp đó."
+                        />
+                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                          <Can perform="learning.assign">
+                            <Button type="primary" icon={<PlusOutlined />}
+                              onClick={() => {
+                                refreshProfile().catch(() => { });
+                                curriculumForm.resetFields();
+                                setSelectedClassForCurriculum(undefined);
+                                setCurriculumFormOpen(true);
+                              }}
+                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
+                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+                            >
+                              Giao Giáo Trình Trực Tiếp
+                            </Button>
+                          </Can>
                         </div>
-                      ) : (
-                        <Table dataSource={filteredCurriculumAssignments} columns={curriculumAssignmentColumns} rowKey="id"
-                          pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
-                          className="rounded-2xl overflow-hidden" />
-                      )}
-                    </div>
-                  ),
-                },
-              ]}
-            />
+                        {filteredCurriculumAssignments.length === 0 ? (
+                          <div className="py-16 text-center">
+                            <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được giao trực tiếp phù hợp với bộ lọc.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Giáo Trình Trực Tiếp".</span>} />
+                          </div>
+                        ) : (
+                          <Table dataSource={filteredCurriculumAssignments} columns={curriculumAssignmentColumns} rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
+                            className="rounded-2xl overflow-hidden" />
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            </ConfigProvider>
           </div>
         </Spin>
       </div>
@@ -2755,7 +2756,9 @@ export default function TeacherAssignments() {
           <div className="flex justify-end gap-3">
             <Button onClick={() => setExamFormOpen(false)} className="rounded-xl">Huỷ</Button>
             <Button type="primary" htmlType="submit" loading={submitting}
-              className="rounded-xl px-6 font-semibold shadow-md shadow-indigo-500/20">
+              className="rounded-xl px-6 font-semibold shadow-md shadow-cyan-500/20"
+              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+            >
               Giao bài thi
             </Button>
           </div>
@@ -2858,8 +2861,8 @@ export default function TeacherAssignments() {
           <div className="flex justify-end gap-3">
             <Button onClick={() => setCurriculumFormOpen(false)} className="rounded-xl">Huỷ</Button>
             <Button type="primary" htmlType="submit" loading={submitting}
-              className="rounded-xl px-6 font-semibold shadow-md shadow-purple-500/20"
-              style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+              className="rounded-xl px-6 font-semibold shadow-md shadow-cyan-500/20"
+              style={{ background: "#0891b2", borderColor: "#0891b2" }}
             >
               Giao giáo trình
             </Button>

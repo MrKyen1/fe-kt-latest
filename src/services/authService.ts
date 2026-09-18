@@ -48,9 +48,28 @@ export const authService = {
     return session;
   },
 
-  async logout(refreshToken = tokenStorage.getRefreshToken()) {
-    if (!refreshToken) return;
-    await apiClient.post("/auth/logout", { refreshToken });
+  async logout(refreshToken?: string | null, accessToken?: string | null) {
+    const refresh = refreshToken ?? tokenStorage.getRefreshToken();
+    const access = accessToken ?? tokenStorage.getAccessToken();
+    if (!refresh) return;
+
+    const headers: Record<string, string> = {};
+    if (access) {
+      headers.Authorization = `Bearer ${access}`;
+    }
+
+    try {
+      await apiClient.post(
+        "/auth/logout",
+        { refreshToken: refresh },
+        {
+          headers,
+          timeout: 2000,
+        },
+      );
+    } catch {
+      // Best-effort logout notification: ignore server/network failures silently
+    }
   },
 
   async logoutAll() {

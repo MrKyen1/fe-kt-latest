@@ -23,6 +23,8 @@ export interface LearningListQuery extends PaginationQuery {
   tagIds?: string | string[];
   type?: QuestionType;
   parentId?: string;
+  specializationId?: string;
+  [key: string]: unknown;
 }
 
 export interface StatusUpdateRequest {
@@ -99,6 +101,7 @@ export interface ClassCurriculumRequest {
 export interface ClassCurriculumQuery extends PaginationQuery {
   classId?: string;
   curriculumId?: string;
+  [key: string]: unknown;
 }
 
 export interface TeacherAssignmentQuery extends PaginationQuery {
@@ -107,6 +110,7 @@ export interface TeacherAssignmentQuery extends PaginationQuery {
   curriculumId?: string;
   studentId?: string;
   status?: AssignmentStatus;
+  [key: string]: unknown;
 }
 
 export interface SubmitAttemptRequest {

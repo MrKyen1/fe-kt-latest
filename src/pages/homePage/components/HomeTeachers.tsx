@@ -1,15 +1,15 @@
-import { Typography, Row, Col, Spin, Tag, Empty } from "antd";
+import { Typography, Row, Col, Tag, Spin, Empty } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import { userService } from "../../services/userService";
-import { academicService } from "../../services/academicService";
-import { resolveMediaUrl } from "../../services/apiClient";
-import { Specialization, User } from "../../types/backend";
+import { userService } from "../../../services/userService";
+import { academicService } from "../../../services/academicService";
+import { resolveMediaUrl } from "../../../services/apiClient";
+import { Specialization, User } from "../../../types/backend";
 
 const { Title, Paragraph } = Typography;
 
-interface TeacherItem {
+export interface TeacherItem {
   id: string;
   name: string;
   avatar?: string;
@@ -18,7 +18,7 @@ interface TeacherItem {
   centerName?: string;
 }
 
-export default function Teachers() {
+export default function HomeTeachers() {
   const [customText, setCustomText] = useState<string | null>(null);
   const [teachers, setTeachers] = useState<TeacherItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,10 +31,11 @@ export default function Teachers() {
   useEffect(() => {
     let active = true;
 
-    async function loadTeachers() {
+    async function loadTeachersFromBackend() {
       try {
         setLoading(true);
 
+        // Gọi trực tiếp dữ liệu động từ backend API
         const [teachersRes, specsRes, centersRes] = await Promise.allSettled([
           userService.list({ roleCode: "teacher", isActive: true }),
           academicService.specializations.list().catch(() => []),
@@ -60,7 +61,6 @@ export default function Teachers() {
 
         if (rawTeachers.length > 0) {
           const mapped: TeacherItem[] = rawTeachers.map((t) => {
-            // Chuyên môn: lấy từ teacherProfile.specializations hoặc ánh xạ từ specializationIds
             const rawSpecs = t.teacherProfile?.specializations || [];
             const specNamesFromObj = rawSpecs
               .map((s: any) => s.name || s.specialization?.name)
@@ -71,21 +71,19 @@ export default function Teachers() {
             const combinedSpecs = Array.from(new Set([...specNamesFromObj, ...specNamesFromIds]));
             const subjectText = combinedSpecs.length > 0 ? combinedSpecs.join(" • ") : "Giáo viên chuyên môn";
 
-            // Mô tả kinh nghiệm
             const descText =
               t.teacherProfile?.description ||
               (t.teacherProfile?.yearsOfExperience
                 ? `${t.teacherProfile.yearsOfExperience} năm kinh nghiệm giảng dạy`
                 : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
 
-            // Tên trung tâm trực thuộc
-            const matchedCenter = centersList.find((c) => c.id === (t.centerId || (t as any).teacherProfile?.centerId));
+            const matchedCenter = centersList.find(
+              (c) => c.id === (t.centerId || (t as any).teacherProfile?.centerId)
+            );
 
             return {
               id: t.id,
-              // Tên lấy từ fullName, nếu chưa có thì lấy name/code
               name: t.fullName || (t as any).name || t.code || "Giáo viên",
-              // Ảnh đại diện từ hệ thống
               avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
               subject: subjectText,
               desc: descText,
@@ -98,15 +96,13 @@ export default function Teachers() {
           setTeachers([]);
         }
       } catch {
-        if (active) {
-          setTeachers([]);
-        }
+        if (active) setTeachers([]);
       } finally {
         if (active) setLoading(false);
       }
     }
 
-    loadTeachers();
+    loadTeachersFromBackend();
 
     return () => {
       active = false;
@@ -137,19 +133,18 @@ export default function Teachers() {
         </Title>
         <div className="w-24 h-1 bg-blue-600 mx-auto rounded-full mb-4"></div>
         <p className="text-lg text-slate-600 max-w-2xl mx-auto block">
-          Những người thầy, người cô tâm huyết, giàu kinh nghiệm, luôn đồng
-          hành cùng sự phát triển của học sinh.
+          Những người thầy, người cô tâm huyết, giàu kinh nghiệm, luôn đồng hành cùng sự phát triển của học sinh.
         </p>
       </div>
 
       {loading ? (
-        <div className="flex justify-center items-center py-20">
+        <div className="flex justify-center items-center py-16">
           <Spin size="large" />
         </div>
       ) : teachers.length > 0 ? (
         <Row gutter={[32, 32]} className="justify-center">
           {teachers.map((teacher, index) => (
-            <Col xs={24} sm={12} lg={6} key={teacher.id}>
+            <Col xs={24} sm={12} lg={8} key={teacher.id}>
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -157,7 +152,7 @@ export default function Teachers() {
                 transition={{ delay: index * 0.08 }}
                 className="bg-white rounded-3xl p-6 text-center shadow-sm hover:shadow-xl transition-shadow border border-slate-100 group flex flex-col h-full"
               >
-                {/* Avatar tròn với fallback như Profile */}
+                {/* Avatar tròn */}
                 <div className="w-36 h-36 mx-auto rounded-full overflow-hidden mb-6 border-4 border-blue-50 group-hover:border-blue-100 transition-colors flex items-center justify-center bg-slate-200 shrink-0">
                   {teacher.avatar ? (
                     <img
@@ -180,7 +175,7 @@ export default function Teachers() {
                   </div>
                 </div>
 
-                {/* Tên giáo viên lấy từ fullName */}
+                {/* Tên giáo viên */}
                 <h3
                   className="text-xl font-bold text-slate-800 mb-1 line-clamp-1"
                   title={teacher.name}
@@ -189,14 +184,17 @@ export default function Teachers() {
                 </h3>
 
                 {/* Chuyên môn */}
-                <p className="text-blue-600 font-semibold text-sm mb-2 line-clamp-1" title={teacher.subject}>
+                <p
+                  className="text-blue-600 font-semibold text-sm mb-2 line-clamp-1"
+                  title={teacher.subject}
+                >
                   {teacher.subject}
                 </p>
 
-                {/* Trung tâm (nếu có) */}
+                {/* Trung tâm */}
                 {teacher.centerName && (
-                  <div className="mb-2">
-                    <Tag color="cyan" className="rounded-full text-[11px] px-2.5 py-0 border-none font-medium">
+                  <div className="mb-3">
+                    <Tag color="cyan" className="rounded-full text-[11px] px-2.5 py-0.5 border-none font-medium">
                       {teacher.centerName}
                     </Tag>
                   </div>

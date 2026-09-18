@@ -16,6 +16,8 @@ export interface HomepageSlide {
   ctaLink?: string;
   orderIndex: number;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AboutStat {

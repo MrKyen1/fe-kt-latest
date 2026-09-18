@@ -25,31 +25,52 @@ type AttemptPayload = {
   exam?: {
     title?: string;
     timeLimitSeconds?: number;
+    examType?: "practice" | "exam";
   };
   answers?: AttemptAnswer[];
+  assignmentStudentId?: string;
+  curriculumAssignmentStudentId?: string;
+  source?: string;
+  curriculumId?: string;
+  expiresAt?: string | null;
+  attemptPhase?: "initial" | "remediation";
+  taskStatus?: "in_progress" | "finished" | "mastered" | "remediation_required";
+  mastered?: boolean;
+  requiresRemediation?: boolean;
+  remainingQuestionCount?: number;
+  firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
+  [key: string]: any;
 };
 
 type AttemptAnswer = {
   questionId: string;
+  questionVersionId?: string;
   questionType: QuestionType;
   orderIndex?: number;
   maxScore?: string;
   answer?: any;
   correctAnswer?: any;
   isCorrect?: boolean;
+  answeredAt?: string | null;
   feedback?: {
     explanation?: string;
+    [key: string]: any;
   };
   question?: {
     prompt?: string;
     instruction?: string;
+    explanation?: string;
+    feedback?: {
+      explanation?: string;
+      [key: string]: any;
+    };
     options?: Array<ExamOption & { isCorrect?: boolean }>;
     media?: Array<{
       url?: string;
       type?: string;
       media?: { url?: string; type?: string };
     }>;
-    detail?: Record<string, unknown>;
+    detail?: Record<string, any>;
   };
 };
 
@@ -195,7 +216,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
             });
 
       if ((!options || options.length === 0) && mockQuestion?.options) {
-        options = mockQuestion.options;
+        options = mockQuestion.options as any;
       }
 
       let leftItems: any = Array.isArray(detail.leftItems)
@@ -213,10 +234,10 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         : undefined;
 
       if ((!leftItems || leftItems.length === 0) && mockQuestion?.leftItems) {
-        leftItems = mockQuestion.leftItems.map((item: string) => ({ id: item, text: item }));
+        leftItems = (mockQuestion.leftItems as any[]).map((item: any) => ({ id: item?.id || item, text: item?.text || item }));
       }
       if ((!rightItems || rightItems.length === 0) && mockQuestion?.rightItems) {
-        rightItems = mockQuestion.rightItems.map((item: string) => ({ id: item, text: item }));
+        rightItems = (mockQuestion.rightItems as any[]).map((item: any) => ({ id: item?.id || item, text: item?.text || item }));
       }
 
       const backendExplanation = answer.feedback?.explanation || answer.question?.feedback?.explanation || answer.question?.explanation;
@@ -320,18 +341,17 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
                 try {
                   const fullQuestion = await learningCmsService.questions.get(answer.questionId);
                   if (fullQuestion) {
-                    if (!answer.question) {
-                      answer.question = {} as any;
-                    }
+                    const qObj = ((answer as any).question || {}) as any;
+                    (answer as any).question = qObj;
                     if (fullQuestion.options && fullQuestion.options.length > 0) {
-                      answer.question.options = fullQuestion.options as any;
+                      qObj.options = fullQuestion.options as any;
                     }
                     if (fullQuestion.explanation) {
-                      answer.question.explanation = fullQuestion.explanation;
+                      qObj.explanation = fullQuestion.explanation;
                     }
                     if (fullQuestion.detail) {
-                      answer.question.detail = {
-                        ...answer.question.detail,
+                      qObj.detail = {
+                        ...qObj.detail,
                         ...fullQuestion.detail,
                       };
                     }

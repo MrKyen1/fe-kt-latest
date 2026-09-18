@@ -1,5 +1,5 @@
 import { Typography, Row, Col, Spin, Alert, Tag, Button, Empty, Input } from "antd";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   BookOpen,
   Clock,
@@ -450,15 +450,18 @@ export default function Courses() {
                     const examCount = curr.exams?.length || 0;
 
                     return (
-                      <motion.div
+                      <Link
                         key={curr.id}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.04 }}
-                        whileHover={{ y: -8 }}
-                        className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-slate-100 flex flex-col h-full group cursor-pointer"
-                        onClick={() => navigate(`/courses/published-curriculums/${curr.id}`)}
+                        to={`/courses/published-curriculums/${curr.id}`}
+                        className="block h-full no-underline text-inherit"
                       >
+                        <motion.div
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.04 }}
+                          whileHover={{ y: -8 }}
+                          className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-slate-100 flex flex-col h-full group cursor-pointer"
+                        >
                         {/* Course Thumbnail 16:9 */}
                         <div className="w-full aspect-[16/9] overflow-hidden bg-slate-100 relative">
                           {curr.image ? (
@@ -535,6 +538,7 @@ export default function Courses() {
                           </div>
                         </div>
                       </motion.div>
+                    </Link>
                     );
                   })}
                 </div>

@@ -1466,12 +1466,12 @@ export default function AdminHomepageCms() {
               <p className="text-xs text-slate-500">Chấp nhận các file định dạng JPG, PNG, WEBP, GIF (tối đa 10MB)</p>
             </div>
 
-            <div className="max-w-md mx-auto space-y-3">
+            <div className="max-w-md mx-auto !flex !flex-col !items-center !gap-3.5 pt-1">
               <Input
                 placeholder="Nhập mô tả ảnh (Alt Text - tùy chọn)..."
                 value={uploadAltText}
                 onChange={(e) => setUploadAltText(e.target.value)}
-                className="rounded-xl"
+                className="rounded-xl !w-full h-10"
               />
               <Upload
                 beforeUpload={(file) => {
@@ -1480,12 +1480,14 @@ export default function AdminHomepageCms() {
                 }}
                 showUploadList={false}
                 accept="image/*"
+                className="!flex !justify-center"
               >
                 <Button
                   type="primary"
                   icon={<UploadOutlined />}
                   loading={mediaUploading}
-                  className="bg-indigo-600 hover:bg-indigo-700 h-10 px-6 rounded-xl font-semibold shadow-xs flex items-center gap-2"
+                  className="bg-indigo-600 hover:bg-indigo-700 h-10 px-6 rounded-xl font-semibold shadow-md shadow-indigo-500/20 flex items-center gap-2"
+                  style={{ marginTop: 6 }}
                 >
                   Chọn tệp ảnh &amp; Tải lên
                 </Button>

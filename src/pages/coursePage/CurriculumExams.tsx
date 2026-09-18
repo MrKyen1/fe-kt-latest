@@ -1,5 +1,5 @@
 import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button, Modal, Table, Progress, Tooltip } from "antd";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -500,11 +500,14 @@ function AttemptHistoryModal({
     {
       title: "Chi tiết", align: "right" as const,
       render: (_: any, r: any) => (
-        <Button type="link" size="small" icon={<ArrowRightOutlined />}
-          onClick={() => { onClose(); navigate(`/exam/${r.id}`); }}
-          className="text-indigo-600 font-medium">
+        <Link
+          to={`/exam/${r.id}`}
+          onClick={onClose}
+          className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium text-sm no-underline hover:underline"
+        >
           {r.status === "submitted" ? "Xem đáp án" : "Tiếp tục"}
-        </Button>
+          <ArrowRightOutlined className="text-xs" />
+        </Link>
       ),
     },
   ];
