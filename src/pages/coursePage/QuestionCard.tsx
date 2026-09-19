@@ -288,7 +288,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     if (inlineItems.length === 0) return null;
 
     return (
-      <div className="mt-4 flex flex-col gap-4 bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-600">
+      <div className="mt-4 flex flex-col gap-4 bg-slate-100 p-4 rounded-xl border border-dashed border-slate-300">
         {inlineItems.map((media, index) => (
           <div
             key={`${media.url}-${index}`}
@@ -499,24 +499,24 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         {question.type.replace(/-/g, " ").replace(/_/g, " ")}
       </div>
 
-      <h2 className="text-[16px] md:text-[17px] font-bold leading-relaxed text-slate-800 dark:text-slate-100">
+      <h2 className="text-[16px] md:text-[17px] font-bold leading-relaxed text-slate-800">
         {question.questionContent}
       </h2>
 
       {question.incorrectSentence && (
-        <div className="mt-3 p-4 bg-rose-50/60 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/50 rounded-xl text-[15px] text-slate-700 dark:text-slate-300 font-medium">
-          <span className="text-rose-600 dark:text-rose-400 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần sửa lỗi:</span>
+        <div className="mt-3 p-4 bg-rose-50/60 border border-rose-100 rounded-xl text-[15px] text-slate-700 font-medium">
+          <span className="text-rose-600 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần sửa lỗi:</span>
           {question.incorrectSentence}
         </div>
       )}
 
       {question.sourceSentence && (
-        <div className="mt-3 p-4 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl text-[15px] text-slate-700 dark:text-slate-300 font-medium">
-          <span className="text-indigo-600 dark:text-indigo-400 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần viết lại:</span>
+        <div className="mt-3 p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl text-[15px] text-slate-700 font-medium">
+          <span className="text-indigo-600 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần viết lại:</span>
           {question.sourceSentence}
           {question.hintWord && (
-            <span className="block mt-2 pt-2 border-t border-indigo-100/50 dark:border-indigo-900/50 text-xs text-slate-500 dark:text-slate-400">
-              Gợi ý sử dụng từ: <strong className="text-indigo-600 dark:text-indigo-400 bg-indigo-100/50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded font-mono">{question.hintWord}</strong>
+            <span className="block mt-2 pt-2 border-t border-indigo-100/50 text-xs text-slate-500">
+              Gợi ý sử dụng từ: <strong className="text-indigo-600 bg-indigo-100/50 px-1.5 py-0.5 rounded font-mono">{question.hintWord}</strong>
             </span>
           )}
         </div>
@@ -600,7 +600,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   );
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-white/50 dark:bg-slate-800/10">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-white/50">
       <div className="flex-1 overflow-hidden p-6 md:p-8 flex flex-col lg:flex-row gap-6 lg:gap-10">
         {hasSplitLayout ? (
           <>

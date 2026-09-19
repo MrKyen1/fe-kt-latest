@@ -46,7 +46,7 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
       {...(!disabled ? listeners : {})}
       {...(!disabled ? attributes : {})}
       whileDrag={disabled ? undefined : { scale: 1.05 }}
-      className={`px-4 py-2 bg-white dark:bg-slate-700 border rounded-xl shadow-sm text-sm font-semibold text-slate-700 dark:text-slate-200 hover:shadow-md transition ${
+      className={`px-4 py-2 bg-white border rounded-xl shadow-sm text-sm font-semibold text-slate-700 hover:shadow-md transition ${
         disabled ? "cursor-not-allowed opacity-70" : "cursor-grab"
       }`}
     >
@@ -71,14 +71,14 @@ const DropZone: React.FC<{
       className={`p-3 rounded-2xl border min-h-[72px] flex items-center justify-between gap-3 transition ${
         showFeedback
           ? isCorrect
-            ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
+            ? "border-emerald-400 bg-emerald-50"
             : matchedId
-              ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20"
+              ? "border-rose-400 bg-rose-50"
               : "border-slate-200"
-          : "border-slate-200 dark:border-slate-600"
+          : "border-slate-200"
       } ${isOver ? "ring-2 ring-emerald-500/60" : ""}`}
     >
-      <span className="font-medium text-slate-700 dark:text-slate-200">
+      <span className="font-medium text-slate-700">
         {label}
       </span>
 
@@ -86,7 +86,7 @@ const DropZone: React.FC<{
         {matchedId && matchedLabel ? (
           <DraggableItem id={matchedId} label={matchedLabel} disabled={showFeedback} />
         ) : (
-          <span className="text-slate-400 dark:text-slate-500 text-sm">
+          <span className="text-slate-400 text-sm">
             Thả đáp án vào đây
           </span>
         )}
@@ -201,7 +201,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
 
             <div
               ref={setChoicesRef}
-              className={`space-y-3 p-4 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 min-h-[220px] transition ${
+              className={`space-y-3 p-4 rounded-3xl border border-slate-200 bg-slate-50 min-h-[220px] transition ${
                 isOverChoices ? "ring-2 ring-emerald-500/60" : ""
               }`}
             >

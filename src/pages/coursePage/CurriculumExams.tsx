@@ -12,8 +12,8 @@ import {
   History,
   RotateCcw,
 } from "lucide-react";
-import { HistoryOutlined, ArrowRightOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
+import { AttemptHistoryModal } from "../../components/AttemptHistoryModal";
 import { learningCmsService } from "../../services/learningCmsService";
 import { studentLearningService } from "../../services/studentLearningService";
 import { useAuth } from "../../contexts/AuthContext";
@@ -60,10 +60,13 @@ export default function CurriculumExams() {
   const [hasAccess, setHasAccess] = useState(false);
 
   // ---- History modal ----
-  const [historyAssignmentStudentId, setHistoryAssignmentStudentId] = useState<string | null>(null);
-  const [historyExamId, setHistoryExamId] = useState<string | null>(null);
-  const [historyTitle, setHistoryTitle] = useState<string | undefined>(undefined);
-  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<{
+    open: boolean;
+    title?: string;
+    attemptId?: string | null;
+    examId?: string | null;
+    progress?: any;
+  }>({ open: false });
 
   const isStudent = user?.role === "student";
 
@@ -160,9 +163,22 @@ export default function CurriculumExams() {
       
       if (is409) {
         message.warning("Bài kiểm tra này đã được nộp.");
-        setHistoryAssignmentStudentId(studentAssignmentId);
-        setHistoryExamId(examId);
-        setHistoryModalOpen(true);
+        const matchedEntry = curriculum?.exams?.find((e: any) => (e.examId === examId || e.exam?.id === examId)) as any;
+        const examObj = matchedEntry?.exam;
+        setHistoryTarget({
+          open: true,
+          title: examObj?.title ?? examObj?.code ?? "Bài thi",
+          attemptId: matchedEntry?.lastAttemptId,
+          examId,
+          progress: matchedEntry ? {
+            attemptsCount: matchedEntry?.attemptsCount ?? 1,
+            bestScore: matchedEntry?.bestScore,
+            bestPercentage: matchedEntry?.bestPercentage,
+            lastAttemptId: matchedEntry?.lastAttemptId,
+            status: matchedEntry?.status,
+            completedAt: matchedEntry?.completedAt,
+          } : undefined,
+        });
       } else if (statusCode === 403 || errorMsg.includes("không thuộc lớp") || errorMsg.includes("cấp quyền") || errorMsg.includes("hồ sơ")) {
         Modal.warning({
           title: "Chưa được cấp quyền làm bài",
@@ -370,10 +386,20 @@ export default function CurriculumExams() {
                                 size="large"
                                 icon={<History size={18} />}
                                 onClick={() => {
-                                  setHistoryAssignmentStudentId(studentAssignmentId);
-                                  setHistoryExamId(exam?.id ?? entry.examId);
-                                  setHistoryTitle(exam?.title ?? exam?.code ?? `Bài thi`);
-                                  setHistoryModalOpen(true);
+                                  setHistoryTarget({
+                                    open: true,
+                                    title: exam?.title ?? exam?.code ?? `Bài thi`,
+                                    attemptId: (entry as any).lastAttemptId,
+                                    examId: exam?.id ?? entry.examId,
+                                    progress: {
+                                      attemptsCount,
+                                      bestScore: (entry as any).bestScore,
+                                      bestPercentage: (entry as any).bestPercentage,
+                                      lastAttemptId: (entry as any).lastAttemptId,
+                                      status: (entry as any).status,
+                                      completedAt: (entry as any).completedAt,
+                                    },
+                                  });
                                 }}
                                 className="h-12 w-12 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-400"
                               />
@@ -422,108 +448,13 @@ export default function CurriculumExams() {
       </div>
 
       <AttemptHistoryModal
-        open={historyModalOpen}
-        onClose={() => setHistoryModalOpen(false)}
-        assignmentStudentId={historyAssignmentStudentId}
-        examId={historyExamId}
-        title={historyTitle}
+        open={historyTarget.open}
+        onClose={() => setHistoryTarget((prev) => ({ ...prev, open: false }))}
+        title={historyTarget.title}
+        attemptId={historyTarget.attemptId}
+        examId={historyTarget.examId}
+        curriculumExamProgress={historyTarget.progress}
       />
     </div>
-  );
-}
-
-// ==================== ATTEMPT HISTORY MODAL ====================
-function AttemptHistoryModal({
-  assignmentStudentId, examId, title, open, onClose,
-}: { assignmentStudentId: string | null; examId?: string | null; title?: string; open: boolean; onClose: () => void }) {
-  const navigate = useNavigate();
-  const [attempts, setAttempts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const formatTime = (sec?: number) => {
-    if (!sec) return "—";
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return m > 0 ? `${m}p ${s}s` : `${s}s`;
-  };
-
-  const formatDate = (iso?: string | null) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleString("vi-VN", {
-      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-    });
-  };
-
-  const percentColor = (pct?: string | number) => {
-    const n = parseFloat(String(pct ?? "0"));
-    if (n >= 80) return "#10b981";
-    if (n >= 50) return "#f59e0b";
-    return "#ef4444";
-  };
-
-  useEffect(() => {
-    if (!open || !assignmentStudentId) return;
-    setLoading(true);
-    studentLearningService.examAssignments
-      .attempts(assignmentStudentId)
-      .then((res: any) => {
-        const arr = Array.isArray(res) ? res : res?.data ?? [];
-        const filtered = examId ? arr.filter((x: any) => x.examId === examId) : arr;
-        setAttempts(filtered);
-      })
-      .catch(() => message.error("Không thể tải lịch sử làm bài"))
-      .finally(() => setLoading(false));
-  }, [open, assignmentStudentId, examId]);
-
-  const columns = [
-    { title: "Lần", dataIndex: "attemptNumber", width: 60, render: (n: number) => <span className="font-bold text-indigo-600">#{n}</span> },
-    {
-      title: "Trạng thái", dataIndex: "status",
-      render: (status: string) => status === "submitted"
-        ? <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã nộp</Tag>
-        : <Tag color="processing" className="rounded-full border-none text-xs font-semibold">Đang làm</Tag>,
-    },
-    {
-      title: "Điểm",
-      render: (_: any, r: any) => r.status === "submitted"
-        ? <span className="font-bold" style={{ color: percentColor(r.percentage) }}>{r.score ?? "—"} / {r.maxScore ?? "—"}</span>
-        : <span className="text-slate-400">—</span>,
-    },
-    {
-      title: "Phần trăm",
-      render: (_: any, r: any) => r.status === "submitted" && r.percentage
-        ? <Progress percent={Math.round(parseFloat(r.percentage))} size="small" strokeColor={percentColor(r.percentage)} format={(p) => `${p}%`} />
-        : <span className="text-slate-400">—</span>,
-    },
-    { title: "Thời gian làm", render: (_: any, r: any) => <span className="text-sm text-slate-500">{formatTime(r.durationSeconds)}</span> },
-    { title: "Ngày nộp", render: (_: any, r: any) => <span className="text-xs text-slate-400">{formatDate(r.submittedAt)}</span> },
-    {
-      title: "Chi tiết", align: "right" as const,
-      render: (_: any, r: any) => (
-        <Link
-          to={`/exam/${r.id}`}
-          onClick={onClose}
-          className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium text-sm no-underline hover:underline"
-        >
-          {r.status === "submitted" ? "Xem đáp án" : "Tiếp tục"}
-          <ArrowRightOutlined className="text-xs" />
-        </Link>
-      ),
-    },
-  ];
-
-  return (
-    <Modal open={open} onCancel={onClose} footer={null}
-      title={<div className="flex items-center gap-2 text-indigo-700 font-bold"><HistoryOutlined /><span>Lịch sử làm bài: {title || "Bài thi"}</span></div>}
-      width={800}
-    >
-      {loading ? (
-        <div className="flex justify-center py-10"><Spin size="large" /></div>
-      ) : attempts.length === 0 ? (
-        <Empty description="Chưa có lần làm bài nào" />
-      ) : (
-        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={false} size="small" className="rounded-xl overflow-hidden" />
-      )}
-    </Modal>
   );
 }

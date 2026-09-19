@@ -1,4 +1,5 @@
-import { Tag } from "antd";
+import { Popover, Tag } from "antd";
+import type { TooltipPlacement } from "antd/es/tooltip";
 import { Check } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../constants";
 
@@ -188,3 +189,55 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
     </div>
   );
 }
+
+// ── Reusable Popover Wrapper ─────────────────────────────────
+
+export interface QuestionPopoverProps {
+  question?: any;
+  skills: TaxonomyItem[];
+  levels: TaxonomyItem[];
+  topics: TaxonomyItem[];
+  tags:   TaxonomyItem[];
+  title?: React.ReactNode;
+  placement?: TooltipPlacement;
+  mouseEnterDelay?: number;
+  overlayStyle?: React.CSSProperties;
+  children: React.ReactNode;
+}
+
+export function QuestionPopover({
+  question,
+  skills,
+  levels,
+  topics,
+  tags,
+  title = <div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>,
+  placement = "left",
+  mouseEnterDelay = 0.15,
+  overlayStyle = { maxWidth: 380 },
+  children,
+}: QuestionPopoverProps) {
+  if (!question) return <>{children}</>;
+
+  return (
+    <Popover
+      content={
+        <QuestionPopoverContent
+          question={question}
+          skills={skills}
+          levels={levels}
+          topics={topics}
+          tags={tags}
+        />
+      }
+      title={title}
+      trigger="hover"
+      placement={placement}
+      mouseEnterDelay={mouseEnterDelay}
+      overlayStyle={overlayStyle}
+    >
+      {children}
+    </Popover>
+  );
+}
+

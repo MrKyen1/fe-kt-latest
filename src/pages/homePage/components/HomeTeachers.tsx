@@ -2,6 +2,7 @@ import { Typography, Row, Col, Tag, Spin, Empty } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { homepageService } from "../../../services/homepageService";
 import { userService } from "../../../services/userService";
 import { academicService } from "../../../services/academicService";
 import { resolveMediaUrl } from "../../../services/apiClient";
@@ -35,7 +36,42 @@ export default function HomeTeachers() {
       try {
         setLoading(true);
 
-        // Gọi trực tiếp dữ liệu động từ backend API
+        // 1. Thử gọi API Public dành riêng cho trang chủ (không yêu cầu token)
+        try {
+          const publicTeachers = await homepageService.getTeachers();
+          if (Array.isArray(publicTeachers) && publicTeachers.length > 0) {
+            const mapped: TeacherItem[] = publicTeachers.map((t) => {
+              const specNames = (t.specializations || []).map((s) => s.name).filter(Boolean);
+              const subjectText = specNames.length > 0 ? specNames.join(" • ") : "Giáo viên chuyên môn";
+              const descText =
+                t.description ||
+                (t.yearsOfExperience
+                  ? `${t.yearsOfExperience} năm kinh nghiệm giảng dạy`
+                  : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
+              const centerName = t.centers?.[0]?.name;
+
+              return {
+                id: t.id,
+                name: t.fullName || "Giáo viên",
+                avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
+                subject: subjectText,
+                desc: descText,
+                centerName,
+              };
+            });
+
+            if (active) {
+              setTeachers(mapped);
+              return;
+            }
+          }
+        } catch {
+          // Fallback sang endpoint quản lý nếu API public chưa sẵn sàng
+        }
+
+        if (!active) return;
+
+        // 2. Fallback: Gọi qua userService (yêu cầu quyền users.read)
         const [teachersRes, specsRes, centersRes] = await Promise.allSettled([
           userService.list({ roleCode: "teacher", isActive: true }),
           academicService.specializations.list().catch(() => []),

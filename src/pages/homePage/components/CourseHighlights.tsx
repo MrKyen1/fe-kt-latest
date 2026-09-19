@@ -33,10 +33,12 @@ export default function CourseHighlights() {
 
         if (!active) return;
 
-        // Fetch exam counts if exams relation not loaded
+        // Fetch exam counts only if exams relation and examsCount are both missing
         const fullList = await Promise.all(
           list.map(async (item) => {
-            if (item.exams && item.exams.length > 0) return item;
+            if (item.examsCount !== undefined || (item.exams && item.exams.length > 0)) {
+              return item;
+            }
             try {
               const detail = await learningCmsService.curriculums.get(item.id);
               return { ...item, ...detail };

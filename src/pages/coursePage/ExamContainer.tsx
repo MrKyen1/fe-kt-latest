@@ -12,8 +12,6 @@ import { parseBackendAnswer } from "./ExamDetail";
 
 interface ExamContainerProps {
   examData: ExamData;
-  isDarkMode?: boolean;
-  toggleDarkMode?: () => void;
 }
 
 type AnswerValue = string | string[] | Record<string, string>;
@@ -155,8 +153,6 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
 
 const ExamContainer: React.FC<ExamContainerProps> = ({
   examData,
-  isDarkMode,
-  toggleDarkMode,
 }) => {
   const navigate = useNavigate();
   const { courseId } = useParams();
@@ -189,11 +185,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   });
 
   const isPracticeMode = examData.examType !== "exam";
+  // Theo đúng nghiệp vụ Backend (student-exam-attempts.service.ts):
+  // isInitialExam: Chỉ khi examType === "exam" VÀ là lượt đầu tiên (attemptNumber === 1 hoặc attemptPhase === "initial")
+  // Bất kỳ bài thi nào là "practice" HOẶC là lượt làm lại (attemptNumber > 1, remedial) đều thuộc luồng immediate feedback (chấm và khóa từng câu).
   const isInitialExam =
-    !isPracticeMode &&
-    (examData.attemptPhase === "initial" ||
-      (examData as any).attemptNumber === 1 ||
-      !(examData as any).attemptNumber);
+    examData.examType === "exam" &&
+    (examData.attemptNumber === 1 || examData.attemptPhase === "initial");
 
   // Track which questions have been answered and locked.
   // Trong lượt thi đầu của bài kiểm tra (isInitialExam), học sinh KHÔNG bị khóa câu hỏi và được đổi/sửa đáp án tự do.
@@ -276,7 +273,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }, [examData.questions, questionResults]);
 
   const isPracticeCompleted100 =
-    isPracticeMode &&
+    !isInitialExam &&
     (isExamComplete || examData.status === "submitted") &&
     !isReviewMode &&
     (examData.questions.length === 0 || (currentMasteredCount === examData.questions.length && examData.questions.length > 0));
@@ -350,8 +347,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       return;
     }
 
-    // Trong đề thi (exam mode), không hiện feedback trong khi làm bài
-    if (!isPracticeMode) {
+    // Trong đề thi lượt đầu (isInitialExam), không hiện feedback trong khi làm bài
+    if (isInitialExam) {
       setShowFeedback(false);
       return;
     }
@@ -368,7 +365,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     } else {
       setShowFeedback(false);
     }
-  }, [currentQuestion, questionResults, lockedQuestions, userAnswers, isPracticeMode, isReviewMode]);
+  }, [currentQuestion, questionResults, lockedQuestions, userAnswers, isInitialExam, isReviewMode]);
 
   const handleAnswerChange = (answer: AnswerValue) => {
     if (isReviewMode) return;
@@ -379,11 +376,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     }));
   };
 
-  /**
-   * handleSubmit: Gọi API submit từng câu lên backend (Chỉ dùng cho Đề Ôn tập - practice mode).
-   */
   const handleSubmit = useCallback(async () => {
-    if (!isPracticeMode) return;
+    if (isInitialExam) return;
     if (isSubmittingAnswer) return;
     if (lockedQuestions[currentQuestion.id]) {
       const existingResult = questionResults[currentQuestion.id];
@@ -472,7 +466,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     } finally {
       setIsSubmittingAnswer(false);
     }
-  }, [currentQuestion, userAnswers, isSubmittingAnswer, lockedQuestions, questionResults, examData.id, isPracticeMode]);
+  }, [currentQuestion, userAnswers, isSubmittingAnswer, lockedQuestions, questionResults, examData.id, isInitialExam]);
 
   const handleSelectQuestion = async (idx: number) => {
     if (idx === currentIndex) return;
@@ -480,29 +474,18 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       setCurrentIndex(idx);
       return;
     }
-    if (showFeedback && isPracticeMode) return;
+    if (showFeedback && !isInitialExam) return;
 
-    if (!isPracticeMode) {
+    if (isInitialExam) {
       const currentAns = userAnswers[currentQuestion.id];
       if (isAnswerProvided(currentAns)) {
         try {
           const backendPayload = toBackendAnswer(currentQuestion, currentAns);
-          if (isInitialExam) {
-            await studentLearningService.attempts.saveAnswer(
-              examData.id,
-              currentQuestion.id,
-              { answer: backendPayload }
-            );
-          } else {
-            if (!lockedQuestions[currentQuestion.id]) {
-              await studentLearningService.attempts.submitAnswer(
-                examData.id,
-                currentQuestion.id,
-                { answer: backendPayload }
-              );
-              setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
-            }
-          }
+          await studentLearningService.attempts.saveAnswer(
+            examData.id,
+            currentQuestion.id,
+            { answer: backendPayload }
+          );
         } catch (err) {
           console.warn("Failed to auto-save answer on select question", err);
         }
@@ -523,30 +506,17 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       return;
     }
 
-    // Trong đề kiểm tra (exam mode), lưu đáp án lên backend khi chuyển câu
-    if (!isPracticeMode) {
+    // Trong đề kiểm tra lượt đầu, lưu nháp đáp án lên backend khi chuyển câu
+    if (isInitialExam) {
       const currentAns = userAnswers[currentQuestion.id];
       if (isAnswerProvided(currentAns)) {
         try {
           const backendPayload = toBackendAnswer(currentQuestion, currentAns);
-          if (isInitialExam) {
-            // Lượt 1: Dùng saveAnswer (PUT) để học sinh vẫn có thể quay lại sửa đáp án
-            await studentLearningService.attempts.saveAnswer(
-              examData.id,
-              currentQuestion.id,
-              { answer: backendPayload }
-            );
-          } else {
-            // Lượt ôn tập / remediation: submit và khóa từng câu
-            if (!lockedQuestions[currentQuestion.id]) {
-              await studentLearningService.attempts.submitAnswer(
-                examData.id,
-                currentQuestion.id,
-                { answer: backendPayload }
-              );
-              setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
-            }
-          }
+          await studentLearningService.attempts.saveAnswer(
+            examData.id,
+            currentQuestion.id,
+            { answer: backendPayload }
+          );
         } catch (err) {
           console.warn("Failed to auto-save answer on next", err);
         }
@@ -710,8 +680,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           if (!is409) throw error;
         }
       } else {
-        // Cho lượt ôn tập hoặc làm lại, submit các câu chưa được gửi
-        const submitPromises = examData.questions.map(async (q) => {
+        // Cho lượt ôn tập hoặc làm lại (attempt > 1), submit các câu chưa được gửi
+        // Tuân thủ thứ tự orderIndex của Backend (ensureSequentialAnswer)
+        for (const q of examData.questions) {
           const ans = userAnswers[q.id];
           if (isAnswerProvided(ans) && !lockedQuestions[q.id]) {
             try {
@@ -722,17 +693,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 { answer: backendPayload }
               );
               setLockedQuestions((prev) => ({ ...prev, [q.id]: true }));
-              if (res) {
-                if (res.isCorrect !== undefined && res.isCorrect !== null) {
-                  newResults[q.id] = res.isCorrect ? "correct" : "wrong";
-                }
+              if (res && res.isCorrect !== undefined && res.isCorrect !== null) {
+                newResults[q.id] = res.isCorrect ? "correct" : "wrong";
               }
             } catch (submitErr: any) {
               // Bỏ qua lỗi 409 nếu câu đã nộp hoặc attempt đã finalized
             }
           }
-        });
-        await Promise.allSettled(submitPromises);
+        }
 
         try {
           result = await studentLearningService.attempts.submit(examData.id, { answers: [] });
@@ -822,10 +790,10 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     }
   };
 
-  // Tự động nộp bài lên backend nếu đề ôn tập đã hoàn thành 100% câu hỏi nhưng attempt vẫn ở trạng thái in_progress
+  // Tự động nộp bài lên backend nếu đề ôn tập/làm lại đã hoàn thành 100% câu hỏi nhưng attempt vẫn ở trạng thái in_progress
   useEffect(() => {
     if (
-      isPracticeMode &&
+      !isInitialExam &&
       examData.status === "in_progress" &&
       !isExamComplete &&
       !isSubmitting &&
@@ -841,7 +809,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       }
     }
   }, [
-    isPracticeMode,
+    isInitialExam,
     examData.status,
     isExamComplete,
     isSubmitting,
@@ -852,7 +820,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const getQuestionStatus = (question: { id: string }) => {
     const answer = userAnswers[question.id];
-    if ((isPracticeMode || isReviewMode) && questionResults[question.id]) {
+    if ((!isInitialExam || isReviewMode) && questionResults[question.id]) {
       return questionResults[question.id];
     }
     if (!isAnswerProvided(answer)) {
@@ -873,7 +841,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }).length;
   const totalUnanswered = totalQuestions - totalAnswered;
 
-  const shouldShowFeedback = isPracticeMode || isReviewMode ? showFeedback : false;
+  const shouldShowFeedback = !isInitialExam || isReviewMode ? showFeedback : false;
 
   const handleReview = async () => {
     try {
@@ -1027,26 +995,26 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   if (isPracticeCompleted100 && !isReviewMode) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 md:p-10 flex items-center justify-center transition-colors">
-        <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-8 md:p-10 text-center border border-slate-200 dark:border-slate-700">
-          <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-            <Trophy className="w-10 h-10 text-emerald-600 dark:text-emerald-400 stroke-[1.75]" />
+      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center transition-colors">
+        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 text-center border border-slate-200">
+          <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Trophy className="w-10 h-10 text-emerald-600 stroke-[1.75]" />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-slate-100 mb-3">
+          <h1 className="text-3xl font-black text-slate-900 mb-3">
             Hoàn thành 100% Đề Ôn Tập!
           </h1>
-          <p className="text-slate-600 dark:text-slate-300 mb-8 max-w-md mx-auto leading-relaxed">
+          <p className="text-slate-600 mb-8 max-w-md mx-auto leading-relaxed">
             Tuyệt vời! Bạn đã trả lời chính xác toàn bộ <strong>{examData.questions.length} / {examData.questions.length}</strong> câu hỏi trong đề ôn tập này.
           </p>
 
           <div className="grid grid-cols-2 gap-4 mb-8 text-left">
-            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-              <span className="text-xs uppercase font-bold text-emerald-700 dark:text-emerald-300 block mb-1">Số câu hoàn thành</span>
-              <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{examData.questions.length} / {examData.questions.length}</span>
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+              <span className="text-xs uppercase font-bold text-emerald-700 block mb-1">Số câu hoàn thành</span>
+              <span className="text-2xl font-black text-emerald-700">{examData.questions.length} / {examData.questions.length}</span>
             </div>
-            <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
-              <span className="text-xs uppercase font-bold text-indigo-700 dark:text-indigo-300 block mb-1">Tỷ lệ chính xác</span>
-              <span className="text-2xl font-black text-indigo-700 dark:text-indigo-300">100%</span>
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200">
+              <span className="text-xs uppercase font-bold text-indigo-700 block mb-1">Tỷ lệ chính xác</span>
+              <span className="text-2xl font-black text-indigo-700">100%</span>
             </div>
           </div>
 
@@ -1058,7 +1026,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 }
                 navigate(-1);
               }}
-              className="px-6 py-3.5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-200 transition"
+              className="px-6 py-3.5 rounded-2xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition"
             >
               Quay lại bài học
             </button>
@@ -1091,30 +1059,30 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     const isExamType = examData.examType === "exam";
 
     return (
-      <div className="min-h-screen bg-slate-50  p-6 md:p-10 transition-colors">
-        <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+      <div className="min-h-screen bg-slate-50 p-6 md:p-10 transition-colors">
+        <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
           <div className="p-8 md:p-10 text-center">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-4">
+            <h1 className="text-3xl font-bold text-slate-900 mb-4">
               {isMastered ? "Hoàn thành 100%!" : isExamType ? "Kết quả bài kiểm tra" : "Kết quả bài thi"}
             </h1>
             {isExamType && !isMastered && (
-              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3 font-medium">
+              <p className="text-sm text-amber-600 mb-3 font-medium">
                 Điểm bài kiểm tra lượt đầu đã được ghi nhận. Bạn cần làm lại các câu chưa đúng để hoàn thành bài thi 100%.
               </p>
             )}
-            <p className="text-lg text-slate-600 dark:text-slate-300 mb-6">
+            <p className="text-lg text-slate-600 mb-6">
               Backend đã chấm điểm{" "}
               {submitResult?.displayResult ? (
-                <span className="font-black text-emerald-600 dark:text-emerald-400">
+                <span className="font-black text-emerald-600">
                   {submitResult.displayResult}
                 </span>
               ) : (
                 <>
-                  <span className="font-black text-emerald-600 dark:text-emerald-400">
+                  <span className="font-black text-emerald-600">
                     {submitResult?.score ?? "-"}
                   </span>{" "}
                   trên tổng điểm{" "}
-                  <span className="font-black text-slate-900 dark:text-slate-100">
+                  <span className="font-black text-slate-900">
                     {submitResult?.maxScore ?? "-"}
                   </span>{" "}
                   ({submitResult?.percentage ?? "-"}%).
@@ -1122,35 +1090,35 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               )}
             </p>
             <div className="grid grid-cols-2 gap-4 text-left mb-8">
-              <div className="rounded-3xl bg-emerald-50 dark:bg-emerald-900/20 p-5 border border-emerald-100 dark:border-emerald-700">
-                <p className="text-sm uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+              <div className="rounded-3xl bg-emerald-50 p-5 border border-emerald-100">
+                <p className="text-sm uppercase tracking-widest text-emerald-700">
                   Điểm
                 </p>
-                <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                <p className="text-3xl font-bold text-emerald-700">
                   {submitResult?.score ?? "-"}
                 </p>
               </div>
-              <div className="rounded-3xl bg-rose-50 dark:bg-rose-900/20 p-5 border border-rose-100 dark:border-rose-700">
-                <p className="text-sm uppercase tracking-widest text-rose-700 dark:text-rose-300">
+              <div className="rounded-3xl bg-rose-50 p-5 border border-rose-100">
+                <p className="text-sm uppercase tracking-widest text-rose-700">
                   Tổng điểm
                 </p>
-                <p className="text-3xl font-bold text-rose-700 dark:text-rose-300">
+                <p className="text-3xl font-bold text-rose-700">
                   {submitResult?.maxScore ?? "-"}
                 </p>
               </div>
-              <div className="rounded-3xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700">
-                <p className="text-sm uppercase tracking-widest text-slate-600 dark:text-slate-400">
+              <div className="rounded-3xl bg-slate-50 p-5 border border-slate-200">
+                <p className="text-sm uppercase tracking-widest text-slate-600">
                   Chưa làm
                 </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+                <p className="text-3xl font-bold text-slate-900">
                   {totalUnanswered}
                 </p>
               </div>
-              <div className="rounded-3xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700">
-                <p className="text-sm uppercase tracking-widest text-slate-600 dark:text-slate-400">
+              <div className="rounded-3xl bg-slate-50 p-5 border border-slate-200">
+                <p className="text-sm uppercase tracking-widest text-slate-600">
                   Tổng câu
                 </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+                <p className="text-3xl font-bold text-slate-900">
                   {totalQuestions}
                 </p>
               </div>
@@ -1158,7 +1126,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={() => navigate(-1)}
-                className="px-6 py-4 rounded-3xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 font-semibold hover:bg-slate-200 transition"
+                className="px-6 py-4 rounded-3xl bg-slate-100 text-slate-800 font-semibold hover:bg-slate-200 transition"
               >
                 Quay lại
               </button>
@@ -1189,12 +1157,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }
 
   return (
-    <div className="text-slate-800 dark:text-slate-200 flex flex-col h-screen overflow-hidden font-sans bg-slate-50 dark:bg-slate-900 transition-colors">
-      <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
+    <div className="text-slate-800 flex flex-col h-screen overflow-hidden font-sans bg-slate-50 transition-colors">
+      <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
         <div className="flex items-center gap-3">
           <button
             onClick={handleBackClick}
-            className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+            className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
             title="Quay lại"
           >
             <ArrowLeftOutlined className="text-lg" />
@@ -1207,63 +1175,24 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           <h1 className="font-bold text-xl">{examData.title}</h1>
         </div>
         <div className="flex items-center gap-4 md:gap-8">
-          {toggleDarkMode && (
-            <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-              title="Toggle Dark Mode"
-            >
-              {isDarkMode ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                  />
-                </svg>
-              )}
-            </button>
-          )}
           {isReviewMode ? (
-            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-800">
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+            <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
+              <span className="text-sm font-bold text-emerald-700">
                 Điểm: {examData.score} / {examData.maxScore} ({examData.percentage}%)
               </span>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700">
-                <ClockCircleOutlined className="text-emerald-600 dark:text-emerald-400" />
-                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
+              <div className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">
+                <ClockCircleOutlined className="text-emerald-600" />
+                <span className="font-mono font-bold text-emerald-700">
                   {formatTime(timeRemaining)}
                 </span>
               </div>
               <button
                 onClick={handleFinish}
                 disabled={isSubmitting}
-                className="px-4 py-1.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-md text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+                className="px-4 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-xs font-semibold hover:bg-rose-100 transition-colors"
               >
                 {isSubmitting ? "ĐANG NỘP..." : "NỘP BÀI"}
               </button>
@@ -1273,29 +1202,29 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       </header>
 
       <main className="flex-1 flex overflow-hidden">
-        <aside className="w-72 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 transition-colors">
+        <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 transition-colors">
           <div className="p-5 flex-1 overflow-y-auto">
             <div className="mb-6">
               <div className="flex justify-between items-end mb-2">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  {isPracticeMode && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {!isInitialExam && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
                 </span>
-                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                  {isPracticeMode && !isReviewMode
+                <span className="text-sm font-bold text-emerald-600">
+                  {!isInitialExam && !isReviewMode
                     ? `${currentMasteredCount}/${examData.questions.length}`
                     : `${currentIndex + 1}/${totalQuestions}`}
                 </span>
               </div>
-              <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                 <div
-                  className="bg-emerald-500 dark:bg-emerald-400 h-full transition-all duration-500"
+                  className="bg-emerald-500 h-full transition-all duration-500"
                   style={{ width: `${progressPercent}%` }}
                 ></div>
               </div>
             </div>
 
-            <div className="mb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              {isPracticeMode && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
+            <div className="mb-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              {!isInitialExam && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
             </div>
             <div className="grid grid-cols-5 gap-2">
               {activeQuestions.map((q, idx) => {
@@ -1316,16 +1245,16 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 if (isCurrent) {
                   if (questionStatus === "correct") {
                     itemClass +=
-                      " bg-emerald-500 text-white border-emerald-500 dark:bg-emerald-600 dark:border-emerald-600";
+                      " bg-emerald-500 text-white border-emerald-500";
                   } else if (questionStatus === "wrong") {
                     itemClass +=
-                      " bg-rose-500 text-white border-rose-500 dark:bg-rose-600 dark:border-rose-600";
+                      " bg-rose-500 text-white border-rose-500";
                   } else if (isSelected) {
                     itemClass +=
-                      " bg-blue-700 text-white border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-700";
+                      " bg-blue-700 text-white border-blue-200";
                   } else {
                     itemClass +=
-                      " border-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400";
+                      " border-2 border-blue-600 text-blue-600";
                   }
                 }
                 // =======================
@@ -1334,16 +1263,16 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 else {
                   if (questionStatus === "correct") {
                     itemClass +=
-                      " bg-emerald-500 text-white border-emerald-500 dark:bg-emerald-600 dark:border-emerald-600";
+                      " bg-emerald-500 text-white border-emerald-500";
                   } else if (questionStatus === "wrong") {
                     itemClass +=
-                      " bg-rose-500 text-white border-rose-500 dark:bg-rose-600 dark:border-rose-600";
+                      " bg-rose-500 text-white border-rose-500";
                   } else if (isSelected) {
                     itemClass +=
-                      " bg-blue-700 text-white border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-700";
+                      " bg-blue-700 text-white border-blue-200";
                   } else {
                     itemClass +=
-                      " border-slate-200 text-slate-600 dark:border-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50";
+                      " border-slate-200 text-slate-600 hover:bg-slate-50";
                   }
                 }
                 return (
@@ -1358,36 +1287,36 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               })}
             </div>
           </div>
-          <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-            <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mb-2 text-center underline uppercase">
+          <div className="p-4 border-t border-slate-200 bg-slate-50">
+            <div className="text-[10px] text-slate-400 italic mb-2 text-center underline uppercase">
               Chú thích:
             </div>
-            <div className="grid grid-cols-2 gap-3 text-[10px] dark:text-slate-400 ">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-slate-200   dark:bg-slate-700 border border-gray-300 dark:border-slate-600" />
+            <div className="grid grid-cols-2 gap-3 text-[10px]">
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-slate-200 border border-gray-300" />
                 Chưa chọn
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-blue-500 dark:bg-blue-600" />
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-blue-500" />
                 Đã chọn
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 dark:bg-emerald-600" />
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-emerald-500" />
                 Đúng
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500 dark:bg-rose-600" />
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-rose-500" />
                 Sai
               </div>
             </div>
           </div>
         </aside>
 
-        <section className="flex-1 bg-slate-50 dark:bg-slate-900 p-6 md:p-8 pt-10 flex flex-col items-center justify-center overflow-hidden relative transition-colors">
+        <section className="flex-1 bg-slate-50 p-6 md:p-8 pt-10 flex flex-col items-center justify-center overflow-hidden relative transition-colors">
           <div
-            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} h-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-700/80 relative flex flex-col transition-all duration-500`}
+            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 relative flex flex-col transition-all duration-500`}
           >
-            <div className="absolute -top-3.5 left-6 bg-emerald-600 dark:bg-emerald-500 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider z-20 shadow-md">
+            <div className="absolute -top-3.5 left-6 bg-emerald-600 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider z-20 shadow-md">
               CÂU HỎI {currentIndex + 1}
             </div>
 
@@ -1405,13 +1334,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     question={currentQuestion}
                     currentAnswer={userAnswers[currentQuestion.id]}
                     onAnswerChange={handleAnswerChange}
-                    onSubmit={isPracticeMode ? handleSubmit : handleFinish}
+                    onSubmit={!isInitialExam ? handleSubmit : handleFinish}
                     isCorrect={isReviewMode ? (questionResults[currentQuestion.id] === "correct" || (currentQuestion as any).isCorrect) : isCorrect}
                     showFeedback={shouldShowFeedback}
                     onNext={handleNext}
-                    isLastQuestion={currentIndex === totalQuestions - 1 || (isPracticeMode && currentMasteredCount === totalQuestions)}
+                    isLastQuestion={currentIndex === totalQuestions - 1 || (!isInitialExam && currentMasteredCount === totalQuestions)}
                     isReviewMode={isReviewMode}
-                    isPracticeMode={isPracticeMode}
+                    isPracticeMode={!isInitialExam}
                   />
                 </motion.div>
               </AnimatePresence>

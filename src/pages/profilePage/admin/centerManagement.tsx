@@ -1793,7 +1793,7 @@ export default function CenterManagement() {
 
               {/* LEFT SIDEBAR: CENTERS LIST */}
               <Col xs={24} lg={6}>
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 sticky top-6">
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-[80px] z-10 transition-all">
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold text-slate-800 m-0">
                       Trung tâm ({centers.length})
@@ -1818,7 +1818,7 @@ export default function CenterManagement() {
                     allowClear
                   />
 
-                  <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
                     {filteredCenters.map((center) => {
                       const isSelected = center.id === selectedCenterId;
                       return (

@@ -64,6 +64,7 @@ export interface ExamData {
   percentage?: string;
   questions: ExamQuestion[];
   expiresAt?: string | null;
+  attemptNumber?: number;
   attemptPhase?: "initial" | "remediation";
   taskStatus?: "in_progress" | "finished" | "mastered" | "remediation_required";
   mastered?: boolean;

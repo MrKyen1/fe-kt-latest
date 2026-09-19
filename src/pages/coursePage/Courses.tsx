@@ -1,19 +1,14 @@
-import { Typography, Row, Col, Spin, Alert, Tag, Button, Empty, Input } from "antd";
+import { Typography, Spin, Alert, Button, Empty, Input, Pagination } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import {
   BookOpen,
-  Clock,
-  PlayCircle,
   Building2,
-  ChevronRight,
   ListChecks,
   Search,
-  CheckCircle2,
   ArrowRight,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
-import { studentLearningService } from "../../services/studentLearningService";
 import { learningCmsService } from "../../services/learningCmsService";
 import { academicService } from "../../services/academicService";
 import { useAuth } from "../../contexts/AuthContext";
@@ -39,13 +34,17 @@ export default function Courses() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
 
-  // Assigned exams for student
-  const [assignedExams, setAssignedExams] = useState<any[]>([]);
-  const [startingExamKey, setStartingExamKey] = useState<string | null>(null);
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
 
-  const isStudent = user?.role === "student";
   const isTeacher = user?.role === "teacher";
   const isAdmin = user?.role === "admin";
+
+  // Reset page on filter/search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedLevel]);
 
   // Determine user center
   const userCenterId = useMemo(() => {
@@ -70,10 +69,9 @@ export default function Courses() {
       try {
         setIsLoading(true);
 
-        const [currRes, centerRes, examRes] = await Promise.allSettled([
+        const [currRes, centerRes] = await Promise.allSettled([
           learningCmsService.curriculums.list({ status: "published", limit: 100 }),
           academicService.centers.list().catch(() => []),
-          isStudent ? studentLearningService.examAssignments.list({ page: 1, limit: 10 }) : Promise.resolve({ data: [] }),
         ]);
 
         if (!active) return;
@@ -100,50 +98,6 @@ export default function Courses() {
           setCenters(Array.isArray(centerRes.value) ? centerRes.value : []);
         }
 
-        if (examRes.status === "fulfilled") {
-          const rawAssignments = (examRes.value as any)?.data ?? [];
-          const flattened: any[] = [];
-          for (const row of rawAssignments) {
-            const assignmentStudentId = row.id;
-            const assignmentTitle = row.assignment?.title || "Bài thi được giao";
-            const examsArr = row.exams || row.assignment?.exams || [];
-            if (examsArr.length > 0) {
-              for (const exMap of examsArr) {
-                const ex = exMap.exam;
-                const examId = exMap.examId || ex?.id;
-                if (!examId) continue;
-                flattened.push({
-                  assignmentStudentId,
-                  examId,
-                  title: ex?.title || assignmentTitle,
-                  code: ex?.code,
-                  timeLimitSeconds: ex?.timeLimitSeconds,
-                  status: exMap.status || row.status,
-                  finished: exMap.finished,
-                  bestPercentage: exMap.bestPercentage,
-                  attemptsCount: exMap.attemptsCount || 0,
-                  className: row.class?.name || row.assignment?.class?.name,
-                });
-              }
-            } else if (row.exam || row.assignment?.exam) {
-              const ex = row.exam || row.assignment?.exam;
-              flattened.push({
-                assignmentStudentId,
-                examId: ex.id,
-                title: ex.title || assignmentTitle,
-                code: ex.code,
-                timeLimitSeconds: ex.timeLimitSeconds,
-                status: row.status,
-                finished: row.finished,
-                bestPercentage: row.bestPercentage,
-                attemptsCount: row.attemptsCount || 0,
-                className: row.class?.name || row.assignment?.class?.name,
-              });
-            }
-          }
-          setAssignedExams(flattened);
-        }
-
         setError(null);
       } catch (err: any) {
         if (active) setError(err?.message || "Không thể tải dữ liệu khóa học.");
@@ -156,23 +110,7 @@ export default function Courses() {
     return () => {
       active = false;
     };
-  }, [user, isStudent]);
-
-  // Handle start exam
-  const handleStartAssignedExam = async (assignmentStudentId: string, examId: string) => {
-    const key = `${assignmentStudentId}:${examId}`;
-    try {
-      setStartingExamKey(key);
-      const attempt = await studentLearningService.examAssignments.startAttempt(assignmentStudentId, examId);
-      const attemptId = (attempt as any)?.id;
-      if (!attemptId) throw new Error("Backend không trả về attemptId.");
-      navigate(`/exam/${attemptId}`);
-    } catch (err: any) {
-      setError(err?.message || "Không thể bắt đầu làm bài thi.");
-    } finally {
-      setStartingExamKey(null);
-    }
-  };
+  }, []);
 
   // Center display name
   const currentCenter = useMemo(() => {
@@ -204,6 +142,12 @@ export default function Courses() {
       return matchSearch && matchLevel;
     });
   }, [curriculums, searchQuery, selectedLevel]);
+
+  // Paginated Curriculums (max 8 per page)
+  const paginatedCurriculums = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredCurriculums.slice(startIndex, startIndex + pageSize);
+  }, [filteredCurriculums, currentPage, pageSize]);
 
   return (
     <div className="w-full bg-slate-50 py-12 px-6 md:px-16 min-h-screen">
@@ -294,90 +238,8 @@ export default function Courses() {
           </div>
         ) : (
           <>
-            {/* ============================================================ */}
-            {/* PHẦN 1: BÀI TẬP ĐƯỢC GIAO (STUDENT / TEACHER / ADMIN)        */}
-            {/* ============================================================ */}
-            {isStudent ? (
-              assignedExams.length > 0 && (
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <Title level={3} className="!text-2xl !font-bold !text-slate-800 !m-0">
-                        Bài tập cần hoàn thành
-                      </Title>
-                      <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">
-                        {assignedExams.length}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => navigate("/profile?tab=my-exams")}
-                      className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      Tất cả bài tập <ChevronRight size={16} />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                    {assignedExams.slice(0, 4).map((item) => {
-                      const isStarting = startingExamKey === `${item.assignmentStudentId}:${item.examId}`;
-                      const isDone = item.finished || item.status === "finished";
-
-                      return (
-                        <div
-                          key={`${item.assignmentStudentId}:${item.examId}`}
-                          className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                              <span
-                                className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
-                                  isDone
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
-                                    : "bg-amber-50 text-amber-700 border border-amber-200/60"
-                                }`}
-                              >
-                                {isDone ? "Đã nộp bài" : "Chưa hoàn thành"}
-                              </span>
-                              {item.className && (
-                                <span className="text-xs text-slate-400 font-medium truncate max-w-[120px]">
-                                  {item.className}
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="font-bold text-slate-800 text-base leading-snug line-clamp-2 mb-2 group-hover:text-blue-600 transition-colors">
-                              {item.title}
-                            </h4>
-                          </div>
-
-                          <div className="pt-3 border-t border-slate-100 mt-2 flex items-center justify-between gap-2">
-                            <span className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                              <Clock size={14} className="text-slate-400" />
-                              {item.timeLimitSeconds ? `${Math.ceil(item.timeLimitSeconds / 60)} phút` : "Tự do"}
-                            </span>
-
-                            <Button
-                              type={isDone ? "default" : "primary"}
-                              size="middle"
-                              icon={<PlayCircle size={15} />}
-                              loading={isStarting}
-                              onClick={() => handleStartAssignedExam(item.assignmentStudentId, item.examId)}
-                              className={`rounded-xl font-semibold text-xs h-8 ${
-                                isDone ? "border-slate-300" : "bg-blue-600 hover:bg-blue-500"
-                              }`}
-                            >
-                              {isDone ? "Luyện lại" : "Làm ngay"}
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              )
-            ) : (
-              // Lean Action Banner for Teacher / Admin
+            {/* Lean Action Banner for Teacher / Admin */}
+            {(isTeacher || isAdmin) && (
               <div className="bg-white rounded-3xl border border-slate-100 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
@@ -407,7 +269,7 @@ export default function Courses() {
             )}
 
             {/* ============================================================ */}
-            {/* PHẦN 2: DANH MỤC KHÓA HỌC / GIÁO TRÌNH (COURSE CATALOG)      */}
+            {/* DANH MỤC KHÓA HỌC / GIÁO TRÌNH (COURSE CATALOG)              */}
             {/* ============================================================ */}
             <section className="space-y-6">
               <div className="flex items-end justify-between">
@@ -445,103 +307,119 @@ export default function Courses() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-8">
-                  {filteredCurriculums.map((curr, idx) => {
-                    const examCount = curr.exams?.length || 0;
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    {paginatedCurriculums.map((curr, idx) => {
+                      const examCount = curr.exams?.length || 0;
 
-                    return (
-                      <Link
-                        key={curr.id}
-                        to={`/courses/published-curriculums/${curr.id}`}
-                        className="block h-full no-underline text-inherit"
-                      >
-                        <motion.div
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.04 }}
-                          whileHover={{ y: -8 }}
-                          className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-slate-100 flex flex-col h-full group cursor-pointer"
+                      return (
+                        <Link
+                          key={curr.id}
+                          to={`/courses/published-curriculums/${curr.id}`}
+                          className="block h-full no-underline text-inherit"
                         >
-                        {/* Course Thumbnail 16:9 */}
-                        <div className="w-full aspect-[16/9] overflow-hidden bg-slate-100 relative">
-                          {curr.image ? (
-                            <AppImage
-                              src={curr.image}
-                              alt={curr.title}
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                              rootClassName="w-full h-full"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 flex flex-col items-center justify-center text-white p-4 group-hover:scale-110 transition-transform duration-500">
-                              <BookOpen size={40} className="mb-2 opacity-80" />
-                              <span className="font-bold text-base tracking-wider uppercase opacity-90">
-                                {curr.code || "KATA EDU"}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Level badge on image (matching Home style) */}
-                          {curr.level && (
-                            <div className="absolute top-4 left-4 z-10">
-                              <span className="bg-white/95 backdrop-blur-sm text-blue-600 text-xs font-bold px-3.5 py-1 rounded-full shadow-sm">
-                                {curr.level.name}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Public status pill */}
-                          <div className="absolute top-4 right-4 z-10">
-                            <span className="bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-sm">
-                              Public
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Course Details (Matching CourseHighlights typography) */}
-                        <div className="p-6 md:p-8 flex-1 flex flex-col justify-between">
-                          <div>
-                            {/* Code / Subject Tag */}
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xs font-mono font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                                {curr.code}
-                              </span>
-                              {curr.subject?.name && (
-                                <span className="text-xs font-bold text-blue-600 truncate max-w-[160px]">
-                                  {curr.subject.name}
-                                </span>
+                          <motion.div
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.03 }}
+                            whileHover={{ y: -6 }}
+                            className="bg-white rounded-2xl overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 border border-slate-200/80 flex flex-col h-full group cursor-pointer"
+                          >
+                            {/* Course Thumbnail 16:10 */}
+                            <div className="w-full aspect-[16/10] overflow-hidden bg-slate-100 relative">
+                              {curr.image ? (
+                                <AppImage
+                                  src={curr.image}
+                                  alt={curr.title}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                  rootClassName="w-full h-full"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 flex flex-col items-center justify-center text-white p-4 group-hover:scale-105 transition-transform duration-500">
+                                  <BookOpen size={32} className="mb-1.5 opacity-80" />
+                                  <span className="font-bold text-sm tracking-wider uppercase opacity-90">
+                                    {curr.code || "KATA EDU"}
+                                  </span>
+                                </div>
                               )}
+
+                              {/* Level badge on image */}
+                              {curr.level && (
+                                <div className="absolute top-3 left-3 z-10">
+                                  <span className="bg-white/95 backdrop-blur-sm text-blue-600 text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-xs">
+                                    {curr.level.name}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Public status pill */}
+                              <div className="absolute top-3 right-3 z-10">
+                                <span className="bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                                  Public
+                                </span>
+                              </div>
                             </div>
 
-                            {/* Title (matches text-2xl font-bold text-slate-800 from Home) */}
-                            <h3 className="text-xl md:text-2xl font-bold text-slate-800 mb-3 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
-                              {curr.title}
-                            </h3>
+                            {/* Course Details */}
+                            <div className="p-4 flex-1 flex flex-col justify-between">
+                              <div>
+                                {/* Code / Subject Tag */}
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <span className="text-[11px] font-mono font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    {curr.code}
+                                  </span>
+                                  {curr.subject?.name && (
+                                    <span className="text-[11px] font-bold text-blue-600 truncate max-w-[130px]">
+                                      {curr.subject.name}
+                                    </span>
+                                  )}
+                                </div>
 
-                            {/* Short description */}
-                            {curr.description && (
-                              <p className="text-slate-500 text-sm md:text-base leading-relaxed line-clamp-2 mb-4">
-                                {curr.description}
-                              </p>
-                            )}
-                          </div>
+                                {/* Title */}
+                                <h3 className="text-base font-bold text-slate-800 mb-1 group-hover:text-blue-600 transition-colors line-clamp-1 leading-snug" title={curr.title}>
+                                  {curr.title}
+                                </h3>
 
-                          {/* Footer Meta & Action */}
-                          <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
-                            <div className="flex items-center gap-1.5 text-sm text-slate-500 font-medium">
-                              <ListChecks size={16} className="text-blue-600" />
-                              <span>{examCount} bài thi</span>
+                                {/* Short description */}
+                                <p className="text-slate-500 text-xs leading-relaxed line-clamp-2 mb-3 min-h-[32px]">
+                                  {curr.description || "Chương trình giáo trình đào tạo chuẩn hóa."}
+                                </p>
+                              </div>
+
+                              {/* Footer Meta & Action */}
+                              <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-auto text-xs">
+                                <div className="flex items-center gap-1 text-slate-500 font-medium">
+                                  <ListChecks size={14} className="text-blue-600" />
+                                  <span>{examCount} bài thi</span>
+                                </div>
+
+                                <span className="inline-flex items-center gap-1 font-bold text-blue-600 group-hover:text-blue-700 group-hover:translate-x-0.5 transition-all">
+                                  Vào học <ArrowRight size={14} />
+                                </span>
+                              </div>
                             </div>
+                          </motion.div>
+                        </Link>
+                      );
+                    })}
+                  </div>
 
-                            <span className="inline-flex items-center gap-1 text-sm font-bold text-blue-600 group-hover:text-blue-700 group-hover:translate-x-1 transition-all">
-                              Vào học <ArrowRight size={16} />
-                            </span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    </Link>
-                    );
-                  })}
-                </div>
+                  {/* Pagination when total items > pageSize */}
+                  {filteredCurriculums.length > pageSize && (
+                    <div className="flex justify-center pt-8">
+                      <Pagination
+                        current={currentPage}
+                        pageSize={pageSize}
+                        total={filteredCurriculums.length}
+                        onChange={(page) => {
+                          setCurrentPage(page);
+                          window.scrollTo({ top: 250, behavior: "smooth" });
+                        }}
+                        showSizeChanger={false}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </section>
           </>
@@ -550,5 +428,3 @@ export default function Courses() {
     </div>
   );
 }
-
-

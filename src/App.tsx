@@ -1,11 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { App as AntApp, ConfigProvider } from "antd";
 import Layout from "./components/Layout";
 import ExamLayout from "./pages/coursePage/ExamLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import ScrollToTop from "./components/ScrollToTop";
-import useDarkMode from "./hooks/useDarkMode";
 
 // Lazy load pages
 const Home = lazy(() => import("./pages/homePage/Home"));
@@ -28,7 +27,11 @@ const StudentMyExams = lazy(() => import("./pages/profilePage/student/StudentMyE
 const Leaderboard = lazy(() => import("./pages/profilePage/Leaderboard"));
 
 export default function App() {
-  const { isDarkMode, toggleDarkMode } = useDarkMode();
+  useEffect(() => {
+    // Đảm bảo luôn chạy light mode và dọn dẹp dark mode tồn dư
+    document.documentElement.classList.remove("dark");
+    localStorage.removeItem("darkMode");
+  }, []);
   return (
     <ConfigProvider
       theme={{
@@ -174,10 +177,7 @@ export default function App() {
               index
               element={
                 <ProtectedRoute>
-                  <ExamPage
-                    isDarkMode={isDarkMode}
-                    toggleDarkMode={toggleDarkMode}
-                  />
+                  <ExamPage />
                 </ProtectedRoute>
               }
             />

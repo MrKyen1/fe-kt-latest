@@ -9,7 +9,6 @@ import {
   InputNumber,
   List,
   Modal,
-  Popover,
   Row,
   Select,
   Segmented,
@@ -27,7 +26,8 @@ import {
 } from "@ant-design/icons";
 import { AlertCircle, AlertTriangle, Search, ClipboardList } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from "../../constants";
-import QuestionPopoverContent from "../QuestionPopoverContent";
+import { QuestionPopover } from "../QuestionPopoverContent";
+import QuestionRowItem from "../QuestionRowItem";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { RandomQuestionCriteria } from "../../../../../../types/learning";
 
@@ -422,13 +422,13 @@ export default function ManageQuestionsModal({
                       <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => onRemoveQuestion(eq.questionId)} />,
                     ]}
                   >
-                    <Popover
-                      content={<QuestionPopoverContent question={detail} skills={skills} levels={levels} topics={topics} tags={tags} />}
-                      title={<div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>}
-                      trigger="hover"
+                    <QuestionPopover
+                      question={detail}
+                      skills={skills}
+                      levels={levels}
+                      topics={topics}
+                      tags={tags}
                       placement="right"
-                      mouseEnterDelay={0.15}
-                      overlayStyle={{ maxWidth: 380 }}
                     >
                       <div className="cursor-pointer flex-1 pr-2">
                         <List.Item.Meta
@@ -448,7 +448,7 @@ export default function ManageQuestionsModal({
                           }
                         />
                       </div>
-                    </Popover>
+                    </QuestionPopover>
                   </List.Item>
                 );
               }}
@@ -535,46 +535,35 @@ export default function ManageQuestionsModal({
 
                 {/* Question list */}
                 <List
+                  split={false}
                   style={{ maxHeight: 340, overflowY: "auto" }}
                   dataSource={available}
-                  renderItem={(q: Question) => (
-                    <List.Item
-                      actions={[
-                        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => onAddQuestion(q.id)}>
+                  renderItem={(q: Question, index) => (
+                    <QuestionRowItem
+                      key={q.id}
+                      index={index + 1}
+                      question={questionDetails[q.id] ?? q}
+                      skills={skills}
+                      levels={levels}
+                      topics={topics}
+                      tags={tags}
+                      variant="indigo"
+                      placement="left"
+                      action={
+                        <Button
+                          type="dashed"
+                          size="small"
+                          icon={<PlusOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddQuestion(q.id);
+                          }}
+                          className="text-xs"
+                        >
                           Thêm
-                        </Button>,
-                      ]}
-                    >
-                      <Popover
-                        content={<QuestionPopoverContent question={questionDetails[q.id] ?? q} skills={skills} levels={levels} topics={topics} tags={tags} />}
-                        title={<div className="font-bold text-slate-800 text-xs">Chi tiết câu hỏi</div>}
-                        trigger="hover"
-                        placement="left"
-                        mouseEnterDelay={0.15}
-                        overlayStyle={{ maxWidth: 380 }}
-                      >
-                        <div className="cursor-pointer flex-1 pr-2 min-w-0">
-                          <List.Item.Meta
-                            title={
-                              <div className="text-xs font-semibold line-clamp-1 text-slate-800" dangerouslySetInnerHTML={{ __html: q.prompt ?? "" }} />
-                            }
-                            description={
-                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none m-0">
-                                  {QUESTION_TYPE_LABELS[q.type]}
-                                </Tag>
-                                {q.difficultyLevelId && (
-                                  <span className="text-[10px] text-slate-400">• {levels.find((l) => l.id === q.difficultyLevelId)?.name}</span>
-                                )}
-                                {q.skillId && (
-                                  <span className="text-[10px] text-slate-400">• {skills.find((s) => s.id === q.skillId)?.name}</span>
-                                )}
-                              </div>
-                            }
-                          />
-                        </div>
-                      </Popover>
-                    </List.Item>
+                        </Button>
+                      }
+                    />
                   )}
                   locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" styles={{ image: { height: 40 } }} /> }}
                 />
@@ -765,43 +754,36 @@ export default function ManageQuestionsModal({
                     </div>
 
                     <List
+                      split={false}
                       size="small"
                       style={{ maxHeight: 180, overflowY: "auto" }}
                       dataSource={randomResult.items}
                       renderItem={(item, index) => {
                         const q = allQuestions.find((allQ) => allQ.id === item.questionId);
-                        let prompt = q?.prompt;
-                        let type = q?.type;
-                        if (!prompt) {
+                        let groupQ: any = null;
+                        if (!q) {
                           for (const grp of randomResult.groups || []) {
                             const matched = grp.questions?.find((gq) => gq.id === item.questionId);
                             if (matched) {
-                              prompt = matched.prompt;
-                              type = matched.type;
+                              groupQ = matched;
                               break;
                             }
                           }
                         }
+                        const questionObj = questionDetails[item.questionId] ?? q ?? groupQ;
 
                         return (
-                          <List.Item className="py-1 px-2 bg-white rounded-lg mb-1 border border-purple-100">
-                            <div className="flex items-center justify-between w-full gap-2">
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                  {index + 1}
-                                </span>
-                                <div
-                                  className="text-xs text-slate-800 line-clamp-1"
-                                  dangerouslySetInnerHTML={{ __html: prompt || `Câu hỏi #${item.questionId}` }}
-                                />
-                              </div>
-                              {type && (
-                                <Tag color={QUESTION_TYPE_COLORS[type]} className="text-[9px] border-none m-0 shrink-0">
-                                  {QUESTION_TYPE_LABELS[type]}
-                                </Tag>
-                              )}
-                            </div>
-                          </List.Item>
+                          <QuestionRowItem
+                            key={item.questionId}
+                            index={index + 1}
+                            question={questionObj}
+                            skills={skills}
+                            levels={levels}
+                            topics={topics}
+                            tags={tags}
+                            variant="purple"
+                            placement="left"
+                          />
                         );
                       }}
                     />

@@ -9,10 +9,7 @@ import { resolveMediaUrl } from "../../services/apiClient";
 import { ExamData, ExamMedia, ExamOption, ExamQuestion, QuestionType } from "../../types";
 import { examDataMap } from "../../data/mockData";
 
-interface ExamPageProps {
-  isDarkMode?: boolean;
-  toggleDarkMode?: () => void;
-}
+
 
 type AttemptPayload = {
   id: string;
@@ -279,6 +276,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     source: attempt.source,
     curriculumId: (attempt as any).curriculumId,
     expiresAt: attempt.expiresAt,
+    attemptNumber: attempt.attemptNumber ?? (attempt.attemptPhase === "initial" ? 1 : 2),
     attemptPhase: attempt.attemptPhase,
     taskStatus: attempt.taskStatus,
     mastered: attempt.mastered,
@@ -288,7 +286,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
   } as any;
 }
 
-const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
+const ExamPage: React.FC = () => {
   const { examId: attemptId } = useParams<{ examId: string }>();
   const [examData, setExamData] = useState<ExamData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -390,7 +388,7 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <Spin size="large" />
       </div>
     );
@@ -398,7 +396,7 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
 
   if (error || !examData) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <Result
           status="warning"
           title="Không thể tải bài thi"
@@ -418,13 +416,9 @@ const ExamPage: React.FC<ExamPageProps> = ({ isDarkMode, toggleDarkMode }) => {
     );
   }
 
-
-
   return (
     <ExamContainer
       examData={examData}
-      isDarkMode={isDarkMode}
-      toggleDarkMode={toggleDarkMode}
     />
   );
 };

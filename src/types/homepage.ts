@@ -154,3 +154,20 @@ export interface ReorderItem {
   id: string;
   orderIndex: number;
 }
+
+export interface HomepageTeacher {
+  id: string;
+  fullName: string;
+  avatar?: string | null;
+  description?: string | null;
+  yearsOfExperience?: number | null;
+  specializations: Array<{
+    id: string;
+    code: string;
+    name: string;
+  }>;
+  centers: Array<{
+    id: string;
+    name: string;
+  }>;
+}

@@ -6,6 +6,7 @@ import {
   HomepageGalleryItem,
   HomepageMedia,
   HomepageSlide,
+  HomepageTeacher,
   ReorderItem,
   UpdateGalleryPayload,
   UpdateHomepageSettingsPayload,
@@ -19,6 +20,14 @@ export const homepageService = {
    */
   async getPublic(): Promise<HomepageData> {
     const response = await apiClient.get<ApiEnvelope<HomepageData>>("/homepage");
+    return unwrapData(response);
+  },
+
+  /**
+   * Public API: Lấy danh sách giáo viên công khai cho trang chủ
+   */
+  async getTeachers(): Promise<HomepageTeacher[]> {
+    const response = await apiClient.get<ApiEnvelope<HomepageTeacher[]>>("/homepage/teachers");
     return unwrapData(response);
   },
 
