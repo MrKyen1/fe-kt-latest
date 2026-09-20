@@ -333,7 +333,8 @@ export default function CurriculumExams() {
 
                   const attemptsCount = (entry as any).attemptsCount ?? 0;
                   const bestPctVal = parseFloat((entry as any).bestPercentage ?? "0");
-                  const isMastered = (entry as any).mastered === true || (entry as any).status === "mastered" || bestPctVal >= 100;
+                  // Ưu tiên mastered từ backend; fallback sang bestPctVal >= 100 hoặc status finished
+                  const isMastered = (entry as any).mastered === true || bestPctVal >= 100 || (entry as any).status === "finished";
                   const isNeedsRetry = !isMastered && attemptsCount > 0;
 
                   return (

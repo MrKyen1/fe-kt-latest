@@ -794,6 +794,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   // Tự động nộp bài lên backend nếu đề ôn tập/làm lại đã hoàn thành 100% câu hỏi nhưng attempt vẫn ở trạng thái in_progress
   useEffect(() => {
     if (
+      !isReviewMode &&
       !isInitialExam &&
       examData.status === "in_progress" &&
       !isExamComplete &&
@@ -810,6 +811,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       }
     }
   }, [
+    isReviewMode,
     isInitialExam,
     examData.status,
     isExamComplete,
@@ -863,10 +865,16 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         const newResults: Record<string, "correct" | "wrong"> = {};
         const newCorrects: Record<string, any> = {};
         const newExplanations: Record<string, string> = {};
+        const newAnswers: Record<string, any> = {};
 
         freshAttempt.answers.forEach((ans: any) => {
           if (ans.isCorrect !== undefined && ans.isCorrect !== null) {
             newResults[ans.questionId] = ans.isCorrect ? "correct" : "wrong";
+          }
+          const rawUserAns = ans.answer ?? ans.userAnswer;
+          if (rawUserAns !== undefined && rawUserAns !== null) {
+            const parsedUser = parseBackendAnswer(ans.questionType, rawUserAns);
+            newAnswers[ans.questionId] = parsedUser !== undefined ? parsedUser : rawUserAns;
           }
           let parsedCorr = parseBackendAnswer(ans.questionType, ans.correctAnswer);
           if (parsedCorr === undefined) {
@@ -884,6 +892,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           }
         });
 
+        if (Object.keys(newAnswers).length > 0) {
+          setUserAnswers((prev) => ({ ...newAnswers, ...prev }));
+        }
         setQuestionResults((prev) => ({ ...prev, ...newResults }));
         setCorrectAnswers((prev) => ({ ...prev, ...newCorrects }));
         setExplanations((prev) => ({ ...prev, ...newExplanations }));
@@ -892,7 +903,6 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       console.warn("Failed to fetch fresh attempt for review", e);
     }
 
-    setIsExamComplete(false);
     setIsReviewMode(true);
     setShowFeedback(true);
     setCurrentIndex(0);
@@ -1052,10 +1062,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             </button>
             <button
               onClick={async () => {
-                if (examData.status === "in_progress" && !isExamComplete) {
-                  await handleFinish();
-                }
-                handleReview();
+                await handleReview();
               }}
               className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
             >
@@ -1371,7 +1378,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     isCorrect={isReviewMode ? (questionResults[currentQuestion.id] === "correct" || (currentQuestion as any).isCorrect) : isCorrect}
                     showFeedback={shouldShowFeedback}
                     onNext={handleNext}
-                    isLastQuestion={currentIndex === totalQuestions - 1 || (!isInitialExam && currentMasteredCount === totalQuestions)}
+                    isLastQuestion={isReviewMode ? currentIndex === totalQuestions - 1 : (currentIndex === totalQuestions - 1 || (!isInitialExam && currentMasteredCount === totalQuestions))}
                     isReviewMode={isReviewMode}
                     isPracticeMode={!isInitialExam}
                   />

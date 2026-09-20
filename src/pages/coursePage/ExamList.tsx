@@ -426,8 +426,8 @@ export default function ExamList() {
                       const bestPct = ep.bestPercentage;
                       const isExam = ep.exam?.examType === "exam";
                       const bestPctVal = parseFloat(bestPct ?? "0");
-                      // Mastery Learning: Ca De thi va De on tap deu chi hoan thanh khi dat 100% hoac mastered
-                      const isCompleted = ep.mastered === true || ep.status === "mastered" || bestPctVal >= 100 || ep.completedAt != null;
+                      // Mastery Learning: Ưu tiên mastered từ backend; fallback sang pctVal >= 100 hoặc status finished
+                      const isCompleted = ep.mastered === true || bestPctVal >= 100 || ep.status === "finished" || ep.completedAt != null;
                       const isNeedsRetry = !isCompleted && attemptsCount > 0;
                       const totalQuestions = getQuestionCount(exam);
 

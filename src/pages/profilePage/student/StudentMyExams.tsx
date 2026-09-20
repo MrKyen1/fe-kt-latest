@@ -931,10 +931,11 @@ export default function StudentMyExams() {
                   const attemptsCount =
                     ep.attemptsCount ?? ep.attemptCount ?? ep.attempts?.length ?? 0;
                   const isMastered = Boolean(ep.mastered ?? (bestPctVal >= 100));
+                  // isCompleted: đã mastered (100%) hoặc đã "finished" (task done theo backend)
                   const isCompleted =
                     isMastered ||
                     bestPctVal >= 100 ||
-                    ep.status === "mastered";
+                    ep.status === "finished";
                   const requiresRemediation =
                     ep.requiresRemediation ?? (!isMastered && attemptsCount >= 1);
                   const startKey = `${curriculumId}:${examId}`;

@@ -146,26 +146,20 @@ export function ExamAnalyticsModal({
         ].filter((n) => !isNaN(n));
         const bestScore = scores.length > 0 ? Math.max(...scores) : s.bestScore;
 
+        // Ưu tiên tin vào mastered từ backend; fallback sang tính từ percentage
         const isMastered =
-          (bestPercentage != null && bestPercentage >= 100) ||
-          s.status === "finished" ||
           s.mastered === true ||
-          submittedSAtts.some((a: any) => a.mastered === true || parseFloat(a.percentage ?? "0") >= 100);
+          (bestPercentage != null && bestPercentage >= 100);
 
-        let computedStatus = s.status;
-        if (isMastered) {
-          computedStatus = "finished";
-        } else if (submittedSAtts.length > 0) {
-          computedStatus = "submitted";
-        } else if (sAtts.some((a: any) => a.status === "in_progress") || s.status === "in_progress") {
-          computedStatus = "in_progress";
-        } else {
-          computedStatus = "assigned";
-        }
+        // Tin vào status từ backend; chỉ điều chỉnh khi rõ ràng mastered
+        const computedStatus = isMastered
+          ? "finished"
+          : (s.status ?? (submittedSAtts.length > 0 ? "finished" : "assigned"));
 
         return {
           ...s,
           status: computedStatus,
+          mastered: isMastered,
           bestPercentage,
           bestScore,
           allAttempts: sAtts,
@@ -217,19 +211,17 @@ export function ExamAnalyticsModal({
       const bestScore = scores.length > 0 ? Math.max(...scores) : null;
       const bestPercentage = pcts.length > 0 ? Math.max(...pcts) : null;
 
+      // Ưu tiên mastered từ backend (item.mastered), fallback sang percentage
       const isMastered =
-        (bestPercentage != null && bestPercentage >= 100) ||
-        item.status === "finished" ||
         item.mastered === true ||
-        submittedAtts.some((a: any) => a.mastered === true || parseFloat(a.percentage ?? "0") >= 100);
-      let computedStatus = "assigned";
-      if (isMastered) {
-        computedStatus = "finished";
-      } else if (submittedAtts.length > 0) {
-        computedStatus = "submitted";
-      } else if (hasInProgress || item.status === "in_progress") {
-        computedStatus = "in_progress";
-      }
+        (bestPercentage != null && bestPercentage >= 100);
+
+      // isFinished: backend đã nộp lượt đầu (finished) dù chưa 100%
+      const isFinished = item.status === "finished" || isMastered;
+
+      // computedStatus: tin vào backend, chỉ điều chỉnh khi mastered
+      let computedStatus = item.status ?? "assigned";
+      if (isMastered) computedStatus = "finished";
 
       return {
         studentId: sId,
@@ -238,6 +230,11 @@ export function ExamAnalyticsModal({
         fullName: user?.fullName || student?.fullName || "Học sinh",
         email: user?.email || student?.email || "—",
         status: computedStatus,
+        mastered: isMastered,
+        isFinished,
+        latestAttemptStatus: item.latestAttemptStatus ?? null,
+        masteredExamsCount: item.masteredExamsCount ?? null,
+        totalRequiredExamsCount: item.totalRequiredExamsCount ?? null,
         attemptsCount: submittedAtts.length,
         firstAttemptId: firstAttempt?.id || null,
         firstAttempt: firstAttempt || null,
@@ -253,14 +250,19 @@ export function ExamAnalyticsModal({
   }, [analyticsData, assignmentDetail, attemptsList, isExamType]);
 
   const totalAssigned = studentStats.length;
+  // mastered = đã hoàn thành 100%
+  const totalMastered = studentStats.filter((s: any) => s.mastered === true).length;
+  // finished (có thể bao gồm mastered): đã nộp bài, task done
   const totalFinished = studentStats.filter((s: any) => s.status === "finished").length;
+  // đã nộp nhưng chưa mastered
+  const totalSubmittedOnly = totalFinished - totalMastered;
   const totalInProgress = studentStats.filter(
-    (s: any) => s.status === "in_progress" || (s.attemptsCount > 0 && s.status !== "finished"),
+    (s: any) => s.status === "in_progress" || s.hasInProgress,
   ).length;
   const totalNotStarted = studentStats.filter(
-    (s: any) => s.attemptsCount === 0 && s.status !== "finished",
+    (s: any) => s.attemptsCount === 0 && s.status === "assigned",
   ).length;
-  const completionRate = totalAssigned > 0 ? Math.round((totalFinished / totalAssigned) * 100) : 0;
+  const completionRate = totalAssigned > 0 ? Math.round((totalMastered / totalAssigned) * 100) : 0;
 
   const filteredStudents = useMemo(() => {
     return studentStats.filter((s: any) => {
@@ -538,14 +540,17 @@ export function ExamAnalyticsModal({
         const bestPct = pcts.length > 0 ? Math.max(...pcts) : null;
         const bestScore = scores.length > 0 ? Math.max(...scores) : null;
 
+        // Tin vào mastered từ studentStats (sử dụng st.mastered nếu có, fallback sang bestPct)
+        const stMastered = (st as any).mastered === true;
         let examStatus: "finished" | "submitted" | "in_progress" | "not_started" = "not_started";
         if (
+          stMastered ||
           bestPct === 100 ||
           submitted.some((a: any) => a.mastered === true || Number(a.percentage) >= 100)
         ) {
-          examStatus = "finished";
+          examStatus = "finished"; // finished = mastered 100%
         } else if (submitted.length > 0) {
-          examStatus = "submitted";
+          examStatus = "submitted"; // submitted = đã nộp nhưng chưa 100%
         } else if (inProgress) {
           examStatus = "in_progress";
         }
@@ -649,7 +654,7 @@ export function ExamAnalyticsModal({
                   ),
                   children: (
                     <div className="space-y-4 pt-2">
-                      {/* KPI Cards Row 1: 4 cards with unified clean design */}
+                      {/* KPI Cards Row 1: 4 cards */}
                       <Row gutter={[12, 12]}>
                         <Col span={6}>
                           <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
@@ -663,43 +668,43 @@ export function ExamAnalyticsModal({
                           </div>
                         </Col>
                         <Col span={6}>
-                          <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
-                            <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
-                              <span>Đã hoàn thành 100%</span>
+                          <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 shadow-2xs hover:border-emerald-200 transition-all">
+                            <div className="flex items-center justify-between text-xs font-medium text-emerald-700 mb-1.5">
+                              <span>Hoàn thành 100%</span>
                               <CheckCircleOutlined
-                                className={totalFinished > 0 ? "text-emerald-500 text-sm" : "text-slate-400 text-sm"}
+                                className={totalMastered > 0 ? "text-emerald-500 text-sm" : "text-slate-400 text-sm"}
                               />
                             </div>
                             <div
                               className={`text-2xl font-bold tracking-tight ${
-                                totalFinished > 0 ? "text-emerald-600" : "text-slate-800"
+                                totalMastered > 0 ? "text-emerald-600" : "text-slate-800"
                               }`}
                             >
-                              {totalFinished}
+                              {totalMastered}
                             </div>
                           </div>
                         </Col>
                         <Col span={6}>
-                          <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
-                            <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
-                              <span>Cần làm lại / Đang làm</span>
+                          <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3.5 shadow-2xs hover:border-amber-200 transition-all">
+                            <div className="flex items-center justify-between text-xs font-medium text-amber-700 mb-1.5">
+                              <span>Đã nộp bài</span>
                               <ClockCircleOutlined
-                                className={totalInProgress > 0 ? "text-amber-500 text-sm" : "text-slate-400 text-sm"}
+                                className={totalSubmittedOnly > 0 ? "text-amber-500 text-sm" : "text-slate-400 text-sm"}
                               />
                             </div>
                             <div
                               className={`text-2xl font-bold tracking-tight ${
-                                totalInProgress > 0 ? "text-amber-600" : "text-slate-800"
+                                totalSubmittedOnly > 0 ? "text-amber-600" : "text-slate-800"
                               }`}
                             >
-                              {totalInProgress}
+                              {totalSubmittedOnly}
                             </div>
                           </div>
                         </Col>
                         <Col span={6}>
                           <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
                             <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
-                              <span>Tỷ lệ hoàn thành</span>
+                              <span>Tỷ lệ thành thạo</span>
                               <TrophyOutlined className="text-slate-400 text-sm" />
                             </div>
                             <div className="text-2xl font-bold tracking-tight text-slate-800">
@@ -820,16 +825,16 @@ export function ExamAnalyticsModal({
                                             color="success"
                                             className="border-none rounded-full text-[10px] font-medium m-0 px-1.5"
                                           >
-                                            100%
+                                            ✓ 100%
                                           </Tag>
                                         )}
                                         {st.examStatus === "submitted" && (
                                           <Tag
-                                            color="orange"
+                                            color="gold"
                                             className="border-none rounded-full text-[10px] font-medium m-0 px-1.5"
                                           >
                                             {st.bestPercentage != null
-                                              ? `${st.bestPercentage}%`
+                                              ? `${Math.round(st.bestPercentage)}%`
                                               : "Đã nộp"}
                                           </Tag>
                                         )}
