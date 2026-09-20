@@ -335,7 +335,6 @@ export default function ManageQuestionsModal({
       setIsRandomLoading(true);
       const payloadCriteria: RandomQuestionCriteria[] = criteriaList.map((c) => ({
         count: c.count || 1,
-        specializationId: selectedExam?.specializationId || undefined,
         type: (c.type as any) || undefined,
         skillId: c.skillId || undefined,
         levelId: c.levelId || undefined,

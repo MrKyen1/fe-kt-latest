@@ -49,42 +49,16 @@ Mọi response đều bọc trong envelope chuẩn:
   - Đã bổ sung method `academicService.centers.publicList()` tại `src/services/academicService.ts`.
   - Service này tự động bắt tay với `GET /api/v1/centers/public` hoặc `GET /api/v1/homepage/centers`, đồng thời có cơ chế fallback thông minh không để phát sinh lỗi 401 khi khách vãng lai duyệt website.
 
-### 2. Lỗi Logic Nghiệp vụ: API Random câu hỏi phải bắt buộc lọc theo Môn học (`specializationId`) của đề thi
+### 2. API Random câu hỏi theo Môn học (`specializationId`) của đề thi [BACKEND ĐÃ TRIỂN KHAI & FE ĐÃ ĐỒNG BỘ CONTRACT]
 
-- **Bản chất nghiệp vụ (Invariant):**
-  - Trong hệ thống Kata Edu, **mỗi bài thi/đề thi luôn thuộc một môn học cụ thể** (`specializationId` - ví dụ: Toán 6, Tiếng Anh 6).
-  - Ràng buộc toàn vẹn của hệ thống (trong DB & hàm `ensureSameSpecialization`) quy định: **mọi câu hỏi gắn vào đề thi bắt buộc phải cùng môn học với đề thi đó**.
-  - Do đó: **Tính năng random câu hỏi cho đề thi chỉ được phép lấy các câu hỏi đã DUYỆT (`published`), ĐANG HOẠT ĐỘNG (`isActive = true`) VÀ THUỘC ĐÚNG MÔN HỌC ĐÓ (`specialization_id = exam.specialization_id`)**. Việc để câu hỏi môn khác lọt vào là lỗi logic nghiệp vụ nghiêm trọng.
-
-- **Thực trạng lỗi hiện tại của Backend:**
-  - Endpoint `POST /api/v1/learning/exams/random-questions` (nằm trong `ExamsController`) hiện chỉ chuyển tiếp sang `questionsService.pickRandomByCriteria(dto)` mà **hoàn toàn không có điều kiện `specialization_id`**.
-  - `RandomCriterionDto` chỉ nhận: `count`, `levelId`, `type`, `topicId`, `skillId`, `tagId`.
-  - Khi Admin tạo đề ngẫu nhiên mà để Kỹ năng/Chủ đề là *"Tất cả"*, Backend query `SELECT` ngẫu nhiên trên **toàn bộ database của tất cả các môn học**.
-  - Kết quả: Đề thi môn Toán 6 bị bốc nhầm câu hỏi môn Tiếng Anh 6.
-  - Ngay sau đó khi Admin bấm *"Gắn câu vào đề (Bulk Attach)"*, chính Backend lại chặn lại và trả lỗi: **`400 Bad Request` ("Câu hỏi không thuộc cùng môn học với bài thi")**. Tức là Backend tự bốc câu sai môn rồi tự từ chối chính câu hỏi đó!
-
-- **Yêu cầu Backend khắc phục (Khuyên dùng kết hợp):**
-  1. **Giải pháp tối ưu nhất (Chuẩn RESTful có context):**
-     - Bổ sung route: `POST /api/v1/learning/exams/:id/random-questions` (nhận `id` của bài thi).
-     - Backend tìm `exam` theo `id`, tự động lấy `exam.specializationId` làm điều kiện query bắt buộc:
-       ```typescript
-       qb.andWhere('question.specialization_id = :specializationId', {
-         specializationId: exam.specializationId,
-       });
-       qb.andWhere('question.status = :status', { status: ContentStatus.PUBLISHED });
-       qb.andWhere('question.is_active = true');
-       ```
-     - Như vậy 100% câu hỏi random ra luôn đảm bảo đúng môn của bài thi, FE không cần và không thể truyền sai môn.
-  2. **Với route hiện tại `POST /api/v1/learning/exams/random-questions`:**
-     - Trong `RandomCriterionDto` (`src/modules/learning/dto/random-questions.dto.ts`): Bổ sung `specializationId?: string;` (hoặc ở cấp `RandomQuestionsDto`).
-     - Trong `questions.service.ts` (`randomQuestionIds`): Bắt buộc thêm `if (criterion.specializationId) qb.andWhere('question.specialization_id = :specializationId', ...)`.
-
-- **Trạng thái Frontend (ĐÃ TÍCH HỢP SẴN 100% — CHỈ CHỜ BACKEND TRIỂN KHAI):**
-  - Frontend đã triển khai sẵn cơ chế tương thích kép (Dual-strategy with Auto-fallback) trong `src/services/learningCmsService.ts`:
-    1. **Sẵn sàng cho Phương án 1:** FE tự động ưu tiên gọi `POST /api/v1/learning/exams/:examId/random-questions` nếu Backend hỗ trợ endpoint theo `examId`.
-    2. **Sẵn sàng cho Phương án 2:** Nếu Backend giữ endpoint `POST /api/v1/learning/exams/random-questions`, FE đã truyền sẵn `specializationId: selectedExam.specializationId` trong từng nhóm `criteria`. (Đồng thời có sẵn fallback tự động strip param nếu gặp BE cũ chưa whitelist để không bị crash).
-    3. **Bảo vệ người dùng ngay tại Preview:** Nếu nhận về câu hỏi lệch môn (khi BE chưa update), FE tự động gắn nhãn đỏ **`Khác môn`**, hiển thị cảnh báo và khóa nút Bulk Attach để tránh lỗi 400.
-  - 👉 **Backend chỉ cần chọn triển khai Phương án 1 hoặc Phương án 2, phía Frontend sẽ tự động khớp ngay lập tức mà không cần sửa thêm code.**
+- **Hiện trạng Backend:**
+  - Backend đã chọn và triển khai thành công **Phương án 1**: Bổ sung endpoint `POST /api/v1/learning/exams/:id/random-questions`.
+  - Backend tự động truy vấn bài thi theo `examId` để lấy `exam.specializationId`, từ đó bắt buộc lọc tất cả câu hỏi random theo đúng môn học của đề thi.
+  - DTO `RandomCriterionDto` của Backend chỉ cho phép các trường: `count`, `levelId`, `type`, `topicId`, `skillId`, `tagId` (áp dụng strict whitelist). Do đó, `specializationId` không được gửi trong body `criteria` để tránh lỗi ValidationPipe `forbidNonWhitelisted` (`criteria.0.specializationId không được phép xuất hiện`).
+- **Đồng bộ phía Frontend:**
+  - `ManageQuestionsModal.tsx`: Đã bỏ gửi `specializationId` trong mảng `criteria` (vì Backend tự động suy luận từ `examId` trên URL).
+  - `learningCmsService.ts`: Tự động sanitize payload để chỉ gửi các trường hợp lệ được Backend whitelist, đồng thời ưu tiên gọi `POST /api/v1/learning/exams/:examId/random-questions`.
+  - Kết quả: Tạo câu hỏi ngẫu nhiên và gắn vào đề thi (Bulk Attach) hoạt động trơn tru 100%, câu hỏi random ra luôn đúng môn học của bài thi.
 
 ---
 

@@ -244,12 +244,27 @@ export const learningCmsService = {
         }>;
       }>;
 
-      // Phương án 1: Nếu có examId, thử gọi endpoint theo context bài thi trước
+      // Sanitize criteria: backend DTO (RandomCriterionDto) strictly validates:
+      // only count, levelId, type, topicId, skillId, tagId are permitted.
+      // specializationId is automatically inferred by backend from the exam context and must NOT be sent in criteria.
+      const cleanPayload: RandomQuestionsRequest = {
+        criteria: (payload.criteria || []).map((c) => {
+          const item: any = { count: Number(c.count) || 1 };
+          if (c.levelId) item.levelId = c.levelId;
+          if (c.type) item.type = c.type;
+          if (c.topicId) item.topicId = c.topicId;
+          if (c.skillId) item.skillId = c.skillId;
+          if (c.tagId) item.tagId = c.tagId;
+          return item;
+        }),
+      };
+
+      // Phương án 1: Nếu có examId, gọi endpoint theo context bài thi: /learning/exams/${examId}/random-questions
       if (examId) {
         try {
           const res = await apiClient.post<RandomResponse>(
             `/learning/exams/${examId}/random-questions`,
-            payload,
+            cleanPayload,
           );
           return unwrapData(res);
         } catch (err: any) {
@@ -262,33 +277,11 @@ export const learningCmsService = {
       }
 
       // Phương án 2: Endpoint chung /learning/exams/random-questions
-      try {
-        const res = await apiClient.post<RandomResponse>(
-          "/learning/exams/random-questions",
-          payload,
-        );
-        return unwrapData(res);
-      } catch (err: any) {
-        // Tương thích ngược: Nếu backend chưa bổ sung specializationId vào DTO (bị 400 forbidNonWhitelisted)
-        // tự động loại bỏ specializationId và gọi lại để không làm đứt đoạn người dùng
-        const responseData = JSON.stringify(err?.response?.data || "");
-        const isWhitelistedErr =
-          err?.response?.status === 400 &&
-          responseData.includes("specializationId") &&
-          responseData.includes("should not exist");
-
-        if (isWhitelistedErr && payload.criteria.some((c) => c.specializationId)) {
-          const strippedPayload: RandomQuestionsRequest = {
-            criteria: payload.criteria.map(({ specializationId, ...rest }) => rest),
-          };
-          const fallbackRes = await apiClient.post<RandomResponse>(
-            "/learning/exams/random-questions",
-            strippedPayload,
-          );
-          return unwrapData(fallbackRes);
-        }
-        throw err;
-      }
+      const res = await apiClient.post<RandomResponse>(
+        "/learning/exams/random-questions",
+        cleanPayload,
+      );
+      return unwrapData(res);
     },
 
     /**

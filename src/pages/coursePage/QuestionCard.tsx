@@ -187,6 +187,57 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       ? option
       : [option.label, option.content].filter(Boolean).join(". ");
 
+  const resolveItemText = (itemId: any): string => {
+    if (itemId === undefined || itemId === null || itemId === "") return "";
+    if (typeof itemId !== "string") {
+      return itemId.text || itemId.content || itemId.label || itemId.prompt || itemId.title || String(itemId);
+    }
+
+    const norm = (s: any) => String(s ?? "").trim();
+
+    // 1. Search in leftItems
+    const leftItems: any[] = (question.leftItems || (question as any).detail?.leftItems || []);
+    const fLeft = leftItems.find((l: any) => norm(l?.id || l) === norm(itemId));
+    if (fLeft) {
+      const txt = fLeft.text || fLeft.content || fLeft.label || fLeft.prompt || (typeof fLeft === "string" ? fLeft : "");
+      if (txt) return txt;
+    }
+
+    // 2. Search in rightItems
+    const rightItems: any[] = (question.rightItems || (question as any).detail?.rightItems || []);
+    const fRight = rightItems.find((r: any) => norm(r?.id || r) === norm(itemId));
+    if (fRight) {
+      const txt = fRight.text || fRight.content || fRight.label || fRight.prompt || (typeof fRight === "string" ? fRight : "");
+      if (txt) return txt;
+    }
+
+    // 3. Search in options
+    const options: any[] = question.options || (question as any).detail?.options || [];
+    const fOpt = options.find((o: any) => norm(o?.id || o?.key || o) === norm(itemId));
+    if (fOpt) {
+      const txt = fOpt.content || fOpt.text || fOpt.label || fOpt.title || (typeof fOpt === "string" ? fOpt : "");
+      if (txt) return txt;
+    }
+
+    // 4. Search in pairs
+    const pairs: any[] = (question as any).pairs || (question as any).detail?.pairs || (question as any).matchingPairs || [];
+    const fPair = pairs.find(
+      (p: any) => norm(p.leftItemId || p.leftId || p.id) === norm(itemId) || norm(p.rightItemId || p.rightId) === norm(itemId)
+    );
+    if (fPair) {
+      if (norm(fPair.leftItemId || fPair.leftId || fPair.id) === norm(itemId)) {
+        const txt = fPair.leftText || fPair.leftContent || fPair.text || "";
+        if (txt) return txt;
+      }
+      if (norm(fPair.rightItemId || fPair.rightId) === norm(itemId)) {
+        const txt = fPair.rightText || fPair.rightContent || fPair.text || "";
+        if (txt) return txt;
+      }
+    }
+
+    return itemId;
+  };
+
   const formatCorrectAnswer = (
     answer?: string | string[] | Record<string, string>,
   ) => {
@@ -200,11 +251,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       return "";
     }
 
-    if (question.options && question.options.length > 0) {
+    // 1. Multiple choice types where options exist
+    if (question.options && question.options.length > 0 && typeof targetAnswer !== "object") {
       const norm = (s: any) => String(s ?? "").toLowerCase().trim();
       const ansStr = norm(targetAnswer);
 
-      // 1. Match by option ID, label, or content
+      // Match by option ID, label, or content
       let matchedOpt = question.options.find((o: any) => {
         const val = typeof o === "string" ? { content: o } : o;
         return (
@@ -214,7 +266,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         );
       });
 
-      // 2. Fallback to option with isCorrect === true
       if (!matchedOpt) {
         matchedOpt = question.options.find((o: any) => {
           const val = typeof o === "string" ? { content: o } : o;
@@ -228,13 +279,55 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       }
     }
 
+    // 2. Object with selectedOptionIds (e.g. multiple_choice payload)
+    if (typeof targetAnswer === "object" && targetAnswer !== null && Array.isArray((targetAnswer as any).selectedOptionIds)) {
+      const ids: string[] = (targetAnswer as any).selectedOptionIds;
+      const labels = ids.map((id) => {
+        const opt = question.options?.find((o: any) => o?.id === id || o?.key === id);
+        if (opt) {
+          return typeof opt === "string" ? opt : [opt.label, opt.content].filter(Boolean).join(". ");
+        }
+        return id;
+      });
+      return labels.join(", ");
+    }
+
+    // 3. Matching questions (or object with pairs / matches)
+    const isMatching = question.type === "matching" || (question as any).type === "matching_pair";
+    if (isMatching || (typeof targetAnswer === "object" && targetAnswer !== null)) {
+      let pairsList: Array<[string, string]> = [];
+      if (Array.isArray((targetAnswer as any).pairs)) {
+        pairsList = (targetAnswer as any).pairs.map((p: any) => [p.leftItemId || p.leftId || p.left, p.rightItemId || p.rightId || p.right]);
+      } else if (Array.isArray((targetAnswer as any).matches)) {
+        pairsList = (targetAnswer as any).matches.map((p: any) => [p.leftItemId || p.leftId || p.left, p.rightItemId || p.rightId || p.right]);
+      } else if (Array.isArray(targetAnswer)) {
+        if (targetAnswer.length > 0 && typeof targetAnswer[0] === "object") {
+          pairsList = targetAnswer.map((p: any) => [p.leftItemId || p.leftId || p.left || p[0], p.rightItemId || p.rightId || p.right || p[1]]);
+        }
+      } else if (typeof targetAnswer === "object" && targetAnswer !== null) {
+        pairsList = Object.entries(targetAnswer);
+      }
+
+      if (pairsList.length > 0) {
+        return pairsList
+          .map(([left, right]) => {
+            const lText = resolveItemText(left);
+            const rText = resolveItemText(right);
+            return `${lText} → ${rText}`;
+          })
+          .join(", ");
+      }
+    }
+
+    // 4. Array of answers (e.g. word ordering, fill in blanks)
     if (Array.isArray(targetAnswer)) {
       return targetAnswer.join(" ");
     }
 
+    // 5. Plain object fallback
     if (typeof targetAnswer === "object" && targetAnswer !== null) {
       return Object.entries(targetAnswer)
-        .map(([key, value]) => `${key}: ${value}`)
+        .map(([key, value]) => `${resolveItemText(key)}: ${resolveItemText(value)}`)
         .join(", ");
     }
 
@@ -558,9 +651,9 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             }`}
           >
             {!isCorrect && correctAnsText && (
-              <div className="mb-2 text-[14px] flex items-center gap-2">
+              <div className="mb-2 text-[14px] flex flex-wrap items-center gap-2">
                 <strong className="text-slate-700">Đáp án đúng:</strong>
-                <span className="bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-lg text-emerald-900 font-bold font-mono">
+                <span className="bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg text-emerald-900 font-bold font-mono inline-block max-w-full break-words leading-relaxed">
                   {correctAnsText}
                 </span>
               </div>

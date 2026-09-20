@@ -470,11 +470,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const handleSelectQuestion = async (idx: number) => {
     if (idx === currentIndex) return;
+    if (isSubmittingAnswer) return;
     if (isReviewMode) {
       setCurrentIndex(idx);
       return;
     }
-    if (showFeedback && !isInitialExam) return;
 
     if (isInitialExam) {
       const currentAns = userAnswers[currentQuestion.id];
@@ -846,6 +846,18 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   const handleReview = async () => {
     try {
       const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+      if (freshAttempt) {
+        if (freshAttempt.score !== undefined || freshAttempt.percentage !== undefined) {
+          setSubmitResult((prev) => ({
+            ...prev,
+            ...freshAttempt,
+            score: freshAttempt.score != null ? String(freshAttempt.score) : prev?.score,
+            maxScore: freshAttempt.maxScore != null ? String(freshAttempt.maxScore) : prev?.maxScore,
+            percentage: freshAttempt.percentage != null ? String(freshAttempt.percentage) : prev?.percentage,
+            displayResult: freshAttempt.displayResult || prev?.displayResult,
+          }));
+        }
+      }
       if (freshAttempt?.answers) {
         const newResults: Record<string, "correct" | "wrong"> = {};
         const newCorrects: Record<string, any> = {};
@@ -1178,7 +1190,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           {isReviewMode ? (
             <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
               <span className="text-sm font-bold text-emerald-700">
-                Điểm: {examData.score} / {examData.maxScore} ({examData.percentage}%)
+                Điểm: {submitResult?.score ?? examData.score} / {submitResult?.maxScore ?? examData.maxScore} ({submitResult?.percentage ?? examData.percentage}%)
               </span>
             </div>
           ) : (
