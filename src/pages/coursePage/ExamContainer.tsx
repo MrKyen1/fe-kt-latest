@@ -9,6 +9,7 @@ import { Modal } from "antd";
 import { Trophy } from "lucide-react";
 import { studentLearningService } from "../../services/studentLearningService";
 import { parseBackendAnswer } from "./ExamDetail";
+import { formatScore, formatPercentage } from "../../utils/studentExamUtils";
 
 interface ExamContainerProps {
   examData: ExamData;
@@ -1007,29 +1008,36 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   if (isPracticeCompleted100 && !isReviewMode) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center transition-colors">
-        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 text-center border border-slate-200">
-          <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-            <Trophy className="w-10 h-10 text-emerald-600 stroke-[1.75]" />
+      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center">
+        <div className="max-w-lg w-full bg-white rounded-3xl shadow-lg p-8 md:p-10 text-center border border-slate-200">
+          {/* Icon */}
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Trophy className="w-8 h-8 text-emerald-600 stroke-[1.75]" />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 mb-3">
+
+          {/* Title */}
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">
             Hoàn thành 100% Đề Ôn Tập!
           </h1>
-          <p className="text-slate-600 mb-8 max-w-md mx-auto leading-relaxed">
-            Tuyệt vời! Bạn đã trả lời chính xác toàn bộ <strong>{examData.questions.length} / {examData.questions.length}</strong> câu hỏi trong đề ôn tập này.
+          <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+            Tuyệt vời! Bạn đã trả lời chính xác toàn bộ{" "}
+            <span className="font-semibold text-slate-700">{examData.questions.length} / {examData.questions.length}</span>{" "}
+            câu hỏi trong đề ôn tập này.
           </p>
 
-          <div className="grid grid-cols-2 gap-4 mb-8 text-left">
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
-              <span className="text-xs uppercase font-bold text-emerald-700 block mb-1">Số câu hoàn thành</span>
-              <span className="text-2xl font-black text-emerald-700">{examData.questions.length} / {examData.questions.length}</span>
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-left">
+              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1.5">Số câu đúng</p>
+              <p className="text-2xl font-bold text-emerald-700">{examData.questions.length} / {examData.questions.length}</p>
             </div>
-            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200">
-              <span className="text-xs uppercase font-bold text-indigo-700 block mb-1">Tỷ lệ chính xác</span>
-              <span className="text-2xl font-black text-indigo-700">100%</span>
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 text-left">
+              <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1.5">Tỷ lệ chính xác</p>
+              <p className="text-2xl font-bold text-indigo-700">100%</p>
             </div>
           </div>
 
+          {/* Buttons */}
           <div className="flex flex-wrap justify-center gap-3">
             <button
               onClick={async () => {
@@ -1038,7 +1046,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 }
                 navigate(-1);
               }}
-              className="px-6 py-3.5 rounded-2xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition"
+              className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
             >
               Quay lại bài học
             </button>
@@ -1049,15 +1057,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 }
                 handleReview();
               }}
-              className="px-6 py-3.5 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition"
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
             >
               Xem lại tất cả đáp án
-            </button>
-            <button
-              onClick={handleResetExam}
-              className="px-6 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition"
-            >
-              Ôn tập lại từ đầu
             </button>
           </div>
         </div>
@@ -1070,98 +1072,117 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     const remainingCount = (submitResult as any)?.remainingQuestionCount ?? 0;
     const isExamType = examData.examType === "exam";
 
+    // Icon & header config based on result type
+    const resultIcon = isMastered ? (
+      <Trophy className="w-8 h-8 stroke-[1.75]" />
+    ) : isExamType ? (
+      <span className="text-2xl">📋</span>
+    ) : (
+      <span className="text-2xl">📖</span>
+    );
+
+    const iconBg = isMastered ? "bg-emerald-100 text-emerald-600" : isExamType ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600";
+    const titleText = isMastered ? "Hoàn thành 100%!" : isExamType ? "Kết quả bài kiểm tra" : "Kết quả bài ôn tập";
+
+    // Stat cards
+    const stats: { label: string; value: React.ReactNode; bg: string; labelColor: string; valueColor: string }[] = [
+      {
+        label: "Điểm số",
+        value: `${formatScore(submitResult?.score)} / ${formatScore(submitResult?.maxScore)}`,
+        bg: "bg-emerald-50 border-emerald-100",
+        labelColor: "text-emerald-600",
+        valueColor: "text-emerald-700",
+      },
+      {
+        label: "Tỷ lệ đúng",
+        value: `${formatPercentage(submitResult?.percentage)}%`,
+        bg: isMastered ? "bg-indigo-50 border-indigo-100" : "bg-amber-50 border-amber-100",
+        labelColor: isMastered ? "text-indigo-600" : "text-amber-600",
+        valueColor: isMastered ? "text-indigo-700" : "text-amber-700",
+      },
+      {
+        label: "Số câu đúng",
+        value: submitResult?.displayResult ?? `${formatScore(submitResult?.score)} / ${formatScore(submitResult?.maxScore)}`,
+        bg: "bg-slate-50 border-slate-200",
+        labelColor: "text-slate-500",
+        valueColor: "text-slate-800",
+      },
+      {
+        label: "Chưa trả lời",
+        value: totalUnanswered,
+        bg: "bg-slate-50 border-slate-200",
+        labelColor: "text-slate-500",
+        valueColor: "text-slate-800",
+      },
+    ];
+
     return (
-      <div className="min-h-screen bg-slate-50 p-6 md:p-10 transition-colors">
-        <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
-          <div className="p-8 md:p-10 text-center">
-            <h1 className="text-3xl font-bold text-slate-900 mb-4">
-              {isMastered ? "Hoàn thành 100%!" : isExamType ? "Kết quả bài kiểm tra" : "Kết quả bài thi"}
+      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center">
+        <div className="max-w-lg w-full bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden">
+          {/* Header banner */}
+          <div className={`px-8 pt-8 pb-6 text-center`}>
+            {/* Icon */}
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${iconBg}`}>
+              {resultIcon}
+            </div>
+
+            {/* Title */}
+            <h1 className="text-2xl font-bold text-slate-800 mb-1.5">
+              {titleText}
             </h1>
+
+            {/* Subtitle */}
             {isExamType && !isMastered && (
-              <p className="text-sm text-amber-600 mb-3 font-medium">
-                Điểm bài kiểm tra lượt đầu đã được ghi nhận. Bạn cần làm lại các câu chưa đúng để hoàn thành bài thi 100%.
+              <p className="text-sm text-amber-600 font-medium leading-relaxed mt-2">
+                Điểm kiểm tra lượt đầu đã được ghi nhận. Hãy làm lại câu sai để hoàn thành 100%.
               </p>
             )}
-            <p className="text-lg text-slate-600 mb-6">
-              Backend đã chấm điểm{" "}
-              {submitResult?.displayResult ? (
-                <span className="font-black text-emerald-600">
-                  {submitResult.displayResult}
-                </span>
-              ) : (
-                <>
-                  <span className="font-black text-emerald-600">
-                    {submitResult?.score ?? "-"}
-                  </span>{" "}
-                  trên tổng điểm{" "}
-                  <span className="font-black text-slate-900">
-                    {submitResult?.maxScore ?? "-"}
-                  </span>{" "}
-                  ({submitResult?.percentage ?? "-"}%).
-                </>
-              )}
-            </p>
-            <div className="grid grid-cols-2 gap-4 text-left mb-8">
-              <div className="rounded-3xl bg-emerald-50 p-5 border border-emerald-100">
-                <p className="text-sm uppercase tracking-widest text-emerald-700">
-                  Điểm
-                </p>
-                <p className="text-3xl font-bold text-emerald-700">
-                  {submitResult?.score ?? "-"}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-rose-50 p-5 border border-rose-100">
-                <p className="text-sm uppercase tracking-widest text-rose-700">
-                  Tổng điểm
-                </p>
-                <p className="text-3xl font-bold text-rose-700">
-                  {submitResult?.maxScore ?? "-"}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-slate-50 p-5 border border-slate-200">
-                <p className="text-sm uppercase tracking-widest text-slate-600">
-                  Chưa làm
-                </p>
-                <p className="text-3xl font-bold text-slate-900">
-                  {totalUnanswered}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-slate-50 p-5 border border-slate-200">
-                <p className="text-sm uppercase tracking-widest text-slate-600">
-                  Tổng câu
-                </p>
-                <p className="text-3xl font-bold text-slate-900">
-                  {totalQuestions}
-                </p>
-              </div>
+            {isMastered && (
+              <p className="text-sm text-slate-500 leading-relaxed mt-1">
+                Bạn đã trả lời đúng toàn bộ câu hỏi. Chúc mừng!
+              </p>
+            )}
+          </div>
+
+          {/* Stats grid */}
+          <div className="px-8 pb-6">
+            <div className="grid grid-cols-2 gap-3">
+              {stats.map((s, i) => (
+                <div key={i} className={`p-4 rounded-2xl border ${s.bg}`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wider mb-1.5 ${s.labelColor}`}>{s.label}</p>
+                  <p className={`text-2xl font-bold ${s.valueColor}`}>{s.value}</p>
+                </div>
+              ))}
             </div>
-            <div className="flex flex-wrap justify-center gap-3">
+          </div>
+
+          {/* Buttons */}
+          <div className="px-8 pb-8 flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
+            >
+              Quay lại
+            </button>
+            <button
+              onClick={handleReview}
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+            >
+              Xem lại đáp án
+            </button>
+            {!isMastered && (
               <button
-                onClick={() => navigate(-1)}
-                className="px-6 py-4 rounded-3xl bg-slate-100 text-slate-800 font-semibold hover:bg-slate-200 transition"
+                onClick={handleRetryNewAttempt}
+                disabled={isRetrying}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                Quay lại
+                {isRetrying
+                  ? "Đang tạo lượt mới..."
+                  : remainingCount > 0
+                  ? `Làm lại câu sai (${remainingCount} câu)`
+                  : "Làm tiếp / Làm lại"}
               </button>
-              <button
-                onClick={handleReview}
-                className="px-6 py-4 rounded-3xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
-              >
-                Xem lại đáp án
-              </button>
-              {!isMastered && (
-                <button
-                  onClick={handleRetryNewAttempt}
-                  disabled={isRetrying}
-                  className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
-                >
-                  {isRetrying
-                    ? "Đang tạo lượt mới..."
-                    : remainingCount > 0
-                    ? `Làm lại câu sai (còn ${remainingCount} câu)`
-                    : "Làm tiếp / Làm lại"}
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -1190,7 +1211,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           {isReviewMode ? (
             <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
               <span className="text-sm font-bold text-emerald-700">
-                Điểm: {submitResult?.score ?? examData.score} / {submitResult?.maxScore ?? examData.maxScore} ({submitResult?.percentage ?? examData.percentage}%)
+                Điểm: {formatScore(submitResult?.score ?? examData.score)} / {formatScore(submitResult?.maxScore ?? examData.maxScore)} ({formatPercentage(submitResult?.percentage ?? examData.percentage)}%)
               </span>
             </div>
           ) : (

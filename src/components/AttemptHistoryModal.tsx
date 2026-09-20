@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Modal, Spin, Empty, Table, Tag, Progress, Button, message } from "antd";
 import { History } from "lucide-react";
 import { studentLearningService } from "../services/studentLearningService";
+import { formatScore } from "../utils/studentExamUtils";
 
 const formatDate = (iso?: string | null) => {
   if (!iso) return "—";
@@ -168,7 +169,7 @@ export function AttemptHistoryModal({
       render: (_: any, r: any) =>
         r.status === "submitted" ? (
           <span className="font-bold" style={{ color: percentColor(r.percentage) }}>
-            {r.score ?? "—"} {r.maxScore && r.maxScore !== "—" ? `/ ${r.maxScore}` : ""}
+            {formatScore(r.score)} {r.maxScore && r.maxScore !== "—" ? `/ ${formatScore(r.maxScore)}` : ""}
           </span>
         ) : (
           <span className="text-slate-400">—</span>

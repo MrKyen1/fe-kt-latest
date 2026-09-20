@@ -102,16 +102,15 @@ export function flattenAssignedExams(assignments: any[]): FlattenedAssignedExam[
       const isExamType = examType === "exam";
 
       const pctVal = parseFloat(bestPct ?? "0");
-      const mastered = ep.mastered ?? bestAttempt?.mastered ?? (pctVal >= 100);
+      const mastered = Boolean(ep.mastered ?? bestAttempt?.mastered ?? (pctVal >= 100));
       const requiresRemediation =
         ep.requiresRemediation ?? bestAttempt?.requiresRemediation ?? (!mastered && resolvedAttemptsCount >= 1);
 
-      // Mastery Learning: Đề thi và Đề ôn tập đều chỉ hoàn thành khi đạt 100% hoặc mastered hoặc status finished
+      // Mastery Learning: Đề thi và Đề ôn tập đều CHỈ hoàn thành khi làm đúng 100% tất cả các câu (mastered)
+      // ep.status === "finished" ở Đề kiểm tra chỉ là kết thúc lượt thi tính giờ ban đầu chứ chưa hoàn thành 100%
       const isCompleted =
         mastered ||
         pctVal >= 100 ||
-        ep.status === "completed" ||
-        ep.status === "finished" ||
         ep.status === "mastered";
 
       list.push({
@@ -155,19 +154,19 @@ export function getAssignedExamStatus(item: FlattenedAssignedExam): ExamStatusDe
   if (item.isExamType) {
     if (item.isCompleted) {
       return {
-        label: "Đã hoàn thành (100%)",
+        label: "Đã hoàn thành",
         color: "green",
         badgeClass: "bg-emerald-50 text-emerald-700 border border-emerald-200/60",
       };
     }
-    if (item.requiresRemediation) {
+    if (item.requiresRemediation || item.attemptsCount > 0) {
       return {
-        label: `Cần làm lại (${item.bestPctVal.toFixed(0)}%)`,
+        label: "Cần làm lại",
         color: "volcano",
         badgeClass: "bg-rose-50 text-rose-700 border border-rose-200/60",
       };
     }
-    if (item.attemptsCount > 0 || item.hasInProgress) {
+    if (item.hasInProgress) {
       return {
         label: "Đang làm bài",
         color: "orange",
@@ -184,23 +183,16 @@ export function getAssignedExamStatus(item: FlattenedAssignedExam): ExamStatusDe
   // Chế độ Ôn tập (practice)
   if (item.isCompleted) {
     return {
-      label: "Đã hoàn thành (100%)",
+      label: "Đã hoàn thành",
       color: "green",
       badgeClass: "bg-emerald-50 text-emerald-700 border border-emerald-200/60",
     };
   }
-  if (item.requiresRemediation) {
+  if (item.requiresRemediation || item.attemptsCount > 0) {
     return {
-      label: `Cần làm lại câu sai (${item.bestPctVal.toFixed(0)}%)`,
+      label: "Cần làm lại câu sai",
       color: "volcano",
       badgeClass: "bg-rose-50 text-rose-700 border border-rose-200/60",
-    };
-  }
-  if (item.attemptsCount > 0) {
-    return {
-      label: `Đang ôn tập (${item.bestPctVal.toFixed(0)}%)`,
-      color: "orange",
-      badgeClass: "bg-amber-50 text-amber-700 border border-amber-200/60",
     };
   }
   if (item.hasInProgress) {
@@ -224,31 +216,45 @@ export interface ExamActionDescriptor {
 }
 
 /**
+ * Format điểm số: hiển thị số nguyên (1, 2, 3...) thay vì số thực (1.00, 2.00...)
+ */
+export function formatScore(score: any): string {
+  if (score === undefined || score === null || score === "" || score === "-") return "—";
+  if (typeof score === "string" && score.includes("/")) {
+    return score.split("/").map((s) => formatScore(s.trim())).join(" / ");
+  }
+  const num = Number(score);
+  if (isNaN(num)) return String(score);
+  return num % 1 === 0 ? String(Math.trunc(num)) : String(num);
+}
+
+/**
+ * Format phần trăm: hiển thị gọn gàng (ví dụ: 75% thay vì 75.00%, 87.5% thay vì 87.50%)
+ */
+export function formatPercentage(pct: any): string {
+  if (pct === undefined || pct === null || pct === "" || pct === "-") return "—";
+  const num = Number(pct);
+  if (isNaN(num)) return String(pct);
+  return num % 1 === 0 ? String(Math.trunc(num)) : num.toFixed(1);
+}
+
+/**
  * Trả về thông tin nút hành động chuẩn hóa theo quy tắc nghiệp vụ:
- * 1. Đề kiểm tra (isExamType) đã hoàn thành -> KHÔNG cho làm lại, bắt buộc là "Xem bài làm" (review)
- * 2. Đề ôn tập (practice) đã hoàn thành -> Cho phép "Luyện lại" (retrain)
- * 3. Đề có câu sai cần làm lại (remediation) -> "Làm lại câu sai" (retry_wrong)
- * 4. Đang làm dở / chưa xong -> "Làm tiếp" (continue)
- * 5. Chưa làm -> "Làm ngay" (start)
+ * 1. Đã hoàn thành 100% (cả Đề kiểm tra và Đề ôn tập) -> Bắt buộc là "Xem bài làm" (review), bỏ phần luyện lại từ đầu
+ * 2. Đề có câu sai cần làm lại (remediation) -> "Làm lại câu sai" (retry_wrong)
+ * 3. Đang làm dở / chưa xong -> "Làm tiếp" (continue)
+ * 4. Chưa làm -> "Làm ngay" (start)
  */
 export function getAssignedExamAction(item: FlattenedAssignedExam): ExamActionDescriptor {
   if (item.isCompleted) {
-    if (item.isExamType) {
-      return {
-        actionType: "review",
-        label: "Xem bài làm",
-        isPrimary: false,
-      };
-    } else {
-      return {
-        actionType: "retrain",
-        label: "Luyện lại",
-        isPrimary: false,
-      };
-    }
+    return {
+      actionType: "review",
+      label: "Xem bài làm",
+      isPrimary: false,
+    };
   }
 
-  if (item.requiresRemediation) {
+  if (item.requiresRemediation || item.attemptsCount > 0) {
     return {
       actionType: "retry_wrong",
       label: "Làm lại câu sai",
@@ -256,7 +262,7 @@ export function getAssignedExamAction(item: FlattenedAssignedExam): ExamActionDe
     };
   }
 
-  if (item.attemptsCount > 0 || item.hasInProgress) {
+  if (item.hasInProgress) {
     return {
       actionType: "continue",
       label: "Làm tiếp",

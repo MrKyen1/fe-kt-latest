@@ -58,6 +58,7 @@ import {
   getAssignedExamStatus,
   getAssignedExamAction,
   FlattenedAssignedExam,
+  formatScore,
 } from "../../../utils/studentExamUtils";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { resolveMediaUrl } from "../../../services/apiClient";
@@ -440,10 +441,11 @@ export default function StudentMyExams() {
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden mt-5">
             {/* Table Header */}
             <div className="hidden md:grid md:grid-cols-12 gap-4 px-5 py-3 bg-slate-50/80 border-b border-slate-200/80 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <div className="col-span-5">Bài thi & Lớp học</div>
+              <div className="col-span-4">Bài thi & Lớp học</div>
               <div className="col-span-2 text-center">Thời lượng & Lượt làm</div>
+              <div className="col-span-2 text-center">Tiến độ</div>
               <div className="col-span-2 text-center">Trạng thái</div>
-              <div className="col-span-3 text-right">Thao tác</div>
+              <div className="col-span-2 text-right">Thao tác</div>
             </div>
 
             {/* Table Rows */}
@@ -459,7 +461,7 @@ export default function StudentMyExams() {
                     className="grid grid-cols-1 md:grid-cols-12 gap-4 px-5 py-3.5 items-center hover:bg-slate-50/70 transition-colors"
                   >
                     {/* Cột 1: Bài thi & Lớp học */}
-                    <div className="col-span-1 md:col-span-5 flex items-center gap-3.5 min-w-0">
+                    <div className="col-span-1 md:col-span-4 flex items-center gap-3.5 min-w-0">
                       <div
                         className={`w-10 h-10 rounded-xl flex items-center justify-center text-base shrink-0 shadow-sm ${
                           item.isCompleted
@@ -508,7 +510,7 @@ export default function StudentMyExams() {
                     </div>
 
                     {/* Cột 2: Thời lượng & Lượt làm */}
-                    <div className="col-span-1 md:col-span-2 flex md:flex-col md:items-center md:justify-center gap-2 text-xs text-slate-500">
+                    <div className="col-span-1 md:col-span-2 flex md:flex-col md:items-center md:justify-center gap-1.5 text-xs text-slate-500">
                       {item.timeLimitSeconds ? (
                         <span className="flex items-center gap-1 text-slate-600 font-semibold">
                           <ClockCircleOutlined /> {Math.ceil(item.timeLimitSeconds / 60)} phút
@@ -523,15 +525,42 @@ export default function StudentMyExams() {
                       )}
                     </div>
 
-                    {/* Cột 3: Trạng thái */}
+                    {/* Cột 3: Tiến độ */}
+                    <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center px-2">
+                      {item.attemptsCount > 0 ? (
+                        <div className="w-full max-w-[120px] flex flex-col items-center">
+                          <div className="flex justify-between w-full text-xs font-bold mb-1">
+                            <span className={item.isCompleted ? "text-emerald-600" : "text-slate-700"}>
+                              {item.bestPctVal.toFixed(0)}%
+                            </span>
+                            {item.bestScore && (
+                              <span className="text-[11px] font-normal text-slate-400">
+                                {formatScore(item.bestScore)} đ
+                              </span>
+                            )}
+                          </div>
+                          <Progress
+                            percent={Math.round(item.bestPctVal)}
+                            size="small"
+                            showInfo={false}
+                            strokeColor={item.isCompleted ? "#10b981" : item.bestPctVal >= 50 ? "#f59e0b" : "#ef4444"}
+                            className="m-0 w-full"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-xs italic">—</span>
+                      )}
+                    </div>
+
+                    {/* Cột 4: Trạng thái */}
                     <div className="col-span-1 md:col-span-2 flex md:justify-center items-center">
                       <Tag color={statusInfo.color} className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
                         {statusInfo.label}
                       </Tag>
                     </div>
 
-                    {/* Cột 4: Thao tác */}
-                    <div className="col-span-1 md:col-span-3 flex items-center justify-end gap-2">
+                    {/* Cột 5: Thao tác */}
+                    <div className="col-span-1 md:col-span-2 flex items-center justify-end gap-1.5">
                       {(item.attemptsCount > 0 || item.totalAttemptsCount > 0) && (
                         <Tooltip title="Xem lịch sử các lần làm">
                           <Button
@@ -542,7 +571,7 @@ export default function StudentMyExams() {
                               setHistoryExamId(item.examId);
                               setHistoryTitle(item.examTitle);
                             }}
-                            className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 text-xs h-8 px-3 font-semibold"
+                            className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 text-xs h-8 px-2.5 font-semibold"
                           >
                             Lịch sử
                           </Button>
@@ -568,7 +597,7 @@ export default function StudentMyExams() {
                               handleStartExam(item.assignmentStudentId, item.examId);
                             }
                           }}
-                          className={`rounded-xl font-bold text-xs h-8 px-4 transition ${
+                          className={`rounded-xl font-bold text-xs h-8 px-3 transition ${
                             actionInfo.actionType === "review"
                               ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
                               : "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20 text-white"
@@ -901,12 +930,10 @@ export default function StudentMyExams() {
                   );
                   const attemptsCount =
                     ep.attemptsCount ?? ep.attemptCount ?? ep.attempts?.length ?? 0;
-                  const isMastered = ep.mastered ?? (bestPctVal >= 100);
+                  const isMastered = Boolean(ep.mastered ?? (bestPctVal >= 100));
                   const isCompleted =
                     isMastered ||
                     bestPctVal >= 100 ||
-                    ep.status === "completed" ||
-                    ep.status === "finished" ||
                     ep.status === "mastered";
                   const requiresRemediation =
                     ep.requiresRemediation ?? (!isMastered && attemptsCount >= 1);
@@ -965,14 +992,14 @@ export default function StudentMyExams() {
                                 color="volcano"
                                 className="rounded-full border-none text-[10px] px-2 m-0 font-bold"
                               >
-                                Cần làm lại ({bestPctVal.toFixed(0)}%)
+                                Cần làm lại câu sai
                               </Tag>
                             ) : attemptsCount > 0 ? (
                               <Tag
                                 color="orange"
                                 className="rounded-full border-none text-[10px] px-2 m-0 font-bold"
                               >
-                                Đang làm bài ({bestPctVal.toFixed(0)}%)
+                                Đang làm dở
                               </Tag>
                             ) : null}
                             {attemptsCount > 0 && (

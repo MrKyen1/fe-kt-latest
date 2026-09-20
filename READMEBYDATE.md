@@ -60,6 +60,95 @@ Mọi response đều bọc trong envelope chuẩn:
   - `learningCmsService.ts`: Tự động sanitize payload để chỉ gửi các trường hợp lệ được Backend whitelist, đồng thời ưu tiên gọi `POST /api/v1/learning/exams/:examId/random-questions`.
   - Kết quả: Tạo câu hỏi ngẫu nhiên và gắn vào đề thi (Bulk Attach) hoạt động trơn tru 100%, câu hỏi random ra luôn đúng môn học của bài thi.
 
+### 3. Chuẩn hóa logic Hoàn thành 100% (Mastery Learning): Phân biệt giữa `finished` và `mastered` cho Đề kiểm tra (`exam`)
+
+- **Bản chất nghiệp vụ:**
+  - Với đề kiểm tra (`exam`), sau khi học sinh nộp bài Lần 1 (lượt thi tính giờ), Backend đánh dấu `status = "finished"` để ghi nhận chốt điểm số lượt đầu (`firstAttemptResult`).
+  - Tuy nhiên, theo triết lý **Mastery Learning**, bài thi **CHỈ ĐƯỢC TÍNH LÀ HOÀN THÀNH 100% KHI `mastered = true`** (tức làm đúng tất cả các câu trong đề qua lượt đầu hoặc qua các lượt rèn luyện sửa câu sai).
+  - Nếu học sinh mới chỉ làm đúng một phần (ví dụ 3/4 câu = 75%), dù lượt thi đầu tiên đã `finished`, đề vẫn ở trạng thái **"Cần làm lại câu sai (75%)"**, nút bấm là **"Làm lại câu sai"** để học sinh tiếp tục rèn luyện cho đạt 100%.
+- **Đề xuất bổ sung phía Backend:**
+  - Trong method `buildAssignmentExamProgress` (`GET /api/v1/learning/assignments/:id`), đề xuất Backend trả về thêm thuộc tính `mastered: boolean` (`mastered: bestPercentage >= 100` hoặc `mastered: cumulativeCorrectCount >= totalQuestions`) tương tự như endpoint `GET /api/v1/learning/attempts/:id` để đồng bộ contract dữ liệu.
+- **Frontend đã chuẩn hóa:**
+  - `studentExamUtils.ts` và `StudentMyExams.tsx`: Đã bỏ điều kiện `status === "finished"` khỏi `isCompleted`. Bài thi chỉ được tính `isCompleted = true` khi `mastered === true` hoặc `bestPercentage >= 100`.
+  - Tách riêng 2 cột "Tiến độ" và "Trạng thái" trên bảng bài thi: Cột "Tiến độ" hiển thị rõ thanh progress và % điểm đạt được (ví dụ 75%, 88%); cột "Trạng thái" hiển thị nhãn trạng thái thuần túy ("Đã hoàn thành", "Cần làm lại", "Cần làm lại câu sai") để tránh gây hiểu lầm.
+
+### 4. Đề xuất Backend: Logic chốt điểm Lần đầu (`attemptNumber = 1`) cho Đề kiểm tra (`exam`) trong Bảng xếp hạng (Leaderboard / Ranking)
+
+- **Vấn đề phát hiện:**
+  - Theo quy chuẩn nghiệp vụ, Đề kiểm tra (`exam`) chỉ ghi nhận điểm số của **Lượt 1 (`attemptNumber = 1`)** làm điểm thi chính thức để xếp loại và vào sổ điểm. Các lượt làm lại câu sai sau đó chỉ mang tính rèn luyện kiến thức (Mastery Learning), không được dùng điểm lượt sau để thay thế điểm thi chính thức.
+  - Tuy nhiên, trong file `src/modules/learning/utils/leaderboard-query.util.ts` của Backend, câu query tính điểm ranking hiện tại đang dùng:
+    ```sql
+    WITH per_exam AS (
+      SELECT a.student_id, a.exam_id,
+             MAX(a.score) AS best_score,
+             MAX(a.percentage) AS best_pct,
+             MAX(a.submitted_at) AS last_at
+      FROM exam_attempts a
+      ...
+      WHERE a.status = 'submitted' ...
+      GROUP BY a.student_id, a.exam_id
+    )
+    ```
+  - Việc dùng `MAX(a.score)` và `MAX(a.percentage)` chung cho mọi loại đề khiến cho học sinh làm đề kiểm tra (`exam`) sau khi thi lượt 1 (ví dụ 60%), nếu làm tiếp lượt ôn tập/sửa câu sai lượt 2 (được 90%) thì điểm đưa vào Bảng xếp hạng (Leaderboard) lại bị tăng lên theo Lượt 2!
+- **Đề xuất Backend điều chỉnh query Leaderboard:**
+  - Đối với Đề ôn tập (`practice`): Tiếp tục lấy `MAX(score)` và `MAX(percentage)`.
+  - Đối với Đề kiểm tra (`exam`): Chỉ lấy điểm số và độ chính xác của **Lượt đầu tiên (`attempt_number = 1`)**.
+  - Ví dụ gợi ý điều chỉnh câu query SQL:
+    ```sql
+    WITH per_exam AS (
+      SELECT a.student_id, a.exam_id,
+             CASE
+               WHEN MAX(CASE WHEN e.exam_type = 'exam' THEN 1 ELSE 0 END) = 1 THEN
+                 COALESCE(MAX(a.score) FILTER (WHERE a.attempt_number = 1), 0)
+               ELSE MAX(a.score)
+             END AS best_score,
+             CASE
+               WHEN MAX(CASE WHEN e.exam_type = 'exam' THEN 1 ELSE 0 END) = 1 THEN
+                 COALESCE(MAX(a.percentage) FILTER (WHERE a.attempt_number = 1), 0)
+               ELSE MAX(a.percentage)
+             END AS best_pct,
+             MAX(a.submitted_at) AS last_at
+      ...
+    ```
+
+### 5. Backend Fix: Endpoint Thống kê Giáo viên `GET /api/v1/learning/teacher/exam-assignments/:id/analytics` - Trạng thái học sinh bị gán cứng thành `submitted` thay vì `finished` khi đã đạt 100%
+
+- **Vị trí code Backend:** `src/modules/learning/services/teacher-exam-assignments.service.ts` trong method `analytics()`:
+  ```ts
+  // Code hiện tại của Backend:
+  const status = latestSubmittedAttempt
+    ? 'submitted'
+    : studentAttempts.some(
+          (attempt) => attempt.status === ExamAttemptStatus.IN_PROGRESS,
+        )
+      ? 'in_progress'
+      : assignmentStudent.status;
+  ```
+- **Vấn đề:**
+  - Backend đang quy định: hễ có `latestSubmittedAttempt` (bất kể học sinh làm đúng bao nhiêu %) thì đều gán `status = 'submitted'` ("Cần làm lại")!
+  - Khi học sinh đã đạt 100% (ví dụ Lượt 3 đạt 3/3 = 100%, `percentages.some(pct => pct >= 100)` hoặc `mastered === true`), hệ thống Backend vẫn trả về `status = "submitted"`, khiến trên giao diện Thống kê Giáo viên:
+    - Bảng báo học sinh là **"Cần làm lại"** (thay vì "Đã hoàn thành")
+    - Bộ lọc / thẻ KPI phía trên hiển thị **"Đã hoàn thành 100% (0)"**, **"Cần làm lại / Đang làm (2)"** dù học sinh đã làm đúng 100% câu hỏi!
+- **Đề xuất Backend sửa:**
+  ```ts
+  const isMastered =
+    assignmentStudent.status === ExamAssignmentStudentStatus.FINISHED ||
+    percentages.some((pct) => pct >= 100) ||
+    submittedStudentAttempts.some((a) => (a as any).mastered === true);
+
+  const status = isMastered
+    ? ExamAssignmentStudentStatus.FINISHED
+    : latestSubmittedAttempt
+      ? 'submitted'
+      : studentAttempts.some(
+            (attempt) => attempt.status === ExamAttemptStatus.IN_PROGRESS,
+          )
+        ? 'in_progress'
+        : assignmentStudent.status;
+  ```
+- **Frontend đã xử lý:**
+  - Tại `ExamAnalyticsModal.tsx`, Frontend đã chủ động kiểm tra `isMastered = bestPercentage >= 100 || s.mastered || submittedAttempts.some(...)` để chuẩn hóa trạng thái thành `finished` ("Đã hoàn thành") ngay trên UI, đồng thời hiển thị điểm số nguyên gọn gàng.
+
 ---
 
 ## 2026-09-18

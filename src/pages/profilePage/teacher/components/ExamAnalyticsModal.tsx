@@ -32,6 +32,7 @@ import { teacherLearningService } from "../../../../services/teacherLearningServ
 import { learningCmsService } from "../../../../services/learningCmsService";
 import { getErrorMessage } from "../../../../services/apiClient";
 import { TeacherAttemptDetailModal, formatDateTime, formatDuration } from "./TeacherAttemptDetailModal";
+import { formatScore, formatPercentage } from "../../../../utils/studentExamUtils";
 
 export function ExamAnalyticsModal({
   assignmentId,
@@ -132,8 +133,41 @@ export function ExamAnalyticsModal({
           .sort((a: any, b: any) => (a.attemptNumber ?? 0) - (b.attemptNumber ?? 0));
         const submittedSAtts = sAtts.filter((a: any) => a.status === "submitted");
         const firstAttempt = submittedSAtts.find((a: any) => a.attemptNumber === 1) || submittedSAtts[0];
+
+        const pcts = [
+          ...submittedSAtts.map((a: any) => parseFloat(a.percentage ?? "0")),
+          parseFloat(s.bestPercentage ?? s.bestScorePct ?? "0"),
+        ].filter((n) => !isNaN(n));
+        const bestPercentage = pcts.length > 0 ? Math.max(...pcts) : null;
+
+        const scores = [
+          ...submittedSAtts.map((a: any) => parseFloat(a.score ?? "0")),
+          parseFloat(s.bestScore ?? "0"),
+        ].filter((n) => !isNaN(n));
+        const bestScore = scores.length > 0 ? Math.max(...scores) : s.bestScore;
+
+        const isMastered =
+          (bestPercentage != null && bestPercentage >= 100) ||
+          s.status === "finished" ||
+          s.mastered === true ||
+          submittedSAtts.some((a: any) => a.mastered === true || parseFloat(a.percentage ?? "0") >= 100);
+
+        let computedStatus = s.status;
+        if (isMastered) {
+          computedStatus = "finished";
+        } else if (submittedSAtts.length > 0) {
+          computedStatus = "submitted";
+        } else if (sAtts.some((a: any) => a.status === "in_progress") || s.status === "in_progress") {
+          computedStatus = "in_progress";
+        } else {
+          computedStatus = "assigned";
+        }
+
         return {
           ...s,
+          status: computedStatus,
+          bestPercentage,
+          bestScore,
           allAttempts: sAtts,
           submittedAttempts: submittedSAtts,
           firstAttemptId: firstAttempt?.id || null,
@@ -184,9 +218,10 @@ export function ExamAnalyticsModal({
       const bestPercentage = pcts.length > 0 ? Math.max(...pcts) : null;
 
       const isMastered =
-        bestPercentage === 100 ||
+        (bestPercentage != null && bestPercentage >= 100) ||
         item.status === "finished" ||
-        submittedAtts.some((a: any) => a.mastered === true || Number(a.percentage) >= 100);
+        item.mastered === true ||
+        submittedAtts.some((a: any) => a.mastered === true || parseFloat(a.percentage ?? "0") >= 100);
       let computedStatus = "assigned";
       if (isMastered) {
         computedStatus = "finished";
@@ -1388,8 +1423,8 @@ export function ExamAnalyticsModal({
                               return (
                                 <div>
                                   <span className="font-bold text-slate-800 text-xs">
-                                    {sc}
-                                    {mx != null ? ` / ${mx}` : ""}
+                                    {formatScore(sc)}
+                                    {mx != null ? ` / ${formatScore(mx)}` : ""}
                                   </span>
                                   {pct != null && (
                                     <span
@@ -1401,7 +1436,7 @@ export function ExamAnalyticsModal({
                                           : "text-rose-500"
                                       }`}
                                     >
-                                      ({pct.toFixed(0)}%)
+                                      ({formatPercentage(pct)}%)
                                     </span>
                                   )}
                                 </div>
@@ -1417,11 +1452,11 @@ export function ExamAnalyticsModal({
                               return (
                                 <div>
                                   <span className="font-bold text-emerald-700 text-xs">
-                                    {Number(r.bestScore).toFixed(1)}
+                                    {formatScore(r.bestScore)}
                                   </span>
                                   {r.bestPercentage != null && (
                                     <span className="ml-1 text-[11px] font-semibold text-emerald-600">
-                                      ({Number(r.bestPercentage).toFixed(0)}%)
+                                      ({formatPercentage(r.bestPercentage)}%)
                                     </span>
                                   )}
                                 </div>

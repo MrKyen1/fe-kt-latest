@@ -4,6 +4,7 @@ import { EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import { teacherLearningService } from "../../../../services/teacherLearningService";
 import { getErrorMessage } from "../../../../services/apiClient";
 import { QuestionAnswerCard } from "./QuestionAnswerCard";
+import { formatScore, formatPercentage } from "../../../../utils/studentExamUtils";
 
 export function formatDuration(seconds?: number | null) {
   if (seconds == null || isNaN(seconds) || seconds <= 0) return "—";
@@ -127,8 +128,8 @@ export function TeacherAttemptDetailModal({
               <div className="text-center sm:text-left">
                 <div className="text-xs font-medium text-slate-500 mb-1">Điểm số</div>
                 <div className="text-xl font-bold tracking-tight text-slate-800">
-                  {activeData.score != null ? activeData.score : "—"}{" "}
-                  <span className="text-xs text-slate-400 font-normal">/ {activeData.maxScore}</span>
+                  {formatScore(activeData.score)}{" "}
+                  <span className="text-xs text-slate-400 font-normal">/ {formatScore(activeData.maxScore)}</span>
                 </div>
               </div>
 
@@ -140,7 +141,7 @@ export function TeacherAttemptDetailModal({
                     pct >= 100 ? "text-emerald-600" : "text-slate-800"
                   }`}
                 >
-                  {pct.toFixed(1)}%
+                  {formatPercentage(pct)}%
                 </div>
               </div>
 
@@ -192,9 +193,9 @@ export function TeacherAttemptDetailModal({
                   <div>
                     Kết quả ghi nhận:{" "}
                     <strong className="text-slate-800 font-bold">
-                      {activeData.score} / {activeData.maxScore} điểm
+                      {formatScore(activeData.score)} / {formatScore(activeData.maxScore)} điểm
                     </strong>{" "}
-                    ({pct.toFixed(1)}%).
+                    ({formatPercentage(pct)}%).
                     {activeData.displayResult && (
                       <span className="ml-1 text-slate-500">(Đúng {activeData.displayResult} câu).</span>
                     )}
