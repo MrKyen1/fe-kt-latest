@@ -125,6 +125,7 @@ export interface SubmitAttemptRequest {
 /** Một nhóm tiêu chí để random câu hỏi */
 export interface RandomQuestionCriteria {
   count: number;
+  specializationId?: string;
   levelId?: string;
   skillId?: string;
   topicId?: string;

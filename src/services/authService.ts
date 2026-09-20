@@ -1,5 +1,5 @@
 import { unwrapData, apiClient, normalizeUser } from "./apiClient";
-import { tokenStorage } from "./tokenStorage";
+import { tokenStorage, isTokenExpired } from "./tokenStorage";
 import {
   AuthResponse,
   ChangePasswordRequest,
@@ -54,7 +54,9 @@ export const authService = {
     if (!refresh) return;
 
     const headers: Record<string, string> = {};
-    if (access) {
+    // Chỉ đính kèm Authorization header nếu access token vẫn còn hạn
+    // Tránh việc gửi token hết hạn khiến JwtAuthGuard ném lỗi 401 không đáng có
+    if (access && !isTokenExpired(access)) {
       headers.Authorization = `Bearer ${access}`;
     }
 
@@ -65,7 +67,8 @@ export const authService = {
         {
           headers,
           timeout: 2000,
-        },
+          _skipAuthRefresh: true,
+        } as any,
       );
     } catch {
       // Best-effort logout notification: ignore server/network failures silently

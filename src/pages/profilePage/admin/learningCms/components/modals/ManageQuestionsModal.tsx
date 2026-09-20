@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Badge,
   Button,
@@ -13,6 +13,7 @@ import {
   Select,
   Segmented,
   Tag,
+  Tooltip,
   message,
 } from "antd";
 import {
@@ -29,6 +30,7 @@ import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from "../.
 import { QuestionPopover } from "../QuestionPopoverContent";
 import QuestionRowItem from "../QuestionRowItem";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
+import { getErrorMessage } from "../../../../../../services/apiClient";
 import { RandomQuestionCriteria } from "../../../../../../types/learning";
 
 // ── Types ────────────────────────────────────────────────────
@@ -43,6 +45,7 @@ interface QuestionOption {
 
 interface Question {
   id: string;
+  specializationId?: string;
   prompt?: string;
   type: string;
   status: string;
@@ -62,6 +65,7 @@ interface ExamQuestion {
 
 interface Exam {
   id: string;
+  specializationId?: string;
   title: string;
   status: string;
   updatedAt?: string;
@@ -299,11 +303,39 @@ export default function ManageQuestionsModal({
     questionDetails,
   );
 
+  const getQuestionObj = (questionId: string) => {
+    const q = allQuestions.find((allQ) => allQ.id === questionId);
+    let groupQ: any = null;
+    if (!q) {
+      for (const grp of randomResult?.groups || []) {
+        const matched = grp.questions?.find((gq: any) => gq.id === questionId);
+        if (matched) {
+          groupQ = matched;
+          break;
+        }
+      }
+    }
+    return questionDetails[questionId] ?? q ?? groupQ;
+  };
+
+  const mismatchedQuestions = useMemo(() => {
+    if (!randomResult || !selectedExam?.specializationId) return [];
+    return randomResult.items.filter((item) => {
+      const qObj = getQuestionObj(item.questionId);
+      return (
+        qObj?.specializationId &&
+        selectedExam.specializationId &&
+        qObj.specializationId !== selectedExam.specializationId
+      );
+    });
+  }, [randomResult, selectedExam, allQuestions, questionDetails]);
+
   const handleFetchRandom = async () => {
     try {
       setIsRandomLoading(true);
       const payloadCriteria: RandomQuestionCriteria[] = criteriaList.map((c) => ({
         count: c.count || 1,
+        specializationId: selectedExam?.specializationId || undefined,
         type: (c.type as any) || undefined,
         skillId: c.skillId || undefined,
         levelId: c.levelId || undefined,
@@ -311,7 +343,10 @@ export default function ManageQuestionsModal({
         tagId: c.tagId || undefined,
       }));
 
-      const res = await learningCmsService.exams.randomQuestions({ criteria: payloadCriteria });
+      const res = await learningCmsService.exams.randomQuestions(
+        { criteria: payloadCriteria },
+        selectedExam?.id,
+      );
       setRandomResult(res);
       if (res.totalCount === 0) {
         message.warning("Không tìm thấy câu hỏi nào phù hợp với tiêu chí đã chọn");
@@ -319,7 +354,7 @@ export default function ManageQuestionsModal({
         message.success(`Đã lấy ngẫu nhiên ${res.totalCount} câu hỏi (Preview)`);
       }
     } catch (err: any) {
-      message.error(err?.message || "Lỗi khi lấy câu hỏi ngẫu nhiên");
+      message.error(getErrorMessage(err, "Lỗi khi lấy câu hỏi ngẫu nhiên"));
     } finally {
       setIsRandomLoading(false);
     }
@@ -327,6 +362,14 @@ export default function ManageQuestionsModal({
 
   const handleBulkAttach = async () => {
     if (!selectedExam || !randomResult || randomResult.items.length === 0) return;
+
+    if (mismatchedQuestions.length > 0) {
+      message.error(
+        `Không thể gắn: Có ${mismatchedQuestions.length} câu hỏi không thuộc cùng môn học với bài thi (${selectedExam.title}). Vui lòng chọn Kỹ năng hoặc Chủ đề cụ thể để tạo câu hỏi đúng môn!`
+      );
+      return;
+    }
+
     try {
       setIsBulkAttaching(true);
       const startIdx = examQuestions.length;
@@ -343,7 +386,7 @@ export default function ManageQuestionsModal({
       }
       setRandomResult(null);
     } catch (err: any) {
-      message.error(err?.message || "Lỗi khi gắn câu hỏi hàng loạt");
+      message.error(getErrorMessage(err, "Lỗi khi gắn câu hỏi hàng loạt"));
     } finally {
       setIsBulkAttaching(false);
     }
@@ -730,6 +773,11 @@ export default function ManageQuestionsModal({
                       Xem trước (Preview)
                     </Button>
                   </div>
+
+                  <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/70 rounded-lg p-2 mt-2 flex items-center gap-1.5">
+                    <AlertCircle size={13} className="shrink-0 text-amber-500" />
+                    <span>Lưu ý: Bạn nên chọn <strong>Kỹ năng</strong> hoặc <strong>Chủ đề</strong> cụ thể để câu hỏi ngẫu nhiên luôn thuộc đúng môn học của bài thi.</span>
+                  </div>
                 </div>
 
                 {/* Preview list */}
@@ -740,18 +788,42 @@ export default function ManageQuestionsModal({
                         <ClipboardList size={14} className="text-purple-600" />
                         <span>Kết quả Preview: {randomResult.totalCount} câu hỏi</span>
                       </div>
-                      <Button
-                        type="primary"
-                        size="small"
-                        icon={<ThunderboltOutlined />}
-                        loading={isBulkAttaching}
-                        disabled={randomResult.totalCount === 0}
-                        onClick={handleBulkAttach}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-xs font-bold"
+                      <Tooltip
+                        title={
+                          mismatchedQuestions.length > 0
+                            ? `Có ${mismatchedQuestions.length} câu hỏi không cùng môn học với bài thi. Vui lòng chọn Kỹ năng hoặc Chủ đề để lọc đúng môn.`
+                            : undefined
+                        }
                       >
-                        Gắn {randomResult.totalCount} câu vào đề (Bulk Attach)
-                      </Button>
+                        <span>
+                          <Button
+                            type="primary"
+                            size="small"
+                            icon={<ThunderboltOutlined />}
+                            loading={isBulkAttaching}
+                            disabled={randomResult.totalCount === 0 || mismatchedQuestions.length > 0}
+                            onClick={handleBulkAttach}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-xs font-bold disabled:opacity-50"
+                          >
+                            Gắn {randomResult.totalCount} câu vào đề (Bulk Attach)
+                          </Button>
+                        </span>
+                      </Tooltip>
                     </div>
+
+                    {mismatchedQuestions.length > 0 && (
+                      <div className="mb-2.5 p-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                        <AlertTriangle size={15} className="shrink-0 text-red-500 mt-0.5" />
+                        <div>
+                          <div className="font-semibold">
+                            Phát hiện {mismatchedQuestions.length} câu hỏi không thuộc môn học này!
+                          </div>
+                          <div className="text-[11px] text-red-600 mt-0.5">
+                            Bài thi yêu cầu toàn bộ câu hỏi phải cùng môn học. Do để <em>"Tất cả"</em>, hệ thống đã chọn ngẫu nhiên câu hỏi của môn khác. Hãy chọn cụ thể <strong>Kỹ năng</strong> hoặc <strong>Chủ đề</strong> của môn học để tạo lại câu hỏi.
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <List
                       split={false}
@@ -759,18 +831,12 @@ export default function ManageQuestionsModal({
                       style={{ maxHeight: 180, overflowY: "auto" }}
                       dataSource={randomResult.items}
                       renderItem={(item, index) => {
-                        const q = allQuestions.find((allQ) => allQ.id === item.questionId);
-                        let groupQ: any = null;
-                        if (!q) {
-                          for (const grp of randomResult.groups || []) {
-                            const matched = grp.questions?.find((gq) => gq.id === item.questionId);
-                            if (matched) {
-                              groupQ = matched;
-                              break;
-                            }
-                          }
-                        }
-                        const questionObj = questionDetails[item.questionId] ?? q ?? groupQ;
+                        const questionObj = getQuestionObj(item.questionId);
+                        const isMismatched = !!(
+                          questionObj?.specializationId &&
+                          selectedExam?.specializationId &&
+                          questionObj.specializationId !== selectedExam.specializationId
+                        );
 
                         return (
                           <QuestionRowItem
@@ -783,6 +849,7 @@ export default function ManageQuestionsModal({
                             tags={tags}
                             variant="purple"
                             placement="left"
+                            isMismatched={isMismatched}
                           />
                         );
                       }}

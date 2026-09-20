@@ -26,7 +26,7 @@ const Footer = memo(function Footer() {
 
     Promise.all([
       homepageService.getPublic().catch(() => null),
-      academicService.centers.list().catch(() => []),
+      academicService.centers.publicList().catch(() => []),
     ]).then(([hpData, centersList]) => {
       if (!active) return;
       if (hpData?.footer) {

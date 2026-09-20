@@ -14,6 +14,80 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-09-20
+
+### 1. Đề xuất Public API: Danh sách cơ sở Kata Edu cho Khách vãng lai & Trang chủ (Footer)
+
+- **Vấn đề phát hiện trên Frontend:**
+  - Khách vãng lai chưa đăng nhập hoặc người dùng sau khi bấm Đăng xuất truy cập Trang chủ (`/home`) và Footer đều cần xem danh sách cơ sở Kata Edu (tên cơ sở, địa chỉ, hotline, email).
+  - Hiện tại endpoint `GET /api/v1/centers` đang được bảo vệ bởi `PermissionsGuard` (yêu cầu quyền `centers.read`), khiến khách vãng lai hoặc người chưa login gặp lỗi **401 Unauthorized** trên Network/Console trình duyệt.
+- **Đề xuất Backend triển khai (1 trong 2 phương án):**
+  - **Phương án 1 (Khuyên dùng - Chuẩn RESTful):**
+    - Mở endpoint public riêng: `GET /api/v1/centers/public` (hoặc `GET /api/v1/homepage/centers`).
+    - Gắn decorator `@Public()` (không yêu cầu Bearer token).
+    - Chỉ trả về danh sách các cơ sở đang hoạt động (`isActive = true`), sắp xếp theo `orderIndex` hoặc ngày tạo.
+    - Envelope trả về:
+      ```jsonc
+      {
+        "success": true,
+        "data": [
+          {
+            "id": "center-uuid",
+            "name": "Kata Academy - Cơ sở Bắc Giang",
+            "code": "BG-01",
+            "address": "123 Đình Cả, Quảng Minh, Việt Yên, Bắc Giang",
+            "phone": "0123 456 789",
+            "email": "contact@kataedu.vn",
+            "isActive": true
+          }
+        ]
+      }
+      ```
+  - **Phương án 2 (Mở rộng endpoint hiện tại):**
+    - Cho phép endpoint `GET /api/v1/centers` hoạt động ở chế độ Public hoặc Optional Auth (nếu không có Bearer token thì tự động lọc trả về các cơ sở `isActive = true`).
+- **Trạng thái Frontend đã sẵn sàng:**
+  - Đã bổ sung method `academicService.centers.publicList()` tại `src/services/academicService.ts`.
+  - Service này tự động bắt tay với `GET /api/v1/centers/public` hoặc `GET /api/v1/homepage/centers`, đồng thời có cơ chế fallback thông minh không để phát sinh lỗi 401 khi khách vãng lai duyệt website.
+
+### 2. Lỗi Logic Nghiệp vụ: API Random câu hỏi phải bắt buộc lọc theo Môn học (`specializationId`) của đề thi
+
+- **Bản chất nghiệp vụ (Invariant):**
+  - Trong hệ thống Kata Edu, **mỗi bài thi/đề thi luôn thuộc một môn học cụ thể** (`specializationId` - ví dụ: Toán 6, Tiếng Anh 6).
+  - Ràng buộc toàn vẹn của hệ thống (trong DB & hàm `ensureSameSpecialization`) quy định: **mọi câu hỏi gắn vào đề thi bắt buộc phải cùng môn học với đề thi đó**.
+  - Do đó: **Tính năng random câu hỏi cho đề thi chỉ được phép lấy các câu hỏi đã DUYỆT (`published`), ĐANG HOẠT ĐỘNG (`isActive = true`) VÀ THUỘC ĐÚNG MÔN HỌC ĐÓ (`specialization_id = exam.specialization_id`)**. Việc để câu hỏi môn khác lọt vào là lỗi logic nghiệp vụ nghiêm trọng.
+
+- **Thực trạng lỗi hiện tại của Backend:**
+  - Endpoint `POST /api/v1/learning/exams/random-questions` (nằm trong `ExamsController`) hiện chỉ chuyển tiếp sang `questionsService.pickRandomByCriteria(dto)` mà **hoàn toàn không có điều kiện `specialization_id`**.
+  - `RandomCriterionDto` chỉ nhận: `count`, `levelId`, `type`, `topicId`, `skillId`, `tagId`.
+  - Khi Admin tạo đề ngẫu nhiên mà để Kỹ năng/Chủ đề là *"Tất cả"*, Backend query `SELECT` ngẫu nhiên trên **toàn bộ database của tất cả các môn học**.
+  - Kết quả: Đề thi môn Toán 6 bị bốc nhầm câu hỏi môn Tiếng Anh 6.
+  - Ngay sau đó khi Admin bấm *"Gắn câu vào đề (Bulk Attach)"*, chính Backend lại chặn lại và trả lỗi: **`400 Bad Request` ("Câu hỏi không thuộc cùng môn học với bài thi")**. Tức là Backend tự bốc câu sai môn rồi tự từ chối chính câu hỏi đó!
+
+- **Yêu cầu Backend khắc phục (Khuyên dùng kết hợp):**
+  1. **Giải pháp tối ưu nhất (Chuẩn RESTful có context):**
+     - Bổ sung route: `POST /api/v1/learning/exams/:id/random-questions` (nhận `id` của bài thi).
+     - Backend tìm `exam` theo `id`, tự động lấy `exam.specializationId` làm điều kiện query bắt buộc:
+       ```typescript
+       qb.andWhere('question.specialization_id = :specializationId', {
+         specializationId: exam.specializationId,
+       });
+       qb.andWhere('question.status = :status', { status: ContentStatus.PUBLISHED });
+       qb.andWhere('question.is_active = true');
+       ```
+     - Như vậy 100% câu hỏi random ra luôn đảm bảo đúng môn của bài thi, FE không cần và không thể truyền sai môn.
+  2. **Với route hiện tại `POST /api/v1/learning/exams/random-questions`:**
+     - Trong `RandomCriterionDto` (`src/modules/learning/dto/random-questions.dto.ts`): Bổ sung `specializationId?: string;` (hoặc ở cấp `RandomQuestionsDto`).
+     - Trong `questions.service.ts` (`randomQuestionIds`): Bắt buộc thêm `if (criterion.specializationId) qb.andWhere('question.specialization_id = :specializationId', ...)`.
+
+- **Trạng thái Frontend (ĐÃ TÍCH HỢP SẴN 100% — CHỈ CHỜ BACKEND TRIỂN KHAI):**
+  - Frontend đã triển khai sẵn cơ chế tương thích kép (Dual-strategy with Auto-fallback) trong `src/services/learningCmsService.ts`:
+    1. **Sẵn sàng cho Phương án 1:** FE tự động ưu tiên gọi `POST /api/v1/learning/exams/:examId/random-questions` nếu Backend hỗ trợ endpoint theo `examId`.
+    2. **Sẵn sàng cho Phương án 2:** Nếu Backend giữ endpoint `POST /api/v1/learning/exams/random-questions`, FE đã truyền sẵn `specializationId: selectedExam.specializationId` trong từng nhóm `criteria`. (Đồng thời có sẵn fallback tự động strip param nếu gặp BE cũ chưa whitelist để không bị crash).
+    3. **Bảo vệ người dùng ngay tại Preview:** Nếu nhận về câu hỏi lệch môn (khi BE chưa update), FE tự động gắn nhãn đỏ **`Khác môn`**, hiển thị cảnh báo và khóa nút Bulk Attach để tránh lỗi 400.
+  - 👉 **Backend chỉ cần chọn triển khai Phương án 1 hoặc Phương án 2, phía Frontend sẽ tự động khớp ngay lập tức mà không cần sửa thêm code.**
+
+---
+
 ## 2026-09-18
 
 ### 1. API: `GET /api/v1/learning/curriculums/popular` [ĐÃ KHẮC PHỤC XONG]

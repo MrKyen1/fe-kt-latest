@@ -22,6 +22,7 @@ export const API_ORIGIN = (() => {
 
 interface RetryConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
+  _skipAuthRefresh?: boolean;
 }
 
 const refreshClient = axios.create({
@@ -64,7 +65,13 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
     const refreshToken = tokenStorage.getRefreshToken();
 
-    if (status === 401 && originalRequest && !originalRequest._retry && refreshToken) {
+    if (
+      status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest._skipAuthRefresh &&
+      refreshToken
+    ) {
       originalRequest._retry = true;
 
       try {
@@ -150,36 +157,31 @@ export function getErrorMessage(error: unknown, fallback = "Đã có lỗi xảy
   if (!error) return fallback;
   if (typeof error === "string") return error;
   const anyErr = error as any;
-  const resData = anyErr?.response?.data;
-  if (resData?.message) {
-    const msg = resData.message;
-    const mainMsg = Array.isArray(msg) ? msg.join(", ") : String(msg);
-    if (resData.fieldErrors && typeof resData.fieldErrors === "object") {
-      const fieldMsgs = Object.values(resData.fieldErrors)
-        .filter(Boolean)
-        .map((f: any) => (Array.isArray(f) ? f.join(", ") : String(f)))
-        .join("; ");
-      if (fieldMsgs && !mainMsg.includes(fieldMsgs)) {
-        return `${mainMsg}: ${fieldMsgs}`;
-      }
-    }
-    return mainMsg;
-  }
-  if (resData?.fieldErrors && typeof resData.fieldErrors === "object") {
-    const fieldMsgs = Object.values(resData.fieldErrors)
-      .filter(Boolean)
-      .map((f: any) => (Array.isArray(f) ? f.join(", ") : String(f)))
+
+  const fieldErrors = anyErr?.fieldErrors || anyErr?.response?.data?.fieldErrors;
+  const rawMsg = anyErr?.response?.data?.message || anyErr?.message;
+  const mainMsg = Array.isArray(rawMsg)
+    ? rawMsg.join(", ")
+    : (rawMsg ? String(rawMsg) : fallback);
+
+  if (fieldErrors && typeof fieldErrors === "object") {
+    const fieldMsgs = Object.entries(fieldErrors)
+      .filter(([_, v]) => Boolean(v))
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
       .join("; ");
-    if (fieldMsgs) return fieldMsgs;
+    if (fieldMsgs) {
+      if (!mainMsg.includes(fieldMsgs)) {
+        return `${mainMsg} (${fieldMsgs})`;
+      }
+      return mainMsg;
+    }
   }
-  if (resData?.error) {
-    return String(resData.error);
+
+  if (anyErr?.response?.data?.error) {
+    return String(anyErr.response.data.error);
   }
-  if (anyErr?.message) {
-    const msg = anyErr.message;
-    return Array.isArray(msg) ? msg.join(", ") : String(msg);
-  }
-  return fallback;
+
+  return mainMsg || fallback;
 }
 
 export function unwrapData<T>(response: AxiosResponse<ApiEnvelope<T>>) {

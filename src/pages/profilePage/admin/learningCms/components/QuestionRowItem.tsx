@@ -19,6 +19,8 @@ export interface QuestionRowItemProps {
   variant?: "purple" | "indigo" | "slate";
   placement?: TooltipPlacement;
   action?: React.ReactNode;
+  tagExtra?: React.ReactNode;
+  isMismatched?: boolean;
   className?: string;
 }
 
@@ -36,18 +38,24 @@ export default function QuestionRowItem({
   variant = "indigo",
   placement = "left",
   action,
+  tagExtra,
+  isMismatched = false,
   className = "",
 }: QuestionRowItemProps) {
   const prompt = question?.prompt;
   const type = question?.type;
 
   const isPurple = variant === "purple";
-  const borderClass = isPurple
-    ? "border-purple-100 hover:border-purple-300"
-    : "border-slate-200 hover:border-indigo-300";
-  const badgeClass = isPurple
-    ? "bg-purple-100 text-purple-700"
-    : "bg-indigo-100 text-indigo-700";
+  const borderClass = isMismatched
+    ? "border-red-300 bg-red-50/40 hover:border-red-400"
+    : isPurple
+      ? "border-purple-100 hover:border-purple-300"
+      : "border-slate-200 hover:border-indigo-300";
+  const badgeClass = isMismatched
+    ? "bg-red-100 text-red-700"
+    : isPurple
+      ? "bg-purple-100 text-purple-700"
+      : "bg-indigo-100 text-indigo-700";
 
   return (
     <div
@@ -77,14 +85,22 @@ export default function QuestionRowItem({
               }}
             />
           </div>
-          {type && (
-            <Tag
-              color={QUESTION_TYPE_COLORS[type]}
-              className="text-[9px] border-none m-0 shrink-0"
-            >
-              {QUESTION_TYPE_LABELS[type] ?? type}
-            </Tag>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {isMismatched && (
+              <Tag color="error" className="text-[9px] border-none m-0 font-semibold">
+                Khác môn
+              </Tag>
+            )}
+            {tagExtra}
+            {type && (
+              <Tag
+                color={QUESTION_TYPE_COLORS[type]}
+                className="text-[9px] border-none m-0 shrink-0"
+              >
+                {QUESTION_TYPE_LABELS[type] ?? type}
+              </Tag>
+            )}
+          </div>
         </div>
       </QuestionPopover>
 

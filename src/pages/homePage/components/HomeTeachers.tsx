@@ -75,7 +75,7 @@ export default function HomeTeachers() {
         const [teachersRes, specsRes, centersRes] = await Promise.allSettled([
           userService.list({ roleCode: "teacher", isActive: true }),
           academicService.specializations.list().catch(() => []),
-          academicService.centers.list().catch(() => []),
+          academicService.centers.publicList().catch(() => []),
         ]);
 
         if (!active) return;

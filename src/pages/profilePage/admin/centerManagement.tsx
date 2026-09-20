@@ -56,7 +56,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { academicService } from "../../../services/academicService";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { teacherLearningService } from "../../../services/teacherLearningService";
-import { resolveMediaUrl } from "../../../services/apiClient";
+import { resolveMediaUrl, getErrorMessage } from "../../../services/apiClient";
 import { SecureImage } from "../../../components/SecureImage";
 import { useAppImagePreview } from "../../../components/AppImagePreview";
 import {
@@ -311,9 +311,9 @@ export default function CenterManagement() {
     }
   };
 
-  const getTeacherRoleId = () => roles.find((r) => r.code === "teacher")?.id || "";
-  const getStudentRoleId = () => roles.find((r) => r.code === "student")?.id || "";
-  const getAdminRoleId = () => roles.find((r) => r.code === "admin")?.id || "";
+  const getTeacherRoleId = () => roles.find((r) => r.code?.toLowerCase() === "teacher")?.id || "";
+  const getStudentRoleId = () => roles.find((r) => r.code?.toLowerCase() === "student")?.id || "";
+  const getAdminRoleId = () => roles.find((r) => r.code?.toLowerCase() === "admin")?.id || "";
 
   const isUserActive = (record: any) => {
     if (!record) return false;
@@ -1026,6 +1026,11 @@ export default function CenterManagement() {
         });
         message.success("Cập nhật quản trị viên thành công");
       } else {
+        const adminRoleId = getAdminRoleId();
+        if (!adminRoleId) {
+          message.error("Không tìm thấy vai trò Quản trị viên (admin). Vui lòng thử tải lại trang!");
+          return;
+        }
         const createdUser = await userService.create({
           password: values.password || "Admin@123456",
           fullName: values.fullName,
@@ -1035,7 +1040,7 @@ export default function CenterManagement() {
           startDate: formattedStartDate!,
           address: cleanAddress,
           citizenId: citizenIdVal,
-          roleId: getAdminRoleId(),
+          roleId: adminRoleId,
         });
         message.success(`Tạo quản trị viên thành công! Mã: ${createdUser.code}`);
       }
@@ -1046,7 +1051,7 @@ export default function CenterManagement() {
       if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
         message.error("Số căn cước công dân đã tồn tại");
       } else {
-        message.error(err.message || "Thao tác thất bại");
+        message.error(getErrorMessage(err, "Thao tác thất bại"));
       }
     } finally {
       setLoading(false);
@@ -2615,9 +2620,15 @@ export default function CenterManagement() {
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
-                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại!" }]}
+                      rules={[
+                        { required: true, message: "Vui lòng nhập số điện thoại!" },
+                        {
+                          pattern: /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/,
+                          message: "Số điện thoại không đúng định dạng (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09)!",
+                        },
+                      ]}
                     >
-                      <Input placeholder="0123456789" className="rounded-xl" />
+                      <Input placeholder="0912345678" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -3039,9 +3050,15 @@ export default function CenterManagement() {
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
-                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại!" }]}
+                      rules={[
+                        { required: true, message: "Vui lòng nhập số điện thoại!" },
+                        {
+                          pattern: /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/,
+                          message: "Số điện thoại không đúng định dạng (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09)!",
+                        },
+                      ]}
                     >
-                      <Input placeholder="0123456789" className="rounded-xl" />
+                      <Input placeholder="0912345678" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -3268,19 +3285,25 @@ export default function CenterManagement() {
                   <Col span={12}>
                     <Form.Item
                       name="email"
-                      label="Email"
+                      label="Email (tùy chọn)"
                       rules={[{ type: "email", message: "Email không hợp lệ!" }]}
                     >
-                      <Input placeholder="admin@email.com" className="rounded-xl" />
+                      <Input placeholder="Nhập email nếu có" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
-                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại!" }]}
+                      rules={[
+                        { required: true, message: "Vui lòng nhập số điện thoại!" },
+                        {
+                          pattern: /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/,
+                          message: "Số điện thoại không đúng định dạng (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09)!",
+                        },
+                      ]}
                     >
-                      <Input placeholder="0123456789" className="rounded-xl" />
+                      <Input placeholder="0912345678" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -3290,13 +3313,14 @@ export default function CenterManagement() {
                     <Form.Item
                       name="dateOfBirth"
                       label="Ngày sinh"
+                      rules={[{ required: true, message: "Vui lòng chọn ngày sinh!" }]}
                     >
                       <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name="address" label="Địa chỉ">
-                      <Input placeholder="Hồ Chí Minh" className="rounded-xl" />
+                    <Form.Item name="address" label="Địa chỉ (tùy chọn)">
+                      <Input placeholder="Nhập địa chỉ (tùy chọn)" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                 </Row>

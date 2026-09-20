@@ -212,6 +212,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const hasToken = !!tokenStorage.getAccessToken();
 
     if (hasToken) {
+      // Nếu cả access token lẫn refresh token đều đã hết hạn, xóa session ngay
+      // Tránh việc gửi request /auth/me chết gây ra lỗi 401 trên console mạng
+      if (tokenStorage.isRefreshTokenExpired() && tokenStorage.isAccessTokenExpired()) {
+        tokenStorage.clear();
+        setUser(null);
+        setIsInitializing(false);
+        return unsubscribe;
+      }
+
       if (storedUser) {
         const initial = mapStoredUser(storedUser);
         setUser(initial);
@@ -247,15 +256,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshToken = tokenStorage.getRefreshToken();
     const accessToken = tokenStorage.getAccessToken();
 
-    // 1. Clear client credentials and user state immediately for instant, secure UX
-    tokenStorage.clear();
-    setUser(null);
-
-    // 2. Best-effort server-side token revocation with token snapshots
-    if (refreshToken) {
-      authService.logout(refreshToken, accessToken).catch(() => {
-        // Silently handled: local session is already cleared cleanly
-      });
+    try {
+      // 1. Thu hồi session trên server với fail-safe timeout 1.5s
+      // Gọi khi token credentials còn nguyên vẹn trong storage để request hợp lệ
+      if (refreshToken) {
+        await Promise.race([
+          authService.logout(refreshToken, accessToken),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      }
+    } catch {
+      // Bỏ qua lỗi server/mạng để đảm bảo client luôn logout thành công
+    } finally {
+      // 2. Dọn dẹp sạch sẽ toàn bộ local state và credentials
+      tokenStorage.clear();
+      setUser(null);
     }
   };
 

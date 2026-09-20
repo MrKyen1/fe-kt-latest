@@ -220,29 +220,75 @@ export const learningCmsService = {
 
     /**
      * Random câu hỏi theo nhóm tiêu chí (preview — KHÔNG ghi DB).
-     * Response: { data: { totalCount, items, groups[] } }
-     * FE có thể truyền thọng `data.items` vào bulkAttachQuestions.
+     * Hỗ trợ cả 2 phương án của Backend:
+     *   1. POST /learning/exams/:examId/random-questions (nếu có examId)
+     *   2. POST /learning/exams/random-questions (endpoint chung kèm fallback tự động)
      */
-    async randomQuestions(payload: RandomQuestionsRequest) {
-      return unwrapData(
-        await apiClient.post<ApiEnvelope<{
-          totalCount: number;
-          items: Array<{ questionId: string; orderIndex: number }>;
-          groups: Array<{
-            index: number;
-            filters: Record<string, unknown>;
-            requested: number;
-            returned: number;
-            questions: Array<{
-              orderIndex: number;
-              id: string;
-              prompt: string;
-              type: string;
-              options: unknown[];
-            }>;
+    async randomQuestions(payload: RandomQuestionsRequest, examId?: string) {
+      type RandomResponse = ApiEnvelope<{
+        totalCount: number;
+        items: Array<{ questionId: string; orderIndex: number }>;
+        groups: Array<{
+          index: number;
+          filters: Record<string, unknown>;
+          requested: number;
+          returned: number;
+          questions: Array<{
+            orderIndex: number;
+            id: string;
+            specializationId?: string;
+            prompt: string;
+            type: string;
+            options: unknown[];
           }>;
-        }>>("/learning/exams/random-questions", payload),
-      );
+        }>;
+      }>;
+
+      // Phương án 1: Nếu có examId, thử gọi endpoint theo context bài thi trước
+      if (examId) {
+        try {
+          const res = await apiClient.post<RandomResponse>(
+            `/learning/exams/${examId}/random-questions`,
+            payload,
+          );
+          return unwrapData(res);
+        } catch (err: any) {
+          const status = err?.response?.status ?? err?.status;
+          // Nếu backend chưa có endpoint này (404/405), tiếp tục thử phương án 2
+          if (status !== 404 && status !== 405) {
+            throw err;
+          }
+        }
+      }
+
+      // Phương án 2: Endpoint chung /learning/exams/random-questions
+      try {
+        const res = await apiClient.post<RandomResponse>(
+          "/learning/exams/random-questions",
+          payload,
+        );
+        return unwrapData(res);
+      } catch (err: any) {
+        // Tương thích ngược: Nếu backend chưa bổ sung specializationId vào DTO (bị 400 forbidNonWhitelisted)
+        // tự động loại bỏ specializationId và gọi lại để không làm đứt đoạn người dùng
+        const responseData = JSON.stringify(err?.response?.data || "");
+        const isWhitelistedErr =
+          err?.response?.status === 400 &&
+          responseData.includes("specializationId") &&
+          responseData.includes("should not exist");
+
+        if (isWhitelistedErr && payload.criteria.some((c) => c.specializationId)) {
+          const strippedPayload: RandomQuestionsRequest = {
+            criteria: payload.criteria.map(({ specializationId, ...rest }) => rest),
+          };
+          const fallbackRes = await apiClient.post<RandomResponse>(
+            "/learning/exams/random-questions",
+            strippedPayload,
+          );
+          return unwrapData(fallbackRes);
+        }
+        throw err;
+      }
     },
 
     /**
