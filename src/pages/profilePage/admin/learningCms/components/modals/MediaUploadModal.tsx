@@ -45,6 +45,9 @@ export default function MediaUploadModal({
       onCancel={onCancel}
       onOk={onUpload}
       confirmLoading={confirmLoading}
+      centered
+      maskClosable={false}
+      width={520}
       className="rounded-2xl"
       okText="Tải lên"
       cancelText="Hủy"

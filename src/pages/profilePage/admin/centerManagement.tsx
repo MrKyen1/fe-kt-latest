@@ -149,15 +149,27 @@ export default function CenterManagement() {
   const setSelectedCenterId = (id: string | null) => {
     setSelectedCenterIdState(id);
     if (id) {
-      navigate(`/admin/dashboard/centers/${id}/${activeSubTab}`, { replace: true });
+      navigate(`/admin/dashboard/centers/${id}/${activeSubTab}`, {
+        replace: true,
+        preventScrollReset: true,
+        state: { preventScroll: true },
+      });
     } else {
-      navigate(`/admin/dashboard`, { replace: true });
+      navigate(`/admin/dashboard`, {
+        replace: true,
+        preventScrollReset: true,
+        state: { preventScroll: true },
+      });
     }
   };
 
   const handleSubTabChange = (key: string) => {
     if (selectedCenterId) {
-      navigate(`/admin/dashboard/centers/${selectedCenterId}/${key}`);
+      navigate(`/admin/dashboard/centers/${selectedCenterId}/${key}`, {
+        replace: true,
+        preventScrollReset: true,
+        state: { preventScroll: true },
+      });
     }
   };
 
@@ -2387,11 +2399,12 @@ export default function CenterManagement() {
               onOk={() => centerForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
               width={720}
               centered
               styles={{
                 body: {
-                  maxHeight: "65vh",
+                  maxHeight: "72vh",
                   overflowY: "auto",
                   overflowX: "hidden",
                   paddingRight: "8px",
@@ -2493,6 +2506,17 @@ export default function CenterManagement() {
               onOk={() => classForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
+              centered
+              width={620}
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
@@ -2566,11 +2590,12 @@ export default function CenterManagement() {
               onOk={() => teacherForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
               width={650}
               centered
               styles={{
                 body: {
-                  maxHeight: "70vh",
+                  maxHeight: "72vh",
                   overflowY: "auto",
                   overflowX: "hidden",
                   paddingRight: "8px",
@@ -2996,11 +3021,12 @@ export default function CenterManagement() {
               onOk={() => studentForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
               width={650}
               centered
               styles={{
                 body: {
-                  maxHeight: "70vh",
+                  maxHeight: "72vh",
                   overflowY: "auto",
                   overflowX: "hidden",
                   paddingRight: "8px",
@@ -3241,11 +3267,12 @@ export default function CenterManagement() {
               onOk={() => adminForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
               width={650}
               centered
               styles={{
                 body: {
-                  maxHeight: "70vh",
+                  maxHeight: "72vh",
                   overflowY: "auto",
                   overflowX: "hidden",
                   paddingRight: "8px",
@@ -3440,6 +3467,8 @@ export default function CenterManagement() {
                 setResetPasswordModalOpen(false);
                 setResetPasswordResult(null);
               }}
+              maskClosable={false}
+              centered
               footer={null}
               className="rounded-2xl"
             >
@@ -3511,6 +3540,17 @@ export default function CenterManagement() {
               onOk={() => specializationForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
+              centered
+              width={560}
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form

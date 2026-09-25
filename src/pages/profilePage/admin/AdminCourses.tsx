@@ -209,6 +209,17 @@ export default function AdminCourses() {
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={isLoading}
+        centered
+        maskClosable={false}
+        width={600}
+        styles={{
+          body: {
+            maxHeight: "74vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "8px",
+          },
+        }}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handleCreate} initialValues={{ status: "draft" }}>

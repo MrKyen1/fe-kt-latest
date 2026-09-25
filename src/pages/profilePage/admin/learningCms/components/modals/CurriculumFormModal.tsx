@@ -56,10 +56,15 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
+      maskClosable={false}
+      centered
       className="rounded-2xl"
       okText="Lưu lại"
       cancelText="Hủy"
-      width={600}
+      width={640}
+      styles={{
+        body: { maxHeight: "72vh", overflowY: "auto", overflowX: "hidden", paddingRight: "8px" },
+      }}
     >
       <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
         <Form.Item name="code" label="Mã giáo trình" rules={[{ required: !isEditing }]}>

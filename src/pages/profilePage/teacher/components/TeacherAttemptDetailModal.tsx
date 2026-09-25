@@ -75,6 +75,8 @@ export function TeacherAttemptDetailModal({
     <Modal
       open={open}
       onCancel={onClose}
+      centered
+      maskClosable={false}
       footer={[
         <Button key="close" onClick={onClose} className="rounded-xl font-medium px-5">
           Đóng

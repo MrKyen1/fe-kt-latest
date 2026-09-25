@@ -981,6 +981,7 @@ export default function QuestionFormModal({
       }
       open={open}
       forceRender
+      maskClosable={false}
       onCancel={handleModalCancel}
       onOk={() => form.submit()}
       confirmLoading={submitting}
@@ -989,7 +990,7 @@ export default function QuestionFormModal({
       width={800}
       centered
       styles={{
-        body: { maxHeight: "70vh", overflowY: "auto", overflowX: "hidden", paddingRight: "8px" },
+        body: { maxHeight: "72vh", overflowY: "auto", overflowX: "hidden", paddingRight: "8px" },
       }}
       className="rounded-2xl"
       cancelText="Hủy"

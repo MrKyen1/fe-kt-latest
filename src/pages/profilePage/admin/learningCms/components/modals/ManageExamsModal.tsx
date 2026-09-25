@@ -75,6 +75,8 @@ export default function ManageExamsModal({
       }
       open={open}
       onCancel={onCancel}
+      maskClosable={false}
+      centered
       footer={[
         <Button key="done" type="primary" onClick={onDone} className="rounded-xl bg-indigo-600 hover:bg-indigo-700 font-semibold px-5">
           Hoàn tất

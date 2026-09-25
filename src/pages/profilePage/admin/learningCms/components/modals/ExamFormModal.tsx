@@ -33,9 +33,15 @@ export default function ExamFormModal({ open, onCancel, form, onFinish, isEditin
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
+      maskClosable={false}
+      centered
       className="rounded-2xl"
       okText="Lưu lại"
       cancelText="Hủy"
+      width={620}
+      styles={{
+        body: { maxHeight: "72vh", overflowY: "auto", overflowX: "hidden", paddingRight: "8px" },
+      }}
     >
       <Form form={form} layout="vertical" onFinish={onFinish} className="pt-2">
         <Form.Item name="code" label="Mã đề thi" rules={[{ required: !isEditing }]}>

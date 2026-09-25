@@ -153,7 +153,17 @@ function AttemptHistoryModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={680}
+      centered
+      maskClosable={false}
+      width={720}
+      styles={{
+        body: {
+          maxHeight: "74vh",
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: "8px",
+        },
+      }}
       className="rounded-2xl overflow-hidden"
     >
       {loading ? (

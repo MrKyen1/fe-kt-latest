@@ -32,7 +32,6 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   SaveOutlined,
-  CopyOutlined,
   PictureOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
@@ -1537,19 +1536,7 @@ export default function AdminHomepageCms() {
                       <div className="text-[10px] text-slate-400 truncate font-mono">
                         {media.mimeType || "image/jpeg"}
                       </div>
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                        <Tooltip title="Sao chép URL">
-                          <Button
-                            size="small"
-                            type="text"
-                            icon={<CopyOutlined className="text-slate-400 hover:text-indigo-600" />}
-                            onClick={() => {
-                              navigator.clipboard.writeText(media.url);
-                              message.success("Đã copy URL ảnh vào bộ nhớ tạm!");
-                            }}
-                            className="rounded-lg"
-                          />
-                        </Tooltip>
+                      <div className="flex items-center justify-end pt-1 border-t border-slate-100">
                         <Popconfirm
                           title="Xác nhận xóa ảnh này?"
                           description="Nếu ảnh đang được sử dụng ở Slider/About/Gallery, hệ thống sẽ từ chối xóa (lỗi 409)."
@@ -1621,264 +1608,372 @@ export default function AdminHomepageCms() {
             {/* MODAL: Thêm/Sửa Slide */}
             <Modal
               open={slideModalVisible}
-              title={editingSlide ? "Chỉnh sửa Slide Banner" : "Thêm Slide Banner Mới"}
+              title={
+                <div className="flex items-center gap-2 text-base font-bold text-slate-800">
+                  <PictureOutlined className="text-indigo-600" />
+                  {editingSlide ? "Chỉnh sửa Slide Banner" : "Thêm Slide Banner Mới"}
+                </div>
+              }
               onCancel={() => setSlideModalVisible(false)}
-              footer={null}
+              maskClosable={false}
               destroyOnClose
-              className="rounded-2xl"
-            >
-              <Form
-                form={slideForm}
-                layout="vertical"
-                onFinish={handleSaveSlide}
-                className="space-y-4 pt-2"
-              >
-                <Form.Item
-                  label={<span className="font-semibold text-slate-700">Ảnh Banner (Media ID)</span>}
-                  name="mediaId"
-                  rules={[{ required: true, message: "Vui lòng chọn ảnh cho banner" }]}
-                >
-                  <Input
-                    placeholder="ID ảnh đã tải lên"
-                    className="rounded-xl"
-                    readOnly
-                    addonAfter={
-                      <Button
-                        type="link"
-                        size="small"
-                        className="p-0 font-semibold text-indigo-600"
-                        onClick={() =>
-                          openMediaPicker((media) => {
-                            slideForm.setFieldsValue({
-                              mediaId: media.id,
-                              altText: slideForm.getFieldValue("altText") || media.altText || "",
-                            });
-                            setMediaPickerOpen(false);
-                          })
-                        }
-                      >
-                        Chọn từ Thư viện
-                      </Button>
-                    }
-                  />
-                </Form.Item>
-
-                {selectedSlideMedia && (
-                  <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl mb-3">
-                    <img
-                      src={resolveMediaUrl(selectedSlideMedia.url)}
-                      alt={selectedSlideMedia.altText || "Preview"}
-                      className="w-16 h-12 object-cover rounded-xl border border-slate-200"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-slate-800 truncate">
-                        {selectedSlideMedia.altText || "Ảnh Banner đã chọn"}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono truncate">
-                        {selectedSlideMedia.id}
-                      </div>
-                    </div>
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      onClick={() => slideForm.setFieldValue("mediaId", undefined)}
-                    >
-                      Gỡ ảnh
-                    </Button>
-                  </div>
-                )}
-
-                <Form.Item
-                  label={<span className="font-semibold text-slate-700">Mô tả ảnh (Alt Text)</span>}
-                  name="altText"
-                  rules={[{ required: true, message: "Vui lòng nhập mô tả ảnh (Alt Text)!" }]}
-                >
-                  <Input placeholder="Banner khóa học hè Kata Edu" className="rounded-xl" />
-                </Form.Item>
-
-                <Form.Item
-                  label={<span className="font-semibold text-slate-700">Tiêu đề chính (Title)</span>}
-                  name="title"
-                  rules={[{ required: true, message: "Vui lòng nhập tiêu đề slide" }]}
-                >
-                  <Input placeholder="Học Tập Sáng Tạo - Tương Lai Rạng Rỡ" className="rounded-xl" />
-                </Form.Item>
-
-                <Form.Item
-                  label={<span className="font-semibold text-slate-700">Phụ đề (Subtitle)</span>}
-                  name="subtitle"
-                >
-                  <TextArea rows={2} placeholder="Nội dung mô tả ngắn gọn..." className="rounded-xl" />
-                </Form.Item>
-
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      label={<span className="font-semibold text-slate-700">Nhãn nút CTA</span>}
-                      name="ctaLabel"
-                    >
-                      <Input placeholder="Khám phá khóa học" className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      label={<span className="font-semibold text-slate-700">Đường dẫn CTA Link</span>}
-                      name="ctaLink"
-                    >
-                      <Input placeholder="/courses hoặc https://..." className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      label={<span className="font-semibold text-slate-700">Thứ tự hiển thị</span>}
-                      name="orderIndex"
-                    >
-                      <InputNumber min={0} className="w-full rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      label={<span className="font-semibold text-slate-700">Trạng thái</span>}
-                      name="isActive"
-                      valuePropName="checked"
-                    >
-                      <Switch checkedChildren="Bật" unCheckedChildren="Ẩn" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              className="rounded-2xl overflow-hidden"
+              width={840}
+              centered
+              footer={
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                   <Button onClick={() => setSlideModalVisible(false)} className="rounded-xl">
                     Hủy
                   </Button>
                   <Button
                     type="primary"
-                    htmlType="submit"
+                    onClick={() => slideForm.submit()}
                     loading={slideSubmitting}
-                    className="bg-indigo-600 hover:bg-indigo-700 rounded-xl px-6 font-semibold"
+                    className="bg-indigo-600 hover:bg-indigo-700 rounded-xl px-6 font-semibold shadow-sm"
                   >
                     Lưu Slide
                   </Button>
                 </div>
+              }
+            >
+              <Form
+                form={slideForm}
+                layout="vertical"
+                onFinish={handleSaveSlide}
+                className="max-h-[calc(85vh-130px)] overflow-y-auto pr-1 custom-scrollbar pt-2"
+              >
+                <Row gutter={24}>
+                  {/* CỘT TRÁI: ẢNH BANNER & ALT TEXT */}
+                  <Col xs={24} md={10}>
+                    <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">
+                          Ảnh Banner <span className="text-rose-500">*</span>
+                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          className="p-0 text-xs font-semibold text-indigo-600"
+                          onClick={() =>
+                            openMediaPicker((media) => {
+                              slideForm.setFieldsValue({
+                                mediaId: media.id,
+                                altText: slideForm.getFieldValue("altText") || media.altText || "",
+                              });
+                              setMediaPickerOpen(false);
+                            })
+                          }
+                        >
+                          {selectedSlideMedia ? "Đổi ảnh khác" : "Chọn từ thư viện"}
+                        </Button>
+                      </div>
+
+                      {/* Preview Box hoặc Dropzone */}
+                      {selectedSlideMedia ? (
+                        <div className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-[16/9] bg-slate-900 flex items-center justify-center shadow-sm">
+                          <img
+                            src={resolveMediaUrl(selectedSlideMedia.url)}
+                            alt={selectedSlideMedia.altText || "Banner Preview"}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <Button
+                              size="small"
+                              ghost
+                              className="rounded-lg text-xs"
+                              onClick={() =>
+                                openMediaPicker((media) => {
+                                  slideForm.setFieldsValue({
+                                    mediaId: media.id,
+                                    altText: slideForm.getFieldValue("altText") || media.altText || "",
+                                  });
+                                  setMediaPickerOpen(false);
+                                })
+                              }
+                            >
+                              Đổi ảnh
+                            </Button>
+                            <Button
+                              size="small"
+                              danger
+                              className="rounded-lg text-xs bg-rose-500/90 text-white border-none"
+                              onClick={() => slideForm.setFieldValue("mediaId", undefined)}
+                            >
+                              Gỡ ảnh
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-xl aspect-[16/9] flex flex-col items-center justify-center gap-1.5 cursor-pointer bg-white transition-colors p-4 text-center"
+                          onClick={() =>
+                            openMediaPicker((media) => {
+                              slideForm.setFieldsValue({
+                                mediaId: media.id,
+                                altText: slideForm.getFieldValue("altText") || media.altText || "",
+                              });
+                              setMediaPickerOpen(false);
+                            })
+                          }
+                        >
+                          <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">
+                            <PictureOutlined />
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700">Chọn ảnh Banner</span>
+                          <span className="text-[11px] text-slate-400">Khuyến nghị tỉ lệ 16:9</span>
+                        </div>
+                      )}
+
+                      {/* Form.Item for mediaId validation */}
+                      <Form.Item
+                        name="mediaId"
+                        rules={[{ required: true, message: "Vui lòng chọn ảnh cho banner" }]}
+                        className="mb-0"
+                      >
+                        <Input type="hidden" />
+                      </Form.Item>
+
+                      <Form.Item
+                        label={<span className="text-xs font-bold text-slate-700">Mô tả ảnh (Alt Text)</span>}
+                        name="altText"
+                        rules={[{ required: true, message: "Vui lòng nhập mô tả ảnh!" }]}
+                        className="mb-0"
+                      >
+                        <Input placeholder="Ví dụ: Banner khóa học hè Kata Edu" className="rounded-xl text-xs" />
+                      </Form.Item>
+                    </div>
+                  </Col>
+
+                  {/* CỘT PHẢI: NỘI DUNG & THIẾT LẬP */}
+                  <Col xs={24} md={14} className="space-y-2">
+                    <Form.Item
+                      label={<span className="text-xs font-bold text-slate-700">Tiêu đề chính (Title)</span>}
+                      name="title"
+                      rules={[{ required: true, message: "Vui lòng nhập tiêu đề slide" }]}
+                      className="mb-3"
+                    >
+                      <Input placeholder="Học Tập Sáng Tạo - Tương Lai Rạng Rỡ" className="rounded-xl" />
+                    </Form.Item>
+
+                    <Form.Item
+                      label={<span className="text-xs font-bold text-slate-700">Phụ đề (Subtitle)</span>}
+                      name="subtitle"
+                      className="mb-3"
+                    >
+                      <TextArea rows={2} placeholder="Nội dung mô tả ngắn gọn..." className="rounded-xl" />
+                    </Form.Item>
+
+                    <Row gutter={12} className="mb-3">
+                      <Col span={12}>
+                        <Form.Item
+                          label={<span className="text-xs font-bold text-slate-700">Nhãn nút CTA</span>}
+                          name="ctaLabel"
+                          className="mb-0"
+                        >
+                          <Input placeholder="Khám phá khóa học" className="rounded-xl" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          label={<span className="text-xs font-bold text-slate-700">Đường dẫn CTA Link</span>}
+                          name="ctaLink"
+                          className="mb-0"
+                        >
+                          <Input placeholder="/courses hoặc https://..." className="rounded-xl" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.Item
+                          label={<span className="text-xs font-bold text-slate-700">Thứ tự hiển thị</span>}
+                          name="orderIndex"
+                          className="mb-0"
+                        >
+                          <InputNumber min={0} className="w-full rounded-xl" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          label={<span className="text-xs font-bold text-slate-700">Trạng thái hiển thị</span>}
+                          name="isActive"
+                          valuePropName="checked"
+                          className="mb-0"
+                        >
+                          <div className="pt-1">
+                            <Switch checkedChildren="Bật" unCheckedChildren="Ẩn" />
+                          </div>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Col>
+                </Row>
               </Form>
             </Modal>
 
             {/* MODAL: Thêm/Sửa Gallery Item */}
             <Modal
               open={galleryModalVisible}
-              title={editingGallery ? "Chỉnh sửa Ảnh Gallery" : "Thêm Ảnh Gallery Mới"}
+              title={
+                <div className="flex items-center gap-2 text-base font-bold text-slate-800">
+                  <PictureOutlined className="text-emerald-600" />
+                  {editingGallery ? "Chỉnh sửa Ảnh Gallery" : "Thêm Ảnh Gallery Mới"}
+                </div>
+              }
               onCancel={() => setGalleryModalVisible(false)}
-              footer={null}
+              maskClosable={false}
               destroyOnClose
-              className="rounded-2xl"
-            >
-              <Form
-                form={galleryForm}
-                layout="vertical"
-                onFinish={handleSaveGallery}
-                className="space-y-4 pt-2"
-              >
-                <Form.Item
-                  label={<span className="font-semibold text-slate-700">Ảnh Gallery (Media ID)</span>}
-                  name="mediaId"
-                  rules={[{ required: true, message: "Vui lòng chọn ảnh cho gallery" }]}
-                >
-                  <Input
-                    placeholder="ID ảnh đã tải lên"
-                    className="rounded-xl"
-                    readOnly
-                    addonAfter={
-                      <Button
-                        type="link"
-                        size="small"
-                        className="p-0 font-semibold text-emerald-600"
-                        onClick={() =>
-                          openMediaPicker((media) => {
-                            galleryForm.setFieldsValue({
-                              mediaId: media.id,
-                              altText: galleryForm.getFieldValue("altText") || media.altText || "",
-                            });
-                            setMediaPickerOpen(false);
-                          })
-                        }
-                      >
-                        Chọn từ Thư viện
-                      </Button>
-                    }
-                  />
-                </Form.Item>
-
-                {selectedGalleryMedia && (
-                  <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl mb-3">
-                    <img
-                      src={resolveMediaUrl(selectedGalleryMedia.url)}
-                      alt={selectedGalleryMedia.altText || "Preview"}
-                      className="w-16 h-12 object-cover rounded-xl border border-slate-200"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-slate-800 truncate">
-                        {selectedGalleryMedia.altText || "Ảnh Gallery đã chọn"}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono truncate">
-                        {selectedGalleryMedia.id}
-                      </div>
-                    </div>
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      onClick={() => galleryForm.setFieldValue("mediaId", undefined)}
-                    >
-                      Gỡ ảnh
-                    </Button>
-                  </div>
-                )}
-
-                <Form.Item
-                  label={<span className="font-semibold text-slate-700">Mô tả ảnh (Alt Text)</span>}
-                  name="altText"
-                  rules={[{ required: true, message: "Vui lòng nhập mô tả ảnh (Alt Text)!" }]}
-                >
-                  <Input placeholder="Hoạt động ngoại khóa..." className="rounded-xl" />
-                </Form.Item>
-
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      label={<span className="font-semibold text-slate-700">Thứ tự hiển thị</span>}
-                      name="orderIndex"
-                    >
-                      <InputNumber min={0} className="w-full rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      label={<span className="font-semibold text-slate-700">Trạng thái</span>}
-                      name="isActive"
-                      valuePropName="checked"
-                    >
-                      <Switch checkedChildren="Bật" unCheckedChildren="Ẩn" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              className="rounded-2xl overflow-hidden"
+              width={750}
+              centered
+              footer={
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                   <Button onClick={() => setGalleryModalVisible(false)} className="rounded-xl">
                     Hủy
                   </Button>
                   <Button
                     type="primary"
-                    htmlType="submit"
+                    onClick={() => galleryForm.submit()}
                     loading={gallerySubmitting}
-                    className="bg-emerald-600 hover:bg-emerald-700 rounded-xl px-6 font-semibold"
+                    className="bg-emerald-600 hover:bg-emerald-700 rounded-xl px-6 font-semibold shadow-sm"
                   >
                     Lưu Gallery
                   </Button>
                 </div>
+              }
+            >
+              <Form
+                form={galleryForm}
+                layout="vertical"
+                onFinish={handleSaveGallery}
+                className="max-h-[calc(85vh-130px)] overflow-y-auto pr-1 custom-scrollbar pt-2"
+              >
+                <Row gutter={20}>
+                  <Col xs={24} md={10}>
+                    <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">
+                          Ảnh Gallery <span className="text-rose-500">*</span>
+                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          className="p-0 text-xs font-semibold text-emerald-600"
+                          onClick={() =>
+                            openMediaPicker((media) => {
+                              galleryForm.setFieldsValue({
+                                mediaId: media.id,
+                                altText: galleryForm.getFieldValue("altText") || media.altText || "",
+                              });
+                              setMediaPickerOpen(false);
+                            })
+                          }
+                        >
+                          {selectedGalleryMedia ? "Đổi ảnh khác" : "Chọn từ thư viện"}
+                        </Button>
+                      </div>
+
+                      {selectedGalleryMedia ? (
+                        <div className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-[4/3] bg-slate-900 flex items-center justify-center shadow-sm">
+                          <img
+                            src={resolveMediaUrl(selectedGalleryMedia.url)}
+                            alt={selectedGalleryMedia.altText || "Preview"}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <Button
+                              size="small"
+                              ghost
+                              className="rounded-lg text-xs"
+                              onClick={() =>
+                                openMediaPicker((media) => {
+                                  galleryForm.setFieldsValue({
+                                    mediaId: media.id,
+                                    altText: galleryForm.getFieldValue("altText") || media.altText || "",
+                                  });
+                                  setMediaPickerOpen(false);
+                                })
+                              }
+                            >
+                              Đổi ảnh
+                            </Button>
+                            <Button
+                              size="small"
+                              danger
+                              className="rounded-lg text-xs bg-rose-500/90 text-white border-none"
+                              onClick={() => galleryForm.setFieldValue("mediaId", undefined)}
+                            >
+                              Gỡ ảnh
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="border-2 border-dashed border-slate-200 hover:border-emerald-400 rounded-xl aspect-[4/3] flex flex-col items-center justify-center gap-1.5 cursor-pointer bg-white transition-colors p-4 text-center"
+                          onClick={() =>
+                            openMediaPicker((media) => {
+                              galleryForm.setFieldsValue({
+                                mediaId: media.id,
+                                altText: galleryForm.getFieldValue("altText") || media.altText || "",
+                              });
+                              setMediaPickerOpen(false);
+                            })
+                          }
+                        >
+                          <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg">
+                            <PictureOutlined />
+                          </div>
+                          <span className="text-xs font-semibold text-slate-700">Chọn ảnh Gallery</span>
+                          <span className="text-[11px] text-slate-400">Khuyến nghị tỉ lệ 4:3</span>
+                        </div>
+                      )}
+
+                      <Form.Item
+                        name="mediaId"
+                        rules={[{ required: true, message: "Vui lòng chọn ảnh cho gallery" }]}
+                        className="mb-0"
+                      >
+                        <Input type="hidden" />
+                      </Form.Item>
+                    </div>
+                  </Col>
+
+                  <Col xs={24} md={14} className="space-y-3">
+                    <Form.Item
+                      label={<span className="text-xs font-bold text-slate-700">Mô tả ảnh (Alt Text)</span>}
+                      name="altText"
+                      rules={[{ required: true, message: "Vui lòng nhập mô tả ảnh (Alt Text)!" }]}
+                      className="mb-3"
+                    >
+                      <Input placeholder="Hoạt động ngoại khóa..." className="rounded-xl" />
+                    </Form.Item>
+
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.Item
+                          label={<span className="text-xs font-bold text-slate-700">Thứ tự hiển thị</span>}
+                          name="orderIndex"
+                          className="mb-0"
+                        >
+                          <InputNumber min={0} className="w-full rounded-xl" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          label={<span className="text-xs font-bold text-slate-700">Trạng thái</span>}
+                          name="isActive"
+                          valuePropName="checked"
+                          className="mb-0"
+                        >
+                          <div className="pt-1">
+                            <Switch checkedChildren="Bật" unCheckedChildren="Ẩn" />
+                          </div>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </Col>
+                </Row>
               </Form>
             </Modal>
 
@@ -1887,6 +1982,7 @@ export default function AdminHomepageCms() {
               open={mediaPickerOpen}
               title="Chọn ảnh từ Thư viện Site Media"
               onCancel={() => setMediaPickerOpen(false)}
+              maskClosable={false}
               footer={null}
               width={750}
               zIndex={1100}

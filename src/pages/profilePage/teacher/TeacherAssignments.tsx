@@ -187,6 +187,8 @@ function CurriculumAnalyticsModal({
   return (
     <Modal open={open} onCancel={onClose} footer={null}
       title={<div className="flex items-center gap-2 text-purple-700"><BarChartOutlined /><span className="font-bold">Thống kê giáo trình học được giao</span></div>}
+      centered
+      maskClosable={false}
       width={780}
       className="rounded-3xl overflow-hidden"
       styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
@@ -1488,7 +1490,8 @@ export default function TeacherAssignments() {
                 </div>
                 <div className="text-slate-400 font-medium">
                   {activeTab === "exam" && `Hiển thị ${filteredExamAssignments.length} / ${examAssignments.length} bài thi`}
-                  {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumAssignments.length} giáo trình`}
+                  {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumAssignments.length} giáo trình đã giao`}
+                  {activeTab === "classCurriculum" && `Hiển thị ${filteredClassCurriculums.length} / ${classCurriculums.length} giáo trình theo lớp`}
                 </div>
               </div>
             </div>
@@ -1596,6 +1599,53 @@ export default function TeacherAssignments() {
                       </div>
                     ),
                   },
+
+                  // ======= TAB 3: CLASS CURRICULUM =======
+                  {
+                    key: "classCurriculum",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <LinkOutlined />
+                        <span>Giáo Trình Theo Lớp</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-4 rounded-xl"
+                          title="Gắn giáo trình vào lớp học"
+                          description="Gắn giáo trình học vào lớp học phụ trách. Toàn bộ học sinh trong lớp sẽ tự động nhìn thấy lộ trình học của giáo trình này trong tài khoản của mình."
+                        />
+                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                          <Can perform={["classes.manage", "learning.manage", "learning.assign"]} mode="any">
+                            <Button type="primary" icon={<PlusOutlined />}
+                              onClick={() => {
+                                refreshProfile().catch(() => { });
+                                classCurriculumForm.resetFields();
+                                setSelectedClassForClassCurriculum(undefined);
+                                setClassCurriculumFormOpen(true);
+                              }}
+                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
+                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+                            >
+                              Gắn Giáo Trình Vào Lớp
+                            </Button>
+                          </Can>
+                        </div>
+                        {filteredClassCurriculums.length === 0 ? (
+                          <div className="py-16 text-center">
+                            <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được gắn vào lớp phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Gắn Giáo Trình Vào Lớp".</span>} />
+                          </div>
+                        ) : (
+                          <Table dataSource={filteredClassCurriculums} columns={classCurriculumColumns} rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
+                            className="rounded-2xl overflow-hidden" />
+                        )}
+                      </div>
+                    ),
+                  },
                 ]}
               />
             </ConfigProvider>
@@ -1606,7 +1656,17 @@ export default function TeacherAssignments() {
       {/* ==================== CLASS-CURRICULUM FORM MODAL ==================== */}
       <Modal open={classCurriculumFormOpen} onCancel={() => setClassCurriculumFormOpen(false)} footer={null}
         title={<div className="flex items-center gap-2 text-cyan-700 font-bold text-lg"><LinkOutlined />Gắn Giáo Trình vào Lớp</div>}
-        width={520}
+        centered
+        maskClosable={false}
+        width={560}
+        styles={{
+          body: {
+            maxHeight: "74vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "8px",
+          },
+        }}
       >
         <Form form={classCurriculumForm} layout="vertical" onFinish={handleCreateClassCurriculum} className="pt-2">
           <Form.Item name="classId" label="Lớp học" rules={[{ required: true, message: "Vui lòng chọn lớp!" }]}>
@@ -1695,7 +1755,17 @@ export default function TeacherAssignments() {
       {/* ==================== EXAM ASSIGNMENT FORM MODAL ==================== */}
       <Modal open={examFormOpen} onCancel={() => setExamFormOpen(false)} footer={null}
         title={<div className="flex items-center gap-2 text-indigo-700 font-bold text-lg"><FileTextOutlined />Giao Bài Thi Mới</div>}
-        width={600}
+        centered
+        maskClosable={false}
+        width={640}
+        styles={{
+          body: {
+            maxHeight: "74vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "8px",
+          },
+        }}
       >
         <Form form={examForm} layout="vertical" onFinish={handleCreateExamAssignment} className="pt-2">
           <Form.Item
@@ -1863,7 +1933,17 @@ export default function TeacherAssignments() {
       {/* ==================== CURRICULUM ASSIGNMENT FORM MODAL ==================== */}
       <Modal open={curriculumFormOpen} onCancel={() => setCurriculumFormOpen(false)} footer={null}
         title={<div className="flex items-center gap-2 text-purple-700 font-bold text-lg"><BookOutlined />Giao Giáo Trình Mới</div>}
-        width={600}
+        centered
+        maskClosable={false}
+        width={640}
+        styles={{
+          body: {
+            maxHeight: "74vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "8px",
+          },
+        }}
       >
         <Form form={curriculumForm} layout="vertical" onFinish={handleCreateCurriculumAssignment} className="pt-2">
           <Form.Item

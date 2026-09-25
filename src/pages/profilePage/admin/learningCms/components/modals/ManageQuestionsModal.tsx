@@ -401,6 +401,8 @@ export default function ManageQuestionsModal({
       }
       open={open}
       onCancel={onCancel}
+      maskClosable={false}
+      centered
       width={1000}
       footer={
         <div className="flex justify-between items-center">

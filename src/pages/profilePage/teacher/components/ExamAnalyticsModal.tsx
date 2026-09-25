@@ -601,6 +601,8 @@ export function ExamAnalyticsModal({
         open={open}
         onCancel={onClose}
         footer={null}
+        centered
+        maskClosable={false}
         title={
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">

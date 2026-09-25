@@ -32,7 +32,12 @@ export default function PassageFormModal({ open, onCancel, form, onFinish, isEdi
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
-      width={680}
+      maskClosable={false}
+      centered
+      width={720}
+      styles={{
+        body: { maxHeight: "74vh", overflowY: "auto", overflowX: "hidden", paddingRight: "8px" },
+      }}
       className="rounded-2xl"
       okText="Lưu lại"
       cancelText="Hủy"

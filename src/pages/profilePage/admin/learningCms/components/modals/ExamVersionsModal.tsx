@@ -118,7 +118,17 @@ export default function ExamVersionsModal({
       open={open}
       onCancel={onCancel}
       footer={null}
-      width={700}
+      centered
+      maskClosable={false}
+      width={720}
+      styles={{
+        body: {
+          maxHeight: "74vh",
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: "8px",
+        },
+      }}
       className="rounded-2xl"
       destroyOnHidden
     >

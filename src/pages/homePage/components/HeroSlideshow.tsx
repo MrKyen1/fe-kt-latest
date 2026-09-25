@@ -68,7 +68,11 @@ export default function HeroSlideshow({ slides, loading }: HeroSlideshowProps) {
       <Carousel
         key={carouselKey}
         autoplay
-        autoplaySpeed={5000}
+        autoplaySpeed={3500}
+        pauseOnHover={false}
+        pauseOnFocus={false}
+        arrows
+        speed={600}
         effect="fade"
         className="h-full"
       >
@@ -90,12 +94,12 @@ export default function HeroSlideshow({ slides, loading }: HeroSlideshowProps) {
                       className="max-w-2xl text-white"
                     >
                       {slide.title && (
-                        <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold mb-5 leading-tight tracking-tight drop-shadow-sm">
+                        <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight whitespace-pre-line">
                           {slide.title}
                         </h1>
                       )}
                       {slide.subtitle && (
-                        <p className="text-lg sm:text-xl mb-8 text-slate-200 line-clamp-3 leading-relaxed">
+                        <p className="text-xl mb-8 text-slate-200 leading-relaxed font-normal">
                           {slide.subtitle}
                         </p>
                       )}

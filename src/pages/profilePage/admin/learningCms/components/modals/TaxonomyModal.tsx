@@ -60,6 +60,9 @@ export default function TaxonomyModal({
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
+      maskClosable={false}
+      centered
+      width={540}
       className="rounded-2xl"
       okText="Lưu lại"
       cancelText="Hủy"

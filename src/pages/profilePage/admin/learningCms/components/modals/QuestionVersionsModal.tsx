@@ -140,7 +140,17 @@ export default function QuestionVersionsModal({
       open={open}
       onCancel={onCancel}
       footer={null}
+      centered
+      maskClosable={false}
       width={850}
+      styles={{
+        body: {
+          maxHeight: "74vh",
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: "8px",
+        },
+      }}
       className="rounded-2xl"
       destroyOnHidden
     >
