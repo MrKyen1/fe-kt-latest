@@ -262,6 +262,7 @@ export default function LearningCms() {
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [selectedCurriculum, setSelectedCurriculum] = useState<any>(null);
   const [currentQuestionType, setCurrentQuestionType] = useState<string>("multiple_choice");
+  const [isDuplicatingQuestion, setIsDuplicatingQuestion] = useState(false);
 
   // ── Version history ────────────────────────────────────────
   const [examVersions, setExamVersions] = useState<any[]>([]);
@@ -757,6 +758,7 @@ export default function LearningCms() {
 
   const handleQuestionCreate = () => {
     setEditingItem(null);
+    setIsDuplicatingQuestion(false);
     setCurrentQuestionType("multiple_choice");
     questionForm.resetFields();
     questionForm.setFieldsValue({
@@ -777,6 +779,7 @@ export default function LearningCms() {
     try {
       const fullRecord = await learningCmsService.questions.get(record.id);
       setEditingItem(fullRecord);
+      setIsDuplicatingQuestion(false);
       setCurrentQuestionType(fullRecord.type);
 
       const detailFields: any = {};
@@ -815,6 +818,60 @@ export default function LearningCms() {
       });
     } catch (error: any) {
       message.error(extractErrorMsg(error, "Không thể tải chi tiết câu hỏi"));
+    }
+  };
+
+  const handleQuestionDuplicate = async (record: any) => {
+    try {
+      const hide = message.loading("Đang sao chép dữ liệu câu hỏi...", 0);
+      const cloneData = await learningCmsService.questions.duplicate(record.id);
+      hide();
+
+      setEditingItem(null);
+      setIsDuplicatingQuestion(true);
+      setCurrentQuestionType(cloneData.type);
+
+      const detailFields: any = {};
+      if (cloneData.detail) {
+        Object.assign(detailFields, cloneData.detail);
+        if (cloneData.type === "word_ordering" && Array.isArray((cloneData.detail as any).correctTokens)) {
+          detailFields.correctTokens = (cloneData.detail as any).correctTokens.join(" ");
+        }
+        if (
+          (cloneData.type === "sentence_rewrite" || cloneData.type === "hint_rewrite") &&
+          Array.isArray((cloneData.detail as any).acceptedAnswers)
+        ) {
+          detailFields.acceptedAnswers = (cloneData.detail as any).acceptedAnswers.join("\n");
+        }
+      }
+
+      const mediaIds = (cloneData.mediaIds ?? []).map((m: any) => ({
+        mediaId: m.mediaId ?? m.media?.id,
+        role: m.role,
+        orderIndex: m.orderIndex,
+      }));
+
+      questionForm.resetFields();
+      questionForm.setFieldsValue({
+        type: cloneData.type,
+        prompt:
+          cloneData.type === "error_correction" && cloneData.detail && (cloneData.detail as any).incorrectSentence
+            ? (cloneData.detail as any).incorrectSentence
+            : cloneData.prompt,
+        instruction: cloneData.instruction,
+        explanation: cloneData.explanation,
+        difficultyLevelId: cloneData.difficultyLevelId,
+        skillId: cloneData.skillId,
+        topicId: cloneData.topicId,
+        tagIds: cloneData.tagIds ?? [],
+        options: cloneData.options ?? [],
+        mediaIds,
+        ...detailFields,
+      });
+
+      setQuestionModalOpen(true);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể nhân bản câu hỏi"));
     }
   };
 
@@ -922,23 +979,13 @@ export default function LearningCms() {
         message.success("Cập nhật câu hỏi thành công");
       } else {
         await learningCmsService.questions.create({ ...payload, specializationId: selectedSpecializationId });
-        message.success("Tạo câu hỏi thành công");
+        message.success(isDuplicatingQuestion ? "Nhân bản câu hỏi thành công" : "Tạo câu hỏi thành công");
       }
       loadAllData();
+      setIsDuplicatingQuestion(false);
       setQuestionModalOpen(false);
     } catch (error: any) {
       message.error(extractErrorMsg(error));
-    }
-  };
-
-  const handleToggleQuestionStatus = async (record: any) => {
-    const nextStatus = record.status === "published" ? "draft" : "published";
-    try {
-      await learningCmsService.questions.updateStatus(record.id, { status: nextStatus, expectedUpdatedAt: record.updatedAt });
-      message.success(`Chuyển trạng thái câu hỏi sang ${nextStatus === "published" ? "Đã duyệt" : "Bản nháp"}`);
-      loadAllData();
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Đổi trạng thái thất bại"));
     }
   };
 
@@ -1358,8 +1405,8 @@ export default function LearningCms() {
           levels={levels}
           onCreateClick={handleQuestionCreate}
           onEditClick={handleQuestionEdit}
+          onDuplicateClick={handleQuestionDuplicate}
           onDeleteClick={handleQuestionDelete}
-          onToggleStatus={handleToggleQuestionStatus}
           onViewVersions={handleViewQuestionVersions}
         />
       ),
@@ -1468,11 +1515,6 @@ export default function LearningCms() {
                 )}
 
                 <div className="flex gap-3 items-center">
-                  <Badge count={questions.filter((q) => q.status === "draft").length} overflowCount={99} color="orange">
-                    <div className="bg-orange-50/80 border border-orange-100 text-orange-700 px-3.5 py-2 rounded-xl text-xs font-bold">
-                      Câu hỏi chờ duyệt
-                    </div>
-                  </Badge>
                   <Badge count={exams.filter((e) => e.status === "draft").length} overflowCount={99} color="blue">
                     <div className="bg-blue-50/80 border border-blue-100 text-blue-700 px-3.5 py-2 rounded-xl text-xs font-bold">
                       Đề thi nháp
@@ -1523,10 +1565,14 @@ export default function LearningCms() {
 
             <QuestionFormModal
               open={questionModalOpen}
-              onCancel={() => setQuestionModalOpen(false)}
+              onCancel={() => {
+                setQuestionModalOpen(false);
+                setIsDuplicatingQuestion(false);
+              }}
               form={questionForm}
               onFinish={handleQuestionSubmit}
               isEditing={!!editingItem}
+              isDuplicating={isDuplicatingQuestion}
               currentType={currentQuestionType}
               onTypeChange={setCurrentQuestionType}
               levels={levels}

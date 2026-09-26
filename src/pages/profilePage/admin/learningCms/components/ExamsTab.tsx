@@ -21,6 +21,7 @@ interface Exam {
   id: string;
   code?: string;
   title: string;
+  description?: string;
   examType?: string;
   status: string;
   timeLimitSeconds?: number;
@@ -75,7 +76,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
 
       {/* Hàng 2: Nút Xuất bản bản mới (Highlight đỏ nổi bật, căn giữa hoàn hảo) */}
       {exam.hasUnpublishedChanges && (
-        <Can perform="learning.publish">
+        <Can perform="learning.publish" role="admin">
           <Tooltip title="Nhấn để lưu và phát hành phiên bản mới ngay lập tức">
             <Button
               type="primary"
@@ -109,18 +110,40 @@ function buildColumns(
       title: "Đề thi",
       dataIndex: "title",
       render: (val: string, record: Exam) => (
-        <div>
-          <div className="font-bold text-slate-800">{val}</div>
-          <div className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-1">
-            <span>{record.code} •</span>
-            <Clock size={11} className="inline text-slate-400" />
-            <span>
-              {record.timeLimitSeconds
-                ? `${Math.round(record.timeLimitSeconds / 60)} phút`
-                : "Không giới hạn"}
-            </span>
+        <Tooltip
+          title={
+            <div className="space-y-1.5 p-1 max-w-xs text-xs">
+              <div className="font-bold text-slate-100 text-sm border-b border-slate-700/80 pb-1">{val}</div>
+              {record.code && (
+                <div className="flex items-center gap-1.5 text-slate-300">
+                  <span className="font-semibold text-slate-400">Mã đề:</span>
+                  <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px] text-indigo-300">{record.code}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <span className="font-semibold text-slate-400">Thời gian:</span>
+                <span className="flex items-center gap-1">
+                  <Clock size={11} className="inline text-slate-400" />
+                  {record.timeLimitSeconds
+                    ? `${Math.round(record.timeLimitSeconds / 60)} phút`
+                    : "Không giới hạn"}
+                </span>
+              </div>
+              {record.description && (
+                <div className="pt-1 border-t border-slate-700/60 text-slate-300 text-[11px] leading-relaxed">
+                  <span className="font-semibold text-slate-400 block mb-0.5">Mô tả:</span>
+                  {record.description}
+                </div>
+              )}
+            </div>
+          }
+          placement="topLeft"
+          overlayStyle={{ maxWidth: 360 }}
+        >
+          <div className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition-colors cursor-pointer truncate max-w-md">
+            {val}
           </div>
-        </div>
+        </Tooltip>
       ),
     },
     {
@@ -179,7 +202,7 @@ function buildColumns(
           >
             Lịch sử phiên bản
           </Button>
-          <Can perform="learning.publish">
+          <Can perform="learning.publish" role="admin">
             <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
               <Button
                 type="text"

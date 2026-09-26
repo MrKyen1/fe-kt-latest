@@ -762,9 +762,9 @@ export default function CenterManagement() {
       const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
-      
-      const formattedInsuranceDate = (values.insuranceStartDate && values.insuranceStartDate.isValid()) 
-        ? values.insuranceStartDate.format("YYYY-MM-DD") 
+
+      const formattedInsuranceDate = (values.insuranceStartDate && values.insuranceStartDate.isValid())
+        ? values.insuranceStartDate.format("YYYY-MM-DD")
         : null;
 
       const formattedDegrees = values.degrees !== undefined ? (values.degrees || []).map((deg: any) => {
@@ -912,7 +912,7 @@ export default function CenterManagement() {
       const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
-      
+
       const profileData = {
         classIds: values.classIds || [],
         parentFullName: values.parentFullName,
@@ -1023,7 +1023,7 @@ export default function CenterManagement() {
       const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
-      
+
       const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
 
       if (editingAdmin) {
@@ -1842,42 +1842,26 @@ export default function CenterManagement() {
                         <div
                           key={center.id}
                           onClick={() => setSelectedCenterId(center.id)}
-                          className={`group cursor-pointer rounded-2xl p-4 transition-all duration-200 border text-left ${isSelected
-                            ? "bg-indigo-50/50 border-indigo-200 text-indigo-900 shadow-sm"
-                            : "bg-white border-slate-100 text-slate-600 hover:bg-slate-50/50 hover:border-slate-200"
+                          className={`group cursor-pointer rounded-2xl p-3.5 transition-all duration-200 border text-left flex items-center justify-between ${isSelected
+                            ? "bg-indigo-50/50 border-indigo-200 text-indigo-900 shadow-xs"
+                            : "bg-white border-slate-100 text-slate-600 hover:bg-slate-50/60 hover:border-slate-200"
                             }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="font-bold text-sm line-clamp-1 flex-1 pr-2 flex items-center gap-1.5">
-                              <Building2 size={15} className="text-indigo-600 shrink-0" />
-                              <span className="truncate">{center.name}</span>
-                            </div>
-                            <span
-                              className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${isSelected ? "bg-indigo-600" : "bg-slate-300 group-hover:bg-indigo-400"
-                                }`}
+                          <div className="font-bold text-sm line-clamp-1 flex-1 pr-2 flex items-center gap-2">
+                            <Building2
+                              size={16}
+                              className={
+                                isSelected
+                                  ? "text-indigo-600 shrink-0"
+                                  : "text-slate-400 group-hover:text-indigo-500 shrink-0 transition-colors"
+                              }
                             />
+                            <span className="truncate">{center.name}</span>
                           </div>
-
-                          <div className="text-xs text-slate-400 mt-2 line-clamp-1 flex items-center gap-1.5">
-                            <EnvironmentOutlined /> {center.address || "Chưa cập nhật địa chỉ"}
-                          </div>
-
-                          {/* Quick Actions (Hover State) */}
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1 mt-2.5 pt-2 border-t border-dashed border-slate-200/50">
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
-                              onClick={(e) => handleCenterEdit(center, e)}
-                            />
-                            <Button
-                              type="text"
-                              size="small"
-                              danger
-                              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
-                              onClick={(e) => handleCenterDelete(center, e)}
-                            />
-                          </div>
+                          <span
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-indigo-600" : "bg-slate-300 group-hover:bg-indigo-400"
+                              }`}
+                          />
                         </div>
                       );
                     })}
@@ -1928,7 +1912,7 @@ export default function CenterManagement() {
                     )} */}
 
                     {/* CENTER CONTACT & GENERAL DETAIL */}
-                    <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+                    <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm min-h-[195px] flex flex-col justify-between">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-3 flex-wrap">
@@ -1942,11 +1926,17 @@ export default function CenterManagement() {
                               Đang hoạt động
                             </Tag>
                           </div>
-                          {selectedCenter?.description && (
-                            <Paragraph className="text-slate-500 mt-2 mb-0 text-sm max-w-3xl">
-                              {selectedCenter.description}
-                            </Paragraph>
-                          )}
+                          <div className="min-h-[26px] mt-2 flex items-center">
+                            {selectedCenter?.description ? (
+                              <Paragraph className="text-slate-500 mb-0 text-sm max-w-3xl line-clamp-2">
+                                {selectedCenter.description}
+                              </Paragraph>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic">
+                                Chưa có thông tin mô tả trung tâm
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <Space>
@@ -2679,7 +2669,7 @@ export default function CenterManagement() {
                   <Col span={12}>
                     <Form.Item
                       name="citizenId"
-                      label="Căn cước công dân (CCCD - 12 chữ số)"
+                      label="(CCCD - 12 chữ số)"
                       rules={[
                         { required: !editingTeacher, message: "Vui lòng nhập số CCCD!" },
                         { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
@@ -3197,7 +3187,7 @@ export default function CenterManagement() {
                   <Col span={12}>
                     <Form.Item
                       name="citizenId"
-                      label="Căn cước công dân (CCCD - 12 chữ số)"
+                      label="(CCCD - 12 chữ số)"
                       rules={[
                         { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
                       ]}
@@ -3356,7 +3346,7 @@ export default function CenterManagement() {
                   <Col span={12}>
                     <Form.Item
                       name="citizenId"
-                      label="Căn cước công dân (CCCD - 12 chữ số)"
+                      label="(CCCD - 12 chữ số)"
                       rules={[
                         { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
                       ]}

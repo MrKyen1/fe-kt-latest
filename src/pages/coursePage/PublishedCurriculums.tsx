@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { BookOpen, ChevronRight, ArrowLeft, GraduationCap, ListChecks } from "lucide-react";
 import { useEffect, useState } from "react";
 import { learningCmsService } from "../../services/learningCmsService";
+import { studentLearningService } from "../../services/studentLearningService";
+import { useAuth } from "../../contexts/AuthContext";
 import { Curriculum } from "../../types/backend";
 import { AppImage } from "../../components/AppImagePreview";
 
@@ -11,7 +13,11 @@ const { Title, Text } = Typography;
 
 export default function PublishedCurriculums() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isStudent = user?.role === "student";
+
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
+  const [assignedMap, setAssignedMap] = useState<Map<string, any>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,14 +27,39 @@ export default function PublishedCurriculums() {
     async function load() {
       try {
         setIsLoading(true);
-        const res = await learningCmsService.curriculums.list({
-          status: "published",
-          page: 1,
-          limit: 100,
-        });
-        if (active) {
-          setCurriculums((res as any).data ?? []);
+
+        const promises: Promise<any>[] = [
+          learningCmsService.curriculums.list({
+            status: "published",
+            page: 1,
+            limit: 100,
+          }),
+        ];
+
+        if (isStudent) {
+          promises.push(studentLearningService.curriculums.list({ limit: 100 }).catch(() => []));
+        }
+
+        const [cmsRes, studentRes] = await Promise.allSettled(promises);
+
+        if (!active) return;
+
+        if (cmsRes.status === "fulfilled") {
+          setCurriculums((cmsRes.value as any)?.data ?? []);
           setError(null);
+        }
+
+        if (isStudent && studentRes && studentRes.status === "fulfilled") {
+          const rawStudentList = Array.isArray(studentRes.value)
+            ? studentRes.value
+            : (studentRes.value as any)?.data ?? [];
+
+          const map = new Map<string, any>();
+          rawStudentList.forEach((item: any) => {
+            const cId = item.curriculumId || item.curriculum?.id || item.id;
+            if (cId) map.set(cId, item);
+          });
+          setAssignedMap(map);
         }
       } catch (err) {
         if (active)
@@ -42,7 +73,7 @@ export default function PublishedCurriculums() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isStudent]);
 
   return (
     <div className="w-full bg-slate-50 py-16 px-6 md:px-16 min-h-screen">
@@ -84,6 +115,52 @@ export default function PublishedCurriculums() {
           <Row gutter={[24, 24]}>
             {curriculums.map((curriculum, idx) => {
               const examCount = curriculum.exams?.length ?? 0;
+              const assignedItem = isStudent ? assignedMap.get(curriculum.id) : null;
+              const isAssigned = Boolean(assignedItem);
+              const progress = Number(assignedItem?.progressPercentage) || 0;
+              const isCompleted =
+                assignedItem?.status === "completed" ||
+                assignedItem?.status === "finished" ||
+                progress >= 100;
+              const isInProgress =
+                progress > 0 || (Number(assignedItem?.completedExamsCount) || 0) > 0;
+
+              const renderStatusBadge = () => {
+                if (!isStudent) {
+                  return (
+                    <Tag color="green" className="rounded-full px-3 py-0.5 text-xs font-semibold shadow-xs">
+                      Published
+                    </Tag>
+                  );
+                }
+                if (isCompleted) {
+                  return (
+                    <Tag color="purple" className="rounded-full px-3 py-0.5 text-xs font-semibold shadow-xs">
+                      Đã hoàn thành
+                    </Tag>
+                  );
+                }
+                if (isInProgress) {
+                  return (
+                    <Tag color="blue" className="rounded-full px-3 py-0.5 text-xs font-semibold shadow-xs">
+                      Đang học ({progress}%)
+                    </Tag>
+                  );
+                }
+                if (isAssigned) {
+                  return (
+                    <Tag color="emerald" className="rounded-full px-3 py-0.5 text-xs font-semibold shadow-xs">
+                      Đã được giao
+                    </Tag>
+                  );
+                }
+                return (
+                  <Tag color="default" className="rounded-full px-3 py-0.5 text-xs font-semibold text-slate-500 shadow-xs">
+                    Chưa được giao
+                  </Tag>
+                );
+              };
+
               return (
                 <Col xs={24} md={12} key={curriculum.id}>
                   <Link
@@ -104,13 +181,12 @@ export default function PublishedCurriculums() {
                         <AppImage
                           src={curriculum.image}
                           alt={curriculum.title}
+                          preview={false}
                           className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-500"
                           rootClassName="w-full h-full"
                         />
                         <div className="absolute top-3 right-3 z-10">
-                          <Tag color="green" className="rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">
-                            Published
-                          </Tag>
+                          {renderStatusBadge()}
                         </div>
                       </div>
                     )}
@@ -132,9 +208,9 @@ export default function PublishedCurriculums() {
                             </div>
                           </div>
                           {!curriculum.image && (
-                            <Tag color="green" className="shrink-0 mt-1 rounded-full px-3">
-                              Published
-                            </Tag>
+                            <div className="shrink-0 mt-1">
+                              {renderStatusBadge()}
+                            </div>
                           )}
                         </div>
 
@@ -156,8 +232,8 @@ export default function PublishedCurriculums() {
                             </>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 text-indigo-500 font-semibold text-sm group-hover:gap-2 transition-all">
-                          Xem bài thi
+                        <div className={`flex items-center gap-1 font-semibold text-sm group-hover:gap-2 transition-all ${isAssigned ? "text-emerald-600" : "text-indigo-500"}`}>
+                          {isAssigned ? (isInProgress ? "Tiếp tục học" : "Vào làm bài ngay") : "Xem bài thi"}
                           <ChevronRight size={16} />
                         </div>
                       </div>

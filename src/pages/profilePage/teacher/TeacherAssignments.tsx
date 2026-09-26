@@ -37,7 +37,6 @@ import {
   CheckCircleOutlined,
   UserOutlined,
   ClockCircleOutlined,
-  LinkOutlined,
   ReloadOutlined,
   BankOutlined,
   SearchOutlined,
@@ -50,7 +49,7 @@ import {
 } from "@ant-design/icons";
 import { ClipboardList, Info, Building2, Filter } from "lucide-react";
 
-import { teacherLearningService, ClassCurriculum } from "../../../services/teacherLearningService";
+import { teacherLearningService } from "../../../services/teacherLearningService";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { academicService } from "../../../services/academicService";
 import { userService } from "../../../services/userService";
@@ -298,7 +297,6 @@ export default function TeacherAssignments() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
 
-  const [classCurriculums, setClassCurriculums] = useState<ClassCurriculum[]>([]);
   const [examAssignments, setExamAssignments] = useState<any[]>([]);
   const [curriculumAssignments, setCurriculumAssignments] = useState<any[]>([]);
 
@@ -313,21 +311,18 @@ export default function TeacherAssignments() {
   const [submitting, setSubmitting] = useState(false);
 
   // ---- Modals ----
-  const [classCurriculumFormOpen, setClassCurriculumFormOpen] = useState(false);
   const [examFormOpen, setExamFormOpen] = useState(false);
   const [curriculumFormOpen, setCurriculumFormOpen] = useState(false);
   const [examAnalyticsId, setExamAnalyticsId] = useState<string | null>(null);
   const [curriculumAnalyticsId, setCurriculumAnalyticsId] = useState<string | null>(null);
 
   // ---- Forms ----
-  const [classCurriculumForm] = Form.useForm();
   const [examForm] = Form.useForm();
   const [curriculumForm] = Form.useForm();
 
   // ---- Selected class (for filtering students and exams/curriculums) ----
   const [selectedClassForExam, setSelectedClassForExam] = useState<string | undefined>(undefined);
   const [selectedClassForCurriculum, setSelectedClassForCurriculum] = useState<string | undefined>(undefined);
-  const [selectedClassForClassCurriculum, setSelectedClassForClassCurriculum] = useState<string | undefined>(undefined);
 
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
   const [examVersionsMap, setExamVersionsMap] = useState<Record<string, any[]>>({});
@@ -386,41 +381,34 @@ export default function TeacherAssignments() {
   const loadAll = async () => {
     try {
       setLoading(true);
-      const results = await Promise.allSettled([
+      const [
+        examsRes,
+        curriculumsRes,
+        classesRes,
+        studentsRes,
+        examAssignmentsRes,
+        curriculumAssignmentsRes,
+        centersRes,
+        specializationsRes,
+      ] = await Promise.allSettled([
         learningCmsService.exams.list({ status: "published", limit: 100 }),
         learningCmsService.curriculums.list({ status: "published", limit: 100 }),
         academicService.classes.list({ limit: 100, isActive: true }),
         userService.list({ roleCode: "student" }),
-        teacherLearningService.classCurriculums.list({ limit: 100 }),
         teacherLearningService.examAssignments.list({ limit: 100 }),
         teacherLearningService.curriculumAssignments.list({ limit: 100 }),
         academicService.centers.list({ limit: 100 }),
         academicService.specializations.list({ limit: 100 }),
       ]);
 
-      const get = (i: number, name: string) => {
-        const res = results[i];
-        if (res.status === "rejected") {
-          if (name === "classes") {
-            return user?.teacherProfile?.classes ?? [];
-          }
-          if (name === "students" || name === "centers" || name === "specializations") {
-            return [];
-          }
-          return { data: [] };
-        }
-        const apiData = res.value;
-        return apiData;
-      };
-
-      setExams(get(0, "exams")?.data ?? []);
-      setCurriculums(get(1, "curriculums")?.data ?? []);
-      const rawClasses = get(2, "classes") ?? [];
+      setExams(examsRes.status === "fulfilled" ? examsRes.value?.data ?? [] : []);
+      setCurriculums(curriculumsRes.status === "fulfilled" ? curriculumsRes.value?.data ?? [] : []);
+      const rawClasses = classesRes.status === "fulfilled" ? classesRes.value ?? [] : (user?.teacherProfile?.classes ?? []);
       setAllClasses(rawClasses);
       setClasses(rawClasses);
-      setAllStudents(get(3, "students") ?? []);
-      setClassCurriculums(get(4, "classCurriculums")?.data ?? []);
-      const rawExams = get(5, "examAssignments")?.data ?? [];
+      setAllStudents(studentsRes.status === "fulfilled" ? studentsRes.value ?? [] : []);
+
+      const rawExams = examAssignmentsRes.status === "fulfilled" ? examAssignmentsRes.value?.data ?? [] : [];
       setExamAssignments(rawExams);
 
       // Asynchronously fetch assignment details to load recipient student profiles & exams
@@ -433,7 +421,7 @@ export default function TeacherAssignments() {
         setExamAssignments(detailed);
       });
 
-      const rawCurriculums = get(6, "curriculumAssignments")?.data ?? [];
+      const rawCurriculums = curriculumAssignmentsRes.status === "fulfilled" ? curriculumAssignmentsRes.value?.data ?? [] : [];
       setCurriculumAssignments(rawCurriculums);
 
       // Asynchronously fetch curriculum assignment details to load recipient student profiles
@@ -445,9 +433,10 @@ export default function TeacherAssignments() {
       ).then((detailed) => {
         setCurriculumAssignments(detailed);
       });
-      const rawCenters = (get(7, "centers") ?? []).filter((c: any) => c.isActive !== false);
+
+      const rawCenters = (centersRes.status === "fulfilled" ? centersRes.value ?? [] : []).filter((c: any) => c.isActive !== false);
       setCenters(rawCenters);
-      setSpecializations(get(8, "specializations") ?? []);
+      setSpecializations(specializationsRes.status === "fulfilled" ? specializationsRes.value ?? [] : []);
     } catch (err: any) {
       message.error(getErrorMessage(err, "Tải dữ liệu thất bại"), 5);
     } finally {
@@ -546,39 +535,6 @@ export default function TeacherAssignments() {
   };
 
   // ==================== FILTERED LISTS ====================
-  const filteredClassCurriculums = useMemo(() => {
-    return classCurriculums.filter((item) => {
-      const itemCenterId = getRecordCenterId(item);
-
-      // Center Filter
-      if (selectedCenterId !== "all") {
-        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
-        if (!itemCenterId && item.classId) {
-          const cls = allClasses.find((c) => c.id === item.classId);
-          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
-        }
-      }
-
-      // Scope Filter
-      if (assignmentScope === "my" && isTeacher) {
-        if (!teacherClassIds.includes(item.classId)) return false;
-      }
-
-      // Search Keyword
-      if (searchKeyword.trim()) {
-        const kw = searchKeyword.toLowerCase();
-        const curTitle = (item.curriculum?.title || "").toLowerCase();
-        const curCode = (item.curriculum?.code || "").toLowerCase();
-        const clsName = (item.class?.name || allClasses.find((c) => c.id === item.classId)?.name || "").toLowerCase();
-        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
-        if (!curTitle.includes(kw) && !curCode.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw)) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [classCurriculums, selectedCenterId, assignmentScope, isTeacher, teacherClassIds, searchKeyword, allClasses, centers]);
 
   /**
    * Phân giải tên học sinh từ đối tượng recipient (hỗ trợ cả examAssignment và curriculumAssignment)
@@ -720,7 +676,7 @@ export default function TeacherAssignments() {
     return list;
   }, [allClasses, selectedCenterId, isTeacher, userCenters]);
 
-  const examModalClasses = useMemo(() => {
+  const assignableClasses = useMemo(() => {
     if (isTeacher) {
       return teacherAssignedClasses;
     }
@@ -741,19 +697,6 @@ export default function TeacherAssignments() {
     }
     return exams;
   }, [exams, selectedClassForExam, allClasses, isTeacher, teacherSpecializationIds, teacherAssignedClasses]);
-
-  const modalClassCurriculums = useMemo(() => {
-    if (selectedClassForClassCurriculum) {
-      const classSpecId = getClassSpecializationId(selectedClassForClassCurriculum);
-      if (classSpecId) {
-        return curriculums.filter((c) => c.specializationId === classSpecId);
-      }
-    }
-    if (isTeacher && teacherSpecializationIds.length > 0) {
-      return curriculums.filter((c) => c.specializationId && teacherSpecializationIds.includes(c.specializationId));
-    }
-    return curriculums;
-  }, [curriculums, selectedClassForClassCurriculum, allClasses, isTeacher, teacherSpecializationIds]);
 
   const modalDirectCurriculums = useMemo(() => {
     if (selectedClassForCurriculum) {
@@ -784,24 +727,6 @@ export default function TeacherAssignments() {
         if (validExamIds.length < currentExamIds.length) {
           examForm.setFieldValue("examIds", validExamIds);
           setSelectedExamIds(validExamIds);
-        }
-      }
-    }
-  };
-
-  const handleClassChangeForClassCurriculum = (classId?: string) => {
-    setSelectedClassForClassCurriculum(classId);
-    if (classId) {
-      const classSpecId = getClassSpecializationId(classId);
-      if (classSpecId) {
-        const currentCurriculumIds: string[] = classCurriculumForm.getFieldValue("curriculumIds") || [];
-        const validCurriculumIds = currentCurriculumIds.filter((id) => {
-          const curr = curriculums.find((c) => c.id === id);
-          return curr && curr.specializationId === classSpecId;
-        });
-        if (validCurriculumIds.length < currentCurriculumIds.length) {
-          classCurriculumForm.setFieldValue("curriculumIds", validCurriculumIds);
-          message.info("Đã tự động loại bỏ các giáo trình không cùng môn học với lớp vừa chọn");
         }
       }
     }
@@ -855,73 +780,6 @@ export default function TeacherAssignments() {
       if (classIds.includes(classId)) return true;
       const classesArr = s.studentProfile?.classes ?? [];
       return classesArr.some((c: any) => c.id === classId || c.classId === classId);
-    });
-  };
-
-  // ==================== CLASS-CURRICULUM HANDLERS ====================
-  const handleCreateClassCurriculum = async (values: any) => {
-    try {
-      setSubmitting(true);
-      const curriculumIds = Array.isArray(values.curriculumIds)
-        ? values.curriculumIds
-        : [values.curriculumIds].filter(Boolean);
-
-      if (curriculumIds.length === 0) {
-        throw new Error("Vui lòng chọn ít nhất một giáo trình!");
-      }
-
-      const results = await Promise.allSettled(
-        curriculumIds.map((cId: string) =>
-          teacherLearningService.classCurriculums.create({
-            classId: values.classId,
-            curriculumId: cId,
-          })
-        )
-      );
-
-      const failed = results.filter((r) => r.status === "rejected");
-      if (failed.length === 0) {
-        message.success("Đã gắn giáo trình vào lớp thành công!");
-      } else if (failed.length < curriculumIds.length) {
-        const errorMessages = failed
-          .map((f: any) => f.reason?.response?.data?.message || f.reason?.message || "Lỗi")
-          .join(", ");
-        message.warning(`Gắn thành công một số giáo trình. Lỗi: ${errorMessages}`);
-      } else {
-        const errorMessages = failed
-          .map((f: any) => f.reason?.response?.data?.message || f.reason?.message || "Lỗi")
-          .join(", ");
-        throw new Error(errorMessages);
-      }
-
-      classCurriculumForm.resetFields();
-      setSelectedClassForClassCurriculum(undefined);
-      setClassCurriculumFormOpen(false);
-      loadAll();
-    } catch (err: any) {
-      const msg = getErrorMessage(err, "Gắn giáo trình vào lớp thất bại");
-      message.error(msg, 5);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleRemoveClassCurriculum = (id: string) => {
-    Modal.confirm({
-      title: "Gỡ giáo trình khỏi lớp",
-      content: "Học sinh trong lớp sẽ không còn thấy giáo trình này (trừ khi đã được giao trực tiếp).",
-      okText: "Gỡ",
-      okButtonProps: { danger: true },
-      cancelText: "Đóng",
-      onOk: async () => {
-        try {
-          await teacherLearningService.classCurriculums.remove(id);
-          message.success("Đã gỡ giáo trình khỏi lớp");
-          loadAll();
-        } catch (err: any) {
-          message.error(getErrorMessage(err, "Gỡ thất bại"), 5);
-        }
-      },
     });
   };
 
@@ -1047,59 +905,6 @@ export default function TeacherAssignments() {
   };
 
   // ==================== TABLE COLUMNS ====================
-  const classCurriculumColumns = [
-    {
-      title: "Giáo trình",
-      render: (_: any, r: ClassCurriculum) => (
-        <div>
-          <div className="font-semibold text-slate-800">{r.curriculum?.title || r.curriculumId}</div>
-          {r.curriculum?.code && <div className="text-xs text-slate-400 font-mono">{r.curriculum.code}</div>}
-        </div>
-      ),
-    },
-    {
-      title: "Trung tâm",
-      render: (_: any, r: ClassCurriculum) => {
-        const centerId = getRecordCenterId(r);
-        const centerName = getCenterName(centerId);
-        return centerName ? (
-          <Tag color="cyan" className="rounded-full px-2.5 py-0.5 border-none font-medium">
-            <BankOutlined className="mr-1" />
-            {centerName}
-          </Tag>
-        ) : (
-          <span className="text-slate-400 text-xs">—</span>
-        );
-      },
-    },
-    {
-      title: "Lớp học",
-      render: (_: any, r: ClassCurriculum) => (
-        <Tag color="blue" className="rounded-full">{r.class?.name || r.classId}</Tag>
-      ),
-    },
-
-    {
-      title: "Ngày tạo",
-      render: (_: any, r: ClassCurriculum) => r.createdAt
-        ? <span className="text-xs text-slate-400">{new Date(r.createdAt).toLocaleDateString("vi-VN")}</span>
-        : "—",
-    },
-    {
-      title: "Thao tác", align: "right" as const,
-      render: (_: any, r: ClassCurriculum) => (
-        <Can perform={["classes.manage", "learning.manage", "learning.assign"]} mode="any">
-          <Tooltip title="Gỡ giáo trình khỏi lớp">
-            <Button type="text" size="small" danger
-              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-              onClick={() => handleRemoveClassCurriculum(r.id)}
-            />
-          </Tooltip>
-        </Can>
-      ),
-    },
-  ];
-
   const examAssignmentColumns = [
     {
       title: "Bài thi",
@@ -1491,7 +1296,6 @@ export default function TeacherAssignments() {
                 <div className="text-slate-400 font-medium">
                   {activeTab === "exam" && `Hiển thị ${filteredExamAssignments.length} / ${examAssignments.length} bài thi`}
                   {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumAssignments.length} giáo trình đã giao`}
-                  {activeTab === "classCurriculum" && `Hiển thị ${filteredClassCurriculums.length} / ${classCurriculums.length} giáo trình theo lớp`}
                 </div>
               </div>
             </div>
@@ -1599,158 +1403,12 @@ export default function TeacherAssignments() {
                       </div>
                     ),
                   },
-
-                  // ======= TAB 3: CLASS CURRICULUM =======
-                  {
-                    key: "classCurriculum",
-                    label: (
-                      <span className="flex items-center gap-2 px-2">
-                        <LinkOutlined />
-                        <span>Giáo Trình Theo Lớp</span>
-                      </span>
-                    ),
-                    children: (
-                      <div className="p-6">
-                        <Alert
-                          type="info"
-                          showIcon
-                          className="mb-4 rounded-xl"
-                          title="Gắn giáo trình vào lớp học"
-                          description="Gắn giáo trình học vào lớp học phụ trách. Toàn bộ học sinh trong lớp sẽ tự động nhìn thấy lộ trình học của giáo trình này trong tài khoản của mình."
-                        />
-                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
-                          <Can perform={["classes.manage", "learning.manage", "learning.assign"]} mode="any">
-                            <Button type="primary" icon={<PlusOutlined />}
-                              onClick={() => {
-                                refreshProfile().catch(() => { });
-                                classCurriculumForm.resetFields();
-                                setSelectedClassForClassCurriculum(undefined);
-                                setClassCurriculumFormOpen(true);
-                              }}
-                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
-                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
-                            >
-                              Gắn Giáo Trình Vào Lớp
-                            </Button>
-                          </Can>
-                        </div>
-                        {filteredClassCurriculums.length === 0 ? (
-                          <div className="py-16 text-center">
-                            <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được gắn vào lớp phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Gắn Giáo Trình Vào Lớp".</span>} />
-                          </div>
-                        ) : (
-                          <Table dataSource={filteredClassCurriculums} columns={classCurriculumColumns} rowKey="id"
-                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
-                            className="rounded-2xl overflow-hidden" />
-                        )}
-                      </div>
-                    ),
-                  },
                 ]}
               />
             </ConfigProvider>
           </div>
         </Spin>
       </div>
-
-      {/* ==================== CLASS-CURRICULUM FORM MODAL ==================== */}
-      <Modal open={classCurriculumFormOpen} onCancel={() => setClassCurriculumFormOpen(false)} footer={null}
-        title={<div className="flex items-center gap-2 text-cyan-700 font-bold text-lg"><LinkOutlined />Gắn Giáo Trình vào Lớp</div>}
-        centered
-        maskClosable={false}
-        width={560}
-        styles={{
-          body: {
-            maxHeight: "74vh",
-            overflowY: "auto",
-            overflowX: "hidden",
-            paddingRight: "8px",
-          },
-        }}
-      >
-        <Form form={classCurriculumForm} layout="vertical" onFinish={handleCreateClassCurriculum} className="pt-2">
-          <Form.Item name="classId" label="Lớp học" rules={[{ required: true, message: "Vui lòng chọn lớp!" }]}>
-            <Select
-              showSearch
-              placeholder="Chọn lớp học..."
-              optionFilterProp="children"
-              className="rounded-xl"
-              onChange={handleClassChangeForClassCurriculum}
-            >
-              {modalClasses.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.name}
-                  {getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)) && (
-                    <span className="text-slate-400 text-xs ml-1.5 font-normal">
-                      ({getSpecializationName(getClassSpecializationId(c.id))})
-                    </span>
-                  )}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-slate-700 font-medium text-sm flex items-center gap-1">
-                <span className="text-red-500">*</span> Giáo trình
-              </span>
-              {selectedClassForClassCurriculum && getClassSpecializationId(selectedClassForClassCurriculum) && (
-                <span className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200/80 px-2.5 py-0.5 rounded-full font-medium">
-                  Môn: {getSpecializationName(getClassSpecializationId(selectedClassForClassCurriculum))} ({modalClassCurriculums.length} giáo trình)
-                </span>
-              )}
-            </div>
-            <Form.Item
-              name="curriculumIds"
-              rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
-              extra={
-                selectedClassForClassCurriculum && modalClassCurriculums.length === 0 ? (
-                  <span className="text-amber-600 text-xs mt-1 block">
-                    Chưa có giáo trình nào thuộc môn học này được xuất bản (Published).
-                  </span>
-                ) : undefined
-              }
-            >
-              <Select
-                mode="multiple"
-                showSearch
-                placeholder="Chọn giáo trình..."
-                optionFilterProp="children"
-                optionLabelProp="label"
-                className="rounded-xl"
-              >
-                {modalClassCurriculums.map((c) => (
-                  <Select.Option
-                    key={c.id}
-                    value={c.id}
-                    label={c.title || c.code}
-                  >
-                    <div className="flex items-center justify-between py-0.5">
-                      <span className="font-medium text-slate-800">{c.title || c.code}</span>
-                      <div className="flex items-center gap-1.5 text-xs">
-                        {c.code && <span className="text-slate-400">({c.code})</span>}
-                        {c.specializationId && getSpecializationName(c.specializationId) && (
-                          <span className="text-cyan-600">• {getSpecializationName(c.specializationId)}</span>
-                        )}
-                      </div>
-                    </div>
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </div>
-          <Divider className="my-4" />
-          <div className="flex justify-end gap-3">
-            <Button onClick={() => setClassCurriculumFormOpen(false)} className="rounded-xl">Huỷ</Button>
-            <Button type="primary" htmlType="submit" loading={submitting}
-              className="rounded-xl px-6 font-semibold shadow-md"
-              style={{ background: "#0891b2", borderColor: "#0891b2" }}
-            >
-              Gắn giáo trình
-            </Button>
-          </div>
-        </Form>
-      </Modal>
 
       {/* ==================== EXAM ASSIGNMENT FORM MODAL ==================== */}
       <Modal open={examFormOpen} onCancel={() => setExamFormOpen(false)} footer={null}
@@ -1784,7 +1442,7 @@ export default function TeacherAssignments() {
               allowClear
               onChange={handleClassChangeForExam}
             >
-              {examModalClasses.map((c: any) => {
+              {assignableClasses.map((c: any) => {
                 const specName = c.specializationName || (getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)));
                 return (
                   <Select.Option key={c.id} value={c.id}>
@@ -1950,7 +1608,7 @@ export default function TeacherAssignments() {
             name="classId"
             label={
               <span>
-                Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp để lọc giáo trình theo môn học & danh sách học sinh)</span>
+                Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp trước để hệ thống lọc giáo trình theo đúng môn học)</span>
               </span>
             }
           >
@@ -1962,44 +1620,58 @@ export default function TeacherAssignments() {
               allowClear
               onChange={handleClassChangeForCurriculum}
             >
-              {modalClasses.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.name}
-                  {getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)) && (
-                    <span className="text-slate-400 text-xs ml-1.5 font-normal">
-                      ({getSpecializationName(getClassSpecializationId(c.id))})
-                    </span>
-                  )}
-                </Select.Option>
-              ))}
+              {assignableClasses.map((c: any) => {
+                const specName = c.specializationName || (getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)));
+                return (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.name}
+                    {specName && (
+                      <span className="text-slate-400 text-xs ml-1.5 font-normal">
+                        ({specName})
+                      </span>
+                    )}
+                  </Select.Option>
+                );
+              })}
             </Select>
           </Form.Item>
 
-          <Form.Item
-            name="curriculumId"
-            label="Giáo trình"
-            rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
-            extra={
-              selectedClassForCurriculum && modalDirectCurriculums.length === 0 ? (
-                <span className="text-amber-600 text-xs mt-1 block">
-                  Chưa có giáo trình nào thuộc môn học này được xuất bản (Published).
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-slate-700 font-medium text-sm flex items-center gap-1">
+                <span className="text-red-500">*</span> Giáo trình
+              </span>
+              {selectedClassForCurriculum && getClassSpecializationId(selectedClassForCurriculum) && (
+                <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200/80 px-2.5 py-0.5 rounded-full font-medium">
+                  Môn: {getSpecializationName(getClassSpecializationId(selectedClassForCurriculum))} ({modalDirectCurriculums.length} giáo trình)
                 </span>
-              ) : undefined
-            }
-          >
-            <Select showSearch placeholder="Chọn giáo trình..." optionFilterProp="children" className="rounded-xl">
-              {modalDirectCurriculums.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
-                  {c.specializationId && getSpecializationName(c.specializationId) && (
-                    <span className="text-purple-600 text-xs ml-1.5 font-normal">
-                      • {getSpecializationName(c.specializationId)}
-                    </span>
-                  )}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+              )}
+            </div>
+            <Form.Item
+              name="curriculumId"
+              rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
+              extra={
+                selectedClassForCurriculum && modalDirectCurriculums.length === 0 ? (
+                  <span className="text-amber-600 text-xs mt-1 block">
+                    Chưa có giáo trình nào thuộc môn học này được xuất bản (Published).
+                  </span>
+                ) : undefined
+              }
+            >
+              <Select showSearch placeholder={selectedClassForCurriculum ? "Chọn giáo trình thuộc môn học của lớp..." : "Chọn giáo trình..."} optionFilterProp="children" className="rounded-xl">
+                {modalDirectCurriculums.map((c) => (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
+                    {c.specializationId && getSpecializationName(c.specializationId) && (
+                      <span className="text-purple-600 text-xs ml-1.5 font-normal">
+                        • {getSpecializationName(c.specializationId)}
+                      </span>
+                    )}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </div>
 
           <Form.Item
             name="studentIds"

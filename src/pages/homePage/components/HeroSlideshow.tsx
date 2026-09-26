@@ -85,7 +85,8 @@ export default function HeroSlideshow({ slides, loading }: HeroSlideshowProps) {
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-950/85 via-blue-900/60 to-transparent flex items-center">
+                {/* Lighter gradient: ảnh hiện rõ ở nửa phải, text đọc được nhờ text-shadow */}
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent flex items-center">
                   <div className="max-w-7xl mx-auto px-6 md:px-16 w-full">
                     <motion.div
                       initial={{ opacity: 0, y: 30 }}
@@ -94,12 +95,18 @@ export default function HeroSlideshow({ slides, loading }: HeroSlideshowProps) {
                       className="max-w-2xl text-white"
                     >
                       {slide.title && (
-                        <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight whitespace-pre-line">
+                        <h1
+                          className="text-4xl md:text-5xl font-bold mb-4 leading-tight whitespace-pre-line"
+                          style={{ textShadow: "0 2px 12px rgba(0,0,0,0.85), 0 1px 4px rgba(0,0,0,0.7)" }}
+                        >
                           {slide.title}
                         </h1>
                       )}
                       {slide.subtitle && (
-                        <p className="text-xl mb-8 text-slate-200 leading-relaxed font-normal">
+                        <p
+                          className="text-lg mb-6 text-slate-100 leading-relaxed font-normal"
+                          style={{ textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}
+                        >
                           {slide.subtitle}
                         </p>
                       )}
@@ -124,7 +131,8 @@ export default function HeroSlideshow({ slides, loading }: HeroSlideshowProps) {
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-900/80 to-transparent flex items-center">
+                {/* Lighter gradient: ảnh hiện rõ ở nửa phải, text đọc được nhờ text-shadow */}
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent flex items-center">
                   <div className="max-w-7xl mx-auto px-6 md:px-16 w-full">
                     <motion.div
                       initial={{ opacity: 0, y: 30 }}
@@ -132,11 +140,17 @@ export default function HeroSlideshow({ slides, loading }: HeroSlideshowProps) {
                       transition={{ duration: 0.8 }}
                       className="max-w-2xl text-white"
                     >
-                      <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+                      <h1
+                        className="text-4xl md:text-5xl font-bold mb-4 leading-tight"
+                        style={{ textShadow: "0 2px 12px rgba(0,0,0,0.85), 0 1px 4px rgba(0,0,0,0.7)" }}
+                      >
                         Học Tập Sáng Tạo <br />
                         <span className="text-blue-400">Tương Lai Rạng Rỡ</span>
                       </h1>
-                      <p className="text-xl mb-8 text-slate-200">
+                      <p
+                        className="text-lg mb-6 text-slate-100"
+                        style={{ textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}
+                      >
                         Kata Edu đồng hành cùng học sinh Việt Nam trên con đường
                         chinh phục tri thức, phát triển toàn diện kỹ năng.
                       </p>

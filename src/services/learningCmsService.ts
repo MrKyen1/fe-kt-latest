@@ -168,6 +168,18 @@ export const learningCmsService = {
         ),
       );
     },
+
+    /**
+     * Lấy payload clone câu hỏi (CreateQuestionDto) để điền vào form tạo nhanh.
+     * Không tạo bản ghi mới trong DB và không publish.
+     */
+    async duplicate(id: string): Promise<CreateQuestionRequest> {
+      return unwrapData(
+        await apiClient.post<ApiEnvelope<CreateQuestionRequest>>(
+          `/learning/questions/${id}/duplicate`,
+        ),
+      );
+    },
   },
 
   exams: {

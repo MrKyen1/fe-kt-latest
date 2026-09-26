@@ -78,22 +78,123 @@ export default function CurriculumExams() {
       try {
         setIsLoading(true);
 
-        let cur;
+        let cur: any = null;
         if (isStudent) {
-          try {
-            const cmsCur = await learningCmsService.curriculums.get(curriculumId!);
-            const detail = await studentLearningService.curriculums.get(curriculumId!);
-            cur = {
-              ...cmsCur,
-              ...detail,
-              exams: detail.exams || []
-            };
-            if (active) {
-              setStudentAssignmentId(detail.enrollmentId || null);
-              setHasAccess(true);
+          const [cmsRes, studentDetailRes, studentListRes] = await Promise.allSettled([
+            learningCmsService.curriculums.get(curriculumId!),
+            studentLearningService.curriculums.get(curriculumId!),
+            studentLearningService.curriculums.list({ limit: 100 }),
+          ]);
+
+          const cmsCur = cmsRes.status === "fulfilled" ? cmsRes.value : null;
+          const studentDetail = studentDetailRes.status === "fulfilled" ? studentDetailRes.value : null;
+          const rawStudentList = studentListRes.status === "fulfilled" ? studentListRes.value : [];
+          const studentList = Array.isArray(rawStudentList) ? rawStudentList : (rawStudentList as any)?.data ?? [];
+
+          // Find if this curriculum is in student's assigned curriculum list
+          const assignedInList = studentList.find((item: any) =>
+            item.curriculumId === curriculumId ||
+            item.curriculum?.id === curriculumId ||
+            (item as any)?.id === curriculumId
+          );
+
+          const studentHasAccess = Boolean(studentDetail || assignedInList);
+          const studentAssignedId =
+            studentDetail?.enrollmentId ||
+            assignedInList?.enrollmentId ||
+            (assignedInList as any)?.id ||
+            null;
+
+          const baseExams = cmsCur?.exams || [];
+          const studentExams = (studentDetail?.exams?.length ? studentDetail.exams : (assignedInList as any)?.exams) || [];
+
+          // Merge exam definitions from CMS with individual student attempts and progress
+          let mergedExams: any[] = [];
+          if (baseExams.length > 0) {
+            mergedExams = baseExams.map((bEntry: any) => {
+              const bExamId = bEntry.examId || bEntry.exam?.id;
+              const matchedStudentExam = studentExams.find(
+                (sEntry: any) => (sEntry.examId || sEntry.exam?.id) === bExamId
+              );
+              return {
+                ...bEntry,
+                ...(matchedStudentExam || {}),
+                exam: {
+                  ...(bEntry.exam || {}),
+                  ...(matchedStudentExam?.exam || {}),
+                },
+              };
+            });
+          } else if (studentExams.length > 0) {
+            mergedExams = studentExams.map((sEntry: any) => ({
+              ...sEntry,
+              examId: sEntry.examId || sEntry.exam?.id,
+              exam: sEntry.exam || {
+                id: sEntry.examId,
+                title: (sEntry as any).title || (sEntry as any).examTitle || "Bài thi",
+              },
+            }));
+          }
+
+          cur = {
+            ...(cmsCur || {}),
+            ...((assignedInList as any)?.curriculum || {}),
+            ...((studentDetail as any)?.curriculum || {}),
+            ...(assignedInList || {}),
+            ...(studentDetail || {}),
+            title:
+              cmsCur?.title ||
+              studentDetail?.curriculum?.title ||
+              assignedInList?.curriculum?.title ||
+              (studentDetail as any)?.title ||
+              (assignedInList as any)?.title ||
+              "Giáo trình",
+            code:
+              cmsCur?.code ||
+              studentDetail?.curriculum?.code ||
+              assignedInList?.curriculum?.code ||
+              (studentDetail as any)?.code ||
+              "",
+            description:
+              cmsCur?.description ||
+              studentDetail?.curriculum?.description ||
+              assignedInList?.curriculum?.description ||
+              (studentDetail as any)?.description ||
+              "",
+            image:
+              cmsCur?.image ||
+              studentDetail?.curriculum?.image ||
+              assignedInList?.curriculum?.image ||
+              (studentDetail as any)?.image,
+            level:
+              cmsCur?.level ||
+              studentDetail?.curriculum?.level ||
+              assignedInList?.curriculum?.level ||
+              (studentDetail as any)?.level,
+            curriculum: {
+              ...(cmsCur || {}),
+              ...(assignedInList?.curriculum || {}),
+              ...(studentDetail?.curriculum || {}),
+            },
+            exams: mergedExams,
+          };
+
+          if (active) {
+            setStudentAssignmentId(studentAssignedId);
+            setHasAccess(studentHasAccess);
+          }
+
+          // Mark this curriculum notification as read/viewed in localStorage for the hybrid dismissal
+          if (user?.id && studentHasAccess) {
+            try {
+              const storageKey = `read_curriculum_notifications_${user.id}`;
+              const raw = localStorage.getItem(storageKey);
+              const readSet = new Set(raw ? JSON.parse(raw) : []);
+              readSet.add(curriculumId);
+              localStorage.setItem(storageKey, JSON.stringify(Array.from(readSet)));
+            } catch (storageErr) {
+              console.error("Failed to update read notification:", storageErr);
             }
-          } catch {
-            cur = await learningCmsService.curriculums.get(curriculumId!);
           }
         } else {
           cur = await learningCmsService.curriculums.get(curriculumId!);

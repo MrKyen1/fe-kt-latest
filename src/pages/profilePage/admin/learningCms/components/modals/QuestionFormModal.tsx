@@ -5,6 +5,7 @@ import {
   Col,
   Divider,
   Form,
+  type FormInstance,
   Input,
   InputNumber,
   Modal,
@@ -18,13 +19,13 @@ import {
   Upload,
   message,
 } from "antd";
-import type { FormInstance } from "antd";
 import {
   DeleteOutlined,
   PlusOutlined,
   QuestionCircleOutlined,
   SoundOutlined,
   UploadOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { Settings, ArrowLeftRight, Image as LucideImage, FolderOpen, Video, Volume2 } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../../services/apiClient";
@@ -47,6 +48,7 @@ interface Props {
   onFinish:   (values: any) => Promise<void> | void;
 
   isEditing:  boolean;
+  isDuplicating?: boolean;
 
   currentType:   string;
   onTypeChange:  (val: string) => void;
@@ -836,6 +838,7 @@ export default function QuestionFormModal({
   form,
   onFinish,
   isEditing,
+  isDuplicating = false,
   currentType,
   onTypeChange,
   levels,
@@ -975,8 +978,23 @@ export default function QuestionFormModal({
     <Modal
       title={
         <div className="flex items-center gap-2">
-          <QuestionCircleOutlined className="text-indigo-600" />
-          {isEditing ? "Cập nhật câu hỏi" : "Tạo câu hỏi mới"}
+          {isDuplicating ? (
+            <CopyOutlined className="text-indigo-600" />
+          ) : (
+            <QuestionCircleOutlined className="text-indigo-600" />
+          )}
+          <span>
+            {isDuplicating
+              ? "Nhân bản câu hỏi"
+              : isEditing
+              ? "Cập nhật câu hỏi"
+              : "Tạo câu hỏi mới"}
+          </span>
+          {isDuplicating && (
+            <Tag color="purple" className="rounded-full text-[11px] font-medium border-0">
+              Bản sao
+            </Tag>
+          )}
         </div>
       }
       open={open}
@@ -985,7 +1003,15 @@ export default function QuestionFormModal({
       onCancel={handleModalCancel}
       onOk={() => form.submit()}
       confirmLoading={submitting}
-      okText={submitting ? "Đang lưu..." : "Lưu lại"}
+      okText={
+        submitting
+          ? "Đang lưu..."
+          : isDuplicating
+          ? "Tạo câu hỏi mới"
+          : isEditing
+          ? "Lưu lại"
+          : "Tạo câu hỏi"
+      }
       cancelButtonProps={{ disabled: submitting }}
       width={800}
       centered
@@ -1003,6 +1029,12 @@ export default function QuestionFormModal({
         scrollToFirstError={{ behavior: "smooth", block: "center", focus: true }}
         className="pt-2"
       >
+        {isDuplicating && (
+          <div className="mb-3 px-3 py-2 bg-indigo-50/80 border border-indigo-100 rounded-xl text-xs text-indigo-700 flex items-center gap-2">
+            <CopyOutlined className="text-indigo-500 shrink-0" />
+            <span>Đã sao chép cấu trúc — chỉnh sửa nội dung và lưu câu hỏi mới.</span>
+          </div>
+        )}
         {/* Type & classification */}
         <Row gutter={16}>
           <Col span={12}>

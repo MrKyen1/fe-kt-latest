@@ -1,12 +1,10 @@
-import { Badge, Button, Space, Table, Tag, Tooltip } from "antd";
+import { Button, Space, Table, Tag, Tooltip } from "antd";
 import { Sparkles, Target } from "lucide-react";
 import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
-  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, PAGE_SIZE_QUESTIONS } from "../constants";
 import { Can } from "../../../../../components/Can";
@@ -30,8 +28,8 @@ interface Props {
   levels:    TaxItem[];
   onCreateClick:        () => void;
   onEditClick:          (record: Question) => void;
+  onDuplicateClick:     (record: Question) => void;
   onDeleteClick:        (record: Question) => void;
-  onToggleStatus:       (record: Question) => void;
   onViewVersions:       (record: Question) => void;
 }
 
@@ -51,20 +49,32 @@ function buildColumns(
   skills:         TaxItem[],
   levels:         TaxItem[],
   onEdit:         (r: Question) => void,
+  onDuplicate:    (r: Question) => void,
   onDelete:       (r: Question) => void,
-  onToggle:       (r: Question) => void,
   onViewVersions: (r: Question) => void,
 ) {
   return [
     {
       title: "Đề bài",
       dataIndex: "prompt",
+      width: "50%",
       render: (val: string, record: Question) => (
         <div>
-          <div
-            className="font-semibold text-slate-800 text-sm line-clamp-2"
-            dangerouslySetInnerHTML={{ __html: val }}
-          />
+          <Tooltip
+            title={
+              <div
+                className="max-h-64 overflow-y-auto p-1 text-xs leading-relaxed text-slate-100"
+                dangerouslySetInnerHTML={{ __html: val }}
+              />
+            }
+            placement="topLeft"
+            overlayStyle={{ maxWidth: 520 }}
+          >
+            <div
+              className="font-semibold text-slate-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 transition-colors"
+              dangerouslySetInnerHTML={{ __html: val }}
+            />
+          </Tooltip>
           <Tag
             color={QUESTION_TYPE_COLORS[record.type] ?? "default"}
             className="rounded border-none text-[10px] mt-1.5 font-bold uppercase"
@@ -76,6 +86,7 @@ function buildColumns(
     },
     {
       title: "Phân loại",
+      width: 190,
       render: (_: unknown, record: Question) => {
         const skill = skills.find((s) => s.id === record.skillId);
         const level = levels.find((l) => l.id === record.difficultyLevelId);
@@ -90,43 +101,44 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
+      width: 110,
+      align: "center" as const,
       render: (val: string) => <StatusTag status={val} />,
     },
     {
       title: "Thao tác",
+      width: 130,
       align: "right" as const,
       render: (_: unknown, record: Question) => (
-        <Space size="small">
-          <Can perform="learning.publish">
-            <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
+        <Space size="small" wrap={false} className="whitespace-nowrap">
+          <Can perform="learning.write">
+            <Tooltip title="Nhân bản câu hỏi">
               <Button
                 type="text"
                 size="small"
-                icon={
-                  record.status === "published"
-                    ? <CloseCircleOutlined className="text-orange-400" />
-                    : <CheckCircleOutlined className="text-emerald-500" />
-                }
-                onClick={() => onToggle(record)}
+                icon={<CopyOutlined className="text-slate-400 hover:text-indigo-600" />}
+                onClick={() => onDuplicate(record)}
+              />
+            </Tooltip>
+            <Tooltip title="Chỉnh sửa câu hỏi">
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+                onClick={() => onEdit(record)}
               />
             </Tooltip>
           </Can>
-          <Can perform="learning.write">
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-              onClick={() => onEdit(record)}
-            />
-          </Can>
           <Can perform="learning.delete">
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-              onClick={() => onDelete(record)}
-            />
+            <Tooltip title="Xóa câu hỏi">
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+                onClick={() => onDelete(record)}
+              />
+            </Tooltip>
           </Can>
         </Space>
       ),
@@ -138,7 +150,7 @@ function buildColumns(
 
 /**
  * Question bank tab — table with per-row actions for edit,
- * delete, status toggle, and version history.
+ * duplicate, delete, and version history.
  */
 export default function QuestionsTab({
   questions,
@@ -146,18 +158,16 @@ export default function QuestionsTab({
   levels,
   onCreateClick,
   onEditClick,
+  onDuplicateClick,
   onDeleteClick,
-  onToggleStatus,
   onViewVersions,
 }: Props) {
-  const publishedCount = questions.filter((q) => q.status === "published").length;
-
   const columns = buildColumns(
     skills,
     levels,
     onEditClick,
+    onDuplicateClick,
     onDeleteClick,
-    onToggleStatus,
     onViewVersions,
   );
 
@@ -166,8 +176,7 @@ export default function QuestionsTab({
       {/* Header */}
       <div className="flex justify-between items-center">
         <span className="text-slate-500">
-          Ngân hàng câu hỏi —{" "}
-          <strong>{publishedCount}/{questions.length}</strong> đã duyệt
+          Ngân hàng câu hỏi — Tổng cộng <strong>{questions.length}</strong> câu hỏi
         </span>
         <Can perform="learning.write">
           <Button
@@ -186,6 +195,7 @@ export default function QuestionsTab({
         dataSource={questions}
         columns={columns}
         pagination={{ pageSize: PAGE_SIZE_QUESTIONS }}
+        scroll={{ x: 800 }}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import {
 import { useEffect, useState, useMemo } from "react";
 import { learningCmsService } from "../../services/learningCmsService";
 import { academicService } from "../../services/academicService";
+import { studentLearningService } from "../../services/studentLearningService";
 import { useAuth } from "../../contexts/AuthContext";
 import { Curriculum, Center } from "../../types/backend";
 import { AppImage } from "../../components/AppImagePreview";
@@ -21,12 +22,14 @@ const { Title, Text } = Typography;
 export default function Courses() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isStudent = user?.role === "student";
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Curriculums & Centers
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
+  const [assignedMap, setAssignedMap] = useState<Map<string, any>>(new Map());
   const [centers, setCenters] = useState<Center[]>([]);
   const [selectedCenterId, setSelectedCenterId] = useState<string>("all");
 
@@ -69,10 +72,16 @@ export default function Courses() {
       try {
         setIsLoading(true);
 
-        const [currRes, centerRes] = await Promise.allSettled([
+        const promises: Promise<any>[] = [
           learningCmsService.curriculums.list({ status: "published", limit: 100 }),
           academicService.centers.list().catch(() => []),
-        ]);
+        ];
+
+        if (isStudent) {
+          promises.push(studentLearningService.curriculums.list({ limit: 100 }).catch(() => []));
+        }
+
+        const [currRes, centerRes, studentRes] = await Promise.allSettled(promises);
 
         if (!active) return;
 
@@ -98,6 +107,19 @@ export default function Courses() {
           setCenters(Array.isArray(centerRes.value) ? centerRes.value : []);
         }
 
+        if (isStudent && studentRes && studentRes.status === "fulfilled") {
+          const rawStudentList = Array.isArray(studentRes.value)
+            ? studentRes.value
+            : (studentRes.value as any)?.data ?? [];
+
+          const map = new Map<string, any>();
+          rawStudentList.forEach((item: any) => {
+            const cId = item.curriculumId || item.curriculum?.id || item.id;
+            if (cId) map.set(cId, item);
+          });
+          setAssignedMap(map);
+        }
+
         setError(null);
       } catch (err: any) {
         if (active) setError(err?.message || "Không thể tải dữ liệu khóa học.");
@@ -110,7 +132,7 @@ export default function Courses() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isStudent]);
 
   // Center display name
   const currentCenter = useMemo(() => {
@@ -311,6 +333,51 @@ export default function Courses() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
                     {paginatedCurriculums.map((curr, idx) => {
                       const examCount = curr.exams?.length || 0;
+                      const assignedItem = isStudent ? assignedMap.get(curr.id) : null;
+                      const isAssigned = Boolean(assignedItem);
+                      const progress = Number(assignedItem?.progressPercentage) || 0;
+                      const isCompleted =
+                        assignedItem?.status === "completed" ||
+                        assignedItem?.status === "finished" ||
+                        progress >= 100;
+                      const isInProgress =
+                        progress > 0 || (Number(assignedItem?.completedExamsCount) || 0) > 0;
+
+                      const renderStatusPill = () => {
+                        if (!isStudent) {
+                          return (
+                            <span className="bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                              Public
+                            </span>
+                          );
+                        }
+                        if (isCompleted) {
+                          return (
+                            <span className="bg-purple-600 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                              Hoàn thành
+                            </span>
+                          );
+                        }
+                        if (isInProgress) {
+                          return (
+                            <span className="bg-blue-600 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                              Đang học {progress}%
+                            </span>
+                          );
+                        }
+                        if (isAssigned) {
+                          return (
+                            <span className="bg-emerald-600 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                              Đã giao
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="bg-slate-500/90 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
+                            Chưa giao
+                          </span>
+                        );
+                      };
 
                       return (
                         <Link
@@ -331,6 +398,7 @@ export default function Courses() {
                                 <AppImage
                                   src={curr.image}
                                   alt={curr.title}
+                                  preview={false}
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                   rootClassName="w-full h-full"
                                 />
@@ -352,11 +420,9 @@ export default function Courses() {
                                 </div>
                               )}
 
-                              {/* Public status pill */}
+                              {/* Public / Assignment status pill */}
                               <div className="absolute top-3 right-3 z-10">
-                                <span className="bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-xs">
-                                  Public
-                                </span>
+                                {renderStatusPill()}
                               </div>
                             </div>
 
@@ -393,8 +459,8 @@ export default function Courses() {
                                   <span>{examCount} bài thi</span>
                                 </div>
 
-                                <span className="inline-flex items-center gap-1 font-bold text-blue-600 group-hover:text-blue-700 group-hover:translate-x-0.5 transition-all">
-                                  Vào học <ArrowRight size={14} />
+                                <span className={`inline-flex items-center gap-1 font-bold group-hover:translate-x-0.5 transition-all ${isAssigned ? "text-emerald-600 group-hover:text-emerald-700" : "text-blue-600 group-hover:text-blue-700"}`}>
+                                  {isStudent ? (isAssigned ? (isInProgress ? "Học tiếp" : "Vào học ngay") : "Xem chi tiết") : "Vào học"} <ArrowRight size={14} />
                                 </span>
                               </div>
                             </div>
