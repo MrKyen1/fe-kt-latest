@@ -77,14 +77,22 @@ export function mapUserResponse(user: any): User {
     };
   }
 
-  // Preserve centerId if present in class entity hierarchy
+  // Derive all associated centerIds from teacher / student classes
+  const teacherCenterIds = (user.teacher?.classes || [])
+    .map((c: any) => c.class?.centerId || c.class?.center?.id)
+    .filter(Boolean);
+  const studentCenterIds = (user.student?.classes || [])
+    .map((c: any) => c.class?.centerId || c.class?.center?.id)
+    .filter(Boolean);
+  const allCenterIds = Array.from(new Set([...teacherCenterIds, ...studentCenterIds]));
+
+  if (allCenterIds.length > 0) {
+    mapped.centerIds = allCenterIds;
+  }
+
+  // Preserve primary centerId if present in class entity hierarchy
   if (!mapped.centerId) {
-    const classWithCenter =
-      (user.teacher?.classes || []).find((c: any) => c.class?.centerId || c.class?.center?.id) ||
-      (user.student?.classes || []).find((c: any) => c.class?.centerId || c.class?.center?.id);
-    if (classWithCenter) {
-      mapped.centerId = classWithCenter.class?.centerId || classWithCenter.class?.center?.id;
-    }
+    mapped.centerId = allCenterIds[0] || undefined;
   }
 
   return mapped;

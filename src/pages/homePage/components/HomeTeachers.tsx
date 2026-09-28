@@ -17,6 +17,7 @@ export interface TeacherItem {
   subject: string;
   desc: string;
   centerName?: string;
+  centerNames?: string[];
 }
 
 export default function HomeTeachers() {
@@ -48,7 +49,8 @@ export default function HomeTeachers() {
                 (t.yearsOfExperience
                   ? `${t.yearsOfExperience} năm kinh nghiệm giảng dạy`
                   : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
-              const centerName = t.centers?.[0]?.name;
+              const centerNames = (t.centers || []).map((c: any) => c.name).filter(Boolean);
+              const centerName = centerNames.length > 0 ? centerNames.join(" • ") : undefined;
 
               return {
                 id: t.id,
@@ -57,6 +59,7 @@ export default function HomeTeachers() {
                 subject: subjectText,
                 desc: descText,
                 centerName,
+                centerNames,
               };
             });
 
@@ -113,9 +116,15 @@ export default function HomeTeachers() {
                 ? `${t.teacherProfile.yearsOfExperience} năm kinh nghiệm giảng dạy`
                 : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
 
-            const matchedCenter = centersList.find(
-              (c) => c.id === (t.centerId || (t as any).teacherProfile?.centerId)
+            const teacherClasses = t.teacherProfile?.classes || [];
+            const teacherCenterNames = Array.from(
+              new Set([
+                ...teacherClasses.map((c: any) => c.center?.name || centersList.find((cen: any) => cen.id === c.centerId)?.name),
+                ...(t.centerIds || []).map((cid: string) => centersList.find((cen: any) => cen.id === cid)?.name),
+                centersList.find((c: any) => c.id === (t.centerId || (t as any).teacherProfile?.centerId))?.name,
+              ].filter(Boolean))
             );
+            const centerName = teacherCenterNames.length > 0 ? teacherCenterNames.join(" • ") : undefined;
 
             return {
               id: t.id,
@@ -123,7 +132,8 @@ export default function HomeTeachers() {
               avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
               subject: subjectText,
               desc: descText,
-              centerName: matchedCenter?.name,
+              centerName,
+              centerNames: teacherCenterNames,
             };
           });
 
@@ -228,11 +238,20 @@ export default function HomeTeachers() {
                 </p>
 
                 {/* Trung tâm */}
-                {teacher.centerName && (
-                  <div className="mb-3">
-                    <Tag color="cyan" className="rounded-full text-[11px] px-2.5 py-0.5 border-none font-medium">
-                      {teacher.centerName}
-                    </Tag>
+                {((teacher.centerNames && teacher.centerNames.length > 0) || teacher.centerName) && (
+                  <div className="mb-3 flex flex-wrap justify-center gap-1.5">
+                    {(teacher.centerNames && teacher.centerNames.length > 0
+                      ? teacher.centerNames
+                      : [teacher.centerName!]
+                    ).map((cName) => (
+                      <Tag
+                        key={cName}
+                        color="cyan"
+                        className="rounded-full text-[11px] px-2.5 py-0.5 border-none font-medium m-0"
+                      >
+                        {cName}
+                      </Tag>
+                    ))}
                   </div>
                 )}
 

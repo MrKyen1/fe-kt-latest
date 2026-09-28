@@ -78,8 +78,17 @@ export default function Teachers() {
                 ? `${t.teacherProfile.yearsOfExperience} năm kinh nghiệm giảng dạy`
                 : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
 
-            // Tên trung tâm trực thuộc
-            const matchedCenter = centersList.find((c) => c.id === (t.centerId || (t as any).teacherProfile?.centerId));
+            // Tên các trung tâm trực thuộc
+            const teacherClasses = t.teacherProfile?.classes || [];
+            const teacherCenterNames = Array.from(
+              new Set([
+                ...teacherClasses.map((c: any) => c.center?.name || centersList.find((cen: any) => cen.id === c.centerId)?.name),
+                ...(t.centerIds || []).map((cid: string) => centersList.find((cen: any) => cen.id === cid)?.name),
+                centersList.find((c: any) => c.id === (t.centerId || (t as any).teacherProfile?.centerId))?.name,
+              ].filter(Boolean))
+            );
+            const centerDisplayText =
+              teacherCenterNames.length > 0 ? teacherCenterNames.join(" • ") : undefined;
 
             return {
               id: t.id,
@@ -89,7 +98,7 @@ export default function Teachers() {
               avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
               subject: subjectText,
               desc: descText,
-              centerName: matchedCenter?.name,
+              centerName: centerDisplayText,
             };
           });
 

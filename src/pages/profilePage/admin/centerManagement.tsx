@@ -86,7 +86,7 @@ interface TeacherFormValues {
   citizenId?: string;
   yearsOfExperience?: number;
   description: string;
-  centerId?: string;
+  centerIds?: string[];
   classIds: string[];
   specializationIds: string[];
   bankAccountNumber?: string;
@@ -195,6 +195,7 @@ export default function CenterManagement() {
 
   // Dynamic filter state for modal inputs
   const [selectedModalCenterId, setSelectedModalCenterId] = useState<string | undefined>(undefined);
+  const [selectedTeacherCenterIds, setSelectedTeacherCenterIds] = useState<string[]>([]);
 
   // ================= FORMS =================
   const [centerForm] = Form.useForm();
@@ -263,18 +264,20 @@ export default function CenterManagement() {
         return uniqueTeachers.map((t: any) => {
           const prev = prevTeachers.find((p: any) => p.id === t.id);
           const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
-          const matchedClass =
-            (classesData || []).find((c: any) => classIds.includes(c.id)) ||
-            (t.teacherProfile?.classes || [])[0];
+          const matchedClasses = (classesData || []).filter((c: any) => classIds.includes(c.id));
+          const teacherCenterIds = Array.from(
+            new Set([
+              ...(t.centerIds || []),
+              ...matchedClasses.map((c: any) => c.centerId),
+              ...(t.teacherProfile?.classes || []).map((c: any) => c.centerId || c.center?.id),
+              t.centerId,
+              prev?.centerId,
+            ].filter(Boolean))
+          );
           return {
             ...t,
-            centerId:
-              t.centerId ||
-              matchedClass?.centerId ||
-              matchedClass?.center?.id ||
-              t.teacherProfile?.centerId ||
-              t.teacher?.classes?.[0]?.class?.centerId ||
-              prev?.centerId,
+            centerIds: teacherCenterIds,
+            centerId: teacherCenterIds[0] || t.centerId || prev?.centerId,
           };
         });
       });
@@ -677,11 +680,12 @@ export default function CenterManagement() {
   // ================= TEACHER HANDLERS =================
   const handleTeacherCreate = () => {
     setEditingTeacher(null);
-    setSelectedModalCenterId(selectedCenterId || undefined);
+    const initialCenterIds = selectedCenterId ? [selectedCenterId] : [];
+    setSelectedTeacherCenterIds(initialCenterIds);
     teacherForm.resetFields();
     teacherForm.setFieldsValue({
       startDate: dayjs(),
-      ...(selectedCenterId && { centerId: selectedCenterId }),
+      centerIds: initialCenterIds,
       degrees: [],
     });
     setTeacherModalOpen(true);
@@ -693,11 +697,23 @@ export default function CenterManagement() {
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
     const specIds = profile.specializations?.map((s: any) => s.id) || profile.specializationIds || [];
 
-    // Auto-detect center based on classes
-    const matchedClass = classes.find((c) => classIds.includes(c.id));
-    const initialCenterId = matchedClass?.centerId || record.centerId || undefined;
+    // Auto-detect all centers based on teacher's classes
+    const matchedClassCenterIds = classes
+      .filter((c) => classIds.includes(c.id))
+      .map((c) => c.centerId);
+    const profileClassCenterIds = (profile.classes || [])
+      .map((c: any) => c.centerId || c.center?.id);
+    const initialCenterIds = Array.from(
+      new Set([
+        ...matchedClassCenterIds,
+        ...profileClassCenterIds,
+        ...(record.centerIds || []),
+        ...(record.centerId ? [record.centerId] : []),
+        ...(selectedCenterId && matchedClassCenterIds.length === 0 ? [selectedCenterId] : []),
+      ].filter(Boolean))
+    ) as string[];
 
-    setSelectedModalCenterId(initialCenterId);
+    setSelectedTeacherCenterIds(initialCenterIds);
 
     // Map degrees for Upload component
     const mappedDegrees = (profile.degrees || []).map((deg: any, dIdx: number) => ({
@@ -721,7 +737,7 @@ export default function CenterManagement() {
       endDate: record.endDate ? dayjs(record.endDate) : undefined,
       address: record.address,
       citizenId: record.citizenId || undefined,
-      centerId: initialCenterId,
+      centerIds: initialCenterIds,
       yearsOfExperience: profile.yearsOfExperience,
       description: profile.description || "",
       classIds: classIds,
@@ -754,7 +770,7 @@ export default function CenterManagement() {
     });
   };
 
-  const handleTeacherSubmit = async (values: TeacherFormValues) => {
+  const executeTeacherSubmit = async (values: TeacherFormValues) => {
     try {
       setLoading(true);
       const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
@@ -833,6 +849,7 @@ export default function CenterManagement() {
       }
       loadData();
       setTeacherModalOpen(false);
+      setSelectedTeacherCenterIds([]);
       teacherForm.resetFields();
     } catch (err: any) {
       if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
@@ -843,6 +860,40 @@ export default function CenterManagement() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTeacherSubmit = async (values: TeacherFormValues) => {
+    const selectedCenterIds = values.centerIds || [];
+    const selectedClassIds = values.classIds || [];
+    const unassignedCenters = selectedCenterIds
+      .map((cenId) => {
+        const centerObj = centers.find((c) => c.id === cenId);
+        const hasClass = classes.some(
+          (cls) => cls.centerId === cenId && selectedClassIds.includes(cls.id)
+        );
+        return {
+          id: cenId,
+          name: centerObj?.name || "Trung tâm",
+          hasClass,
+        };
+      })
+      .filter((c) => !c.hasClass);
+
+    if (unassignedCenters.length > 0) {
+      const names = unassignedCenters.map((u) => u.name).join(", ");
+      Modal.confirm({
+        title: "Chưa chọn lớp học",
+        icon: <AlertTriangle className="text-amber-500 mr-2" size={20} />,
+        content: `Trung tâm [${names}] chưa có lớp học phụ trách. Giáo viên chỉ hiển thị tại trung tâm khi có lớp học. Bạn vẫn muốn lưu?`,
+        okText: "Vẫn lưu",
+        cancelText: "Hủy",
+        okButtonProps: { className: "bg-indigo-600 hover:bg-indigo-700" },
+        onOk: () => executeTeacherSubmit(values),
+      });
+      return;
+    }
+
+    await executeTeacherSubmit(values);
   };
 
   // ================= STUDENT HANDLERS =================
@@ -1233,18 +1284,39 @@ export default function CenterManagement() {
     },
     {
       title: "Lớp học phụ trách",
-      width: 180,
+      width: 220,
       fixed: "left" as const,
       render: (_: any, record: any) => {
         const classIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
         const tClasses = classes.filter((c) => classIds.includes(c.id));
         return (
           <div className="flex flex-wrap gap-1">
-            {tClasses.map((c) => (
-              <Tag key={c.id} color="purple" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-purple-50 text-purple-600 font-medium">
-                {c.name}
-              </Tag>
-            ))}
+            {tClasses.map((c) => {
+              const isCurrentCenter = c.centerId === selectedCenterId;
+              const centerObj = centers.find((cen) => cen.id === c.centerId);
+              return (
+                <Tooltip
+                  key={c.id}
+                  title={centerObj ? `Cơ sở: ${centerObj.name}` : undefined}
+                >
+                  <Tag
+                    color={isCurrentCenter ? "purple" : "blue"}
+                    className={`border-none rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      isCurrentCenter
+                        ? "bg-purple-50 text-purple-600"
+                        : "bg-blue-50 text-blue-600"
+                    }`}
+                  >
+                    {c.name}
+                    {centers.length > 1 && centerObj && !isCurrentCenter && (
+                      <span className="opacity-75 text-[10px] ml-1 font-normal">
+                        ({centerObj.name})
+                      </span>
+                    )}
+                  </Tag>
+                </Tooltip>
+              );
+            })}
             {tClasses.length === 0 && <span className="text-slate-400 text-xs">-</span>}
           </div>
         );
@@ -1585,7 +1657,8 @@ export default function CenterManagement() {
     const tClassIds = t.teacherProfile?.classIds || [];
     return (
       t.centerId === selectedCenterId ||
-      tClasses.some((c: any) => c.centerId === selectedCenterId) ||
+      (t.centerIds && t.centerIds.includes(selectedCenterId)) ||
+      tClasses.some((c: any) => c.centerId === selectedCenterId || c.center?.id === selectedCenterId) ||
       tClassIds.some((cid: string) => centerClassesIds.includes(cid))
     );
   });
@@ -2575,6 +2648,7 @@ export default function CenterManagement() {
               open={teacherModalOpen}
               onCancel={() => {
                 setTeacherModalOpen(false);
+                setSelectedTeacherCenterIds([]);
                 teacherForm.resetFields();
               }}
               onOk={() => teacherForm.submit()}
@@ -2761,19 +2835,29 @@ export default function CenterManagement() {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
-                      name="centerId"
+                      name="centerIds"
                       label="Trung tâm liên kết"
-                      rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
+                      rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 trung tâm!" }]}
+                      tooltip="Chọn một hoặc nhiều trung tâm để lọc danh sách lớp phụ trách"
                     >
                       <Select
-                        placeholder="Chọn trung tâm"
+                        mode="multiple"
+                        placeholder="Chọn các trung tâm liên kết"
                         className="rounded-xl"
-                        onChange={(val) => {
-                          setSelectedModalCenterId(val);
-                          // Clear class selection if center changes to prevent mismatch
-                          teacherForm.setFieldsValue({ classIds: [] });
+                        showSearch
+                        optionFilterProp="label"
+                        maxTagCount="responsive"
+                        onChange={(nextCenterIds: string[]) => {
+                          setSelectedTeacherCenterIds(nextCenterIds);
+                          // Keep only classes that belong to one of the selected centers
+                          const currentClassIds: string[] = teacherForm.getFieldValue("classIds") || [];
+                          const validClassIds = currentClassIds.filter((cid: string) => {
+                            const cls = classes.find((c) => c.id === cid);
+                            return cls && nextCenterIds.includes(cls.centerId);
+                          });
+                          teacherForm.setFieldsValue({ classIds: validClassIds });
                         }}
-                        options={centers.map(c => ({ label: c.name, value: c.id }))}
+                        options={centers.map((c) => ({ label: c.name, value: c.id }))}
                       />
                     </Form.Item>
                   </Col>
@@ -2791,15 +2875,29 @@ export default function CenterManagement() {
                   name="classIds"
                   label="Lớp học phụ trách"
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
+                  tooltip="Giáo viên có thể dạy các lớp thuộc các trung tâm đã chọn"
                 >
                   <Select
                     mode="multiple"
-                    placeholder="Chọn lớp học (chọn trung tâm trước để lọc)"
+                    placeholder="Chọn lớp học (chọn trung tâm liên kết trước để lọc)"
                     style={{ width: "100%" }}
                     className="rounded-xl"
+                    showSearch
+                    optionFilterProp="label"
+                    maxTagCount="responsive"
                     options={classes
-                      .filter((c) => !selectedModalCenterId || c.centerId === selectedModalCenterId)
-                      .map((c) => ({ label: c.name, value: c.id }))}
+                      .filter(
+                        (c) =>
+                          selectedTeacherCenterIds.length === 0 ||
+                          selectedTeacherCenterIds.includes(c.centerId)
+                      )
+                      .map((c) => {
+                        const centerObj = centers.find((cen) => cen.id === c.centerId);
+                        return {
+                          label: centerObj ? `${c.name} (${centerObj.name})` : c.name,
+                          value: c.id,
+                        };
+                      })}
                   />
                 </Form.Item>
 

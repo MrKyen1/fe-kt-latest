@@ -58,6 +58,7 @@ export interface User {
   avatar?: string;
   isActive?: boolean;
   centerId?: string;
+  centerIds?: string[];
   roleId?: string;
   role?: Role;
   citizenId?: string | null;
