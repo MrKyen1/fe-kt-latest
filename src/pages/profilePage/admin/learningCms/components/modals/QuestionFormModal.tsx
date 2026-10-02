@@ -27,41 +27,51 @@ import {
   UploadOutlined,
   CopyOutlined,
 } from "@ant-design/icons";
-import { Settings, ArrowLeftRight, Image as LucideImage, FolderOpen, Video, Volume2 } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../../services/apiClient";
 import { AppImage } from "../../../../../../components/AppImagePreview";
+import { SafeSelect } from "../../../../../../components/SafeSelect";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { CHOICE_TYPES, QUESTION_TYPES } from "../../constants";
+import { MediaPickerInput } from "../MediaPickerInput";
+import {
+  Settings,
+  FolderOpen,
+  Image as LucideImage,
+  Volume2,
+  Video,
+  ArrowLeftRight,
+} from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────
 
-interface TaxItem   { id: string; name: string; }
+interface TaxItem { id: string; name: string; }
 interface MediaItem { id: string; url: string; altText?: string; type?: string; mimeType?: string; }
-interface Passage   { id: string; title: string; }
+interface Passage { id: string; title: string; }
 
 interface MediaRole { value: string; label: string; }
 
 interface Props {
-  open:       boolean;
-  onCancel:   () => void;
-  form:       FormInstance;
-  onFinish:   (values: any) => Promise<void> | void;
+  open: boolean;
+  onCancel: () => void;
+  form: FormInstance;
+  onFinish: (values: any) => Promise<void> | void;
 
-  isEditing:  boolean;
+  isEditing: boolean;
   isDuplicating?: boolean;
 
-  currentType:   string;
-  onTypeChange:  (val: string) => void;
+  currentType: string;
+  onTypeChange: (val: string) => void;
 
-  levels:   TaxItem[];
-  skills:   TaxItem[];
-  topics:   TaxItem[];
-  tags:     TaxItem[];
+  levels: TaxItem[];
+  skills: TaxItem[];
+  topics: TaxItem[];
+  tags: TaxItem[];
   passages: Passage[];
 
   /** All media assets, pre-filtered by type where required */
-  filteredMedia:    MediaItem[];
-  availableRoles:   MediaRole[];
+  filteredMedia: MediaItem[];
+  allMedia?: MediaItem[];
+  availableRoles: MediaRole[];
 
   onPreviewAsset: (asset: MediaItem) => void;
   onUploadMedia?: (file: File, altText?: string) => Promise<MediaItem>;
@@ -69,7 +79,32 @@ interface Props {
 
 // ── Question-type–specific detail fields ─────────────────────
 
-function ChoiceFields({ type, passages }: { type: string; passages: Passage[] }) {
+function ChoiceFields({
+  type,
+  passages,
+  allMedia = [],
+  form,
+}: {
+  type: string;
+  passages: Passage[];
+  allMedia?: MediaItem[];
+  form: FormInstance;
+}) {
+  const isTrueFalse = type === "true_false";
+  const isAudioImageChoice = type === "audio_image_choice";
+  const imageAssets = allMedia.filter(
+    (m) => m.type === "image" || m.mimeType?.startsWith("image")
+  );
+
+  const handleSelectSingleCorrect = (selectedIdx: number) => {
+    const currentOptions = form.getFieldValue("options") || [];
+    const updated = currentOptions.map((opt: any, i: number) => ({
+      ...opt,
+      isCorrect: i === selectedIdx,
+    }));
+    form.setFieldsValue({ options: updated });
+  };
+
   return (
     <>
       {type === "reading_comprehension" && (
@@ -85,32 +120,122 @@ function ChoiceFields({ type, passages }: { type: string; passages: Passage[] })
         {(fields, { add, remove }) => (
           <div className="space-y-2 mb-4">
             <div className="flex justify-between items-center">
-              <span className="text-sm font-semibold text-slate-700">Phương án trả lời</span>
-              <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => add({ content: "", isCorrect: false })}>
-                Thêm đáp án
-              </Button>
+              <span className="text-sm font-semibold text-slate-700">
+                {isTrueFalse ? "Lựa chọn Đúng / Sai" : "Phương án trả lời"}
+              </span>
+              {!isTrueFalse && (
+                <Button
+                  type="dashed"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => add({ content: "", isCorrect: false, mediaId: undefined })}
+                >
+                  Thêm đáp án
+                </Button>
+              )}
             </div>
-            {fields.map(({ key, name, ...restField }, idx) => (
-              <div key={key} className="flex gap-2 items-start bg-slate-50 p-2 rounded-xl">
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-700 flex-shrink-0 mt-1">
-                  {String.fromCharCode(65 + idx)}
+            {fields.map(({ key, name, ...restField }, idx) => {
+              const currentMediaId = form.getFieldValue(["options", name, "mediaId"]);
+              const selectedImg = imageAssets.find((m) => m.id === currentMediaId);
+
+              return (
+                <div key={key} className="flex flex-col gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <div className="flex gap-2 items-start">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-700 flex-shrink-0 mt-1">
+                      {String.fromCharCode(65 + idx)}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <Form.Item
+                        {...restField}
+                        name={[name, "content"]}
+                        rules={
+                          isAudioImageChoice
+                            ? []
+                            : [{ required: true, message: "Vui lòng nhập nội dung đáp án!" }]
+                        }
+                        className="mb-0"
+                      >
+                        <Input
+                          placeholder={
+                            isAudioImageChoice
+                              ? "Chú thích / Tên đáp án (tùy chọn)"
+                              : isTrueFalse
+                                ? (idx === 0 ? "Đúng" : "Sai")
+                                : "Nội dung đáp án"
+                          }
+                          className="rounded-lg"
+                        />
+                      </Form.Item>
+
+                      {isAudioImageChoice && (
+                        <div className="pt-1">
+                          <Form.Item
+                            {...restField}
+                            name={[name, "mediaVal"]}
+                            rules={[
+                              {
+                                validator: (_, val) => {
+                                  const existingId = form.getFieldValue(["options", name, "mediaId"]);
+                                  if (!val && !existingId) {
+                                    return Promise.reject(new Error("Chọn hoặc tải ảnh cho đáp án này!"));
+                                  }
+                                  if (val && !val.mediaId && !val.file && !existingId) {
+                                    return Promise.reject(new Error("Chọn hoặc tải ảnh cho đáp án này!"));
+                                  }
+                                  return Promise.resolve();
+                                },
+                              },
+                            ]}
+                            className="mb-0"
+                          >
+                            <MediaPickerInput
+                              acceptType="image"
+                              allMedia={imageAssets}
+                              placeholder="Chọn ảnh từ thư viện hoặc tải ảnh từ máy..."
+                            />
+                          </Form.Item>
+                        </div>
+                      )}
+
+                      {!isTrueFalse && (
+                        <Form.Item {...restField} name={[name, "explanation"]} className="mb-0">
+                          <Input placeholder="Giải thích đáp án này (tuỳ chọn)" className="rounded-lg text-xs" size="small" />
+                        </Form.Item>
+                      )}
+                    </div>
+
+                    <Form.Item
+                      {...restField}
+                      name={[name, "isCorrect"]}
+                      valuePropName="checked"
+                      className="mb-0 mt-1 shrink-0"
+                    >
+                      <Checkbox
+                        className="text-emerald-600 font-semibold"
+                        onChange={(e) => {
+                          if (isTrueFalse && e.target.checked) {
+                            handleSelectSingleCorrect(idx);
+                          }
+                        }}
+                      >
+                        Đúng
+                      </Checkbox>
+                    </Form.Item>
+
+                    {!isTrueFalse && fields.length > 2 && (
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        onClick={() => remove(name)}
+                        className="mt-1"
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <Form.Item {...restField} name={[name, "content"]} rules={[{ required: true, message: "Vui lòng nhập nội dung đáp án!" }]} className="mb-1">
-                    <Input placeholder="Nội dung đáp án" className="rounded-lg" />
-                  </Form.Item>
-                  <Form.Item {...restField} name={[name, "explanation"]} className="mb-0">
-                    <Input placeholder="Giải thích đáp án này (tuỳ chọn)" className="rounded-lg text-xs" size="small" />
-                  </Form.Item>
-                </div>
-                <Form.Item {...restField} name={[name, "isCorrect"]} valuePropName="checked" className="mb-0 mt-1">
-                  <Checkbox className="text-emerald-600 font-semibold">Đúng</Checkbox>
-                </Form.Item>
-                {fields.length > 2 && (
-                  <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} className="mt-1" />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Form.List>
@@ -147,11 +272,8 @@ function SentenceRewriteFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-        <Settings size={15} className="text-slate-500" /> Cấu hình viết lại câu
+        <Settings size={15} className="text-slate-500" /> Cấu hình viết câu / viết lại câu
       </span>
-      <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true, message: "Vui lòng nhập câu gốc!" }]}>
-        <Input.TextArea placeholder="Câu gốc để học sinh viết lại..." rows={2} className="rounded-xl" />
-      </Form.Item>
       <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true, message: "Vui lòng nhập đáp án chấp nhận!" }]}>
         <Input.TextArea placeholder={"It is not warm enough to swim.\nSwimming is impossible due to the cold."} rows={3} className="rounded-xl font-mono" />
       </Form.Item>
@@ -169,11 +291,8 @@ function HintRewriteFields() {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-        <Settings size={15} className="text-slate-500" /> Cấu hình viết lại có gợi ý
+        <Settings size={15} className="text-slate-500" /> Cấu hình viết câu có gợi ý
       </span>
-      <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true, message: "Vui lòng nhập câu gốc!" }]}>
-        <Input.TextArea placeholder="Câu gốc..." rows={2} className="rounded-xl" />
-      </Form.Item>
       <Form.Item name="hintWord" label="Từ gợi ý (hint word)" rules={[{ required: true, message: "Vui lòng nhập từ gợi ý!" }]}>
         <Input placeholder="Ví dụ: since" className="rounded-xl font-mono" />
       </Form.Item>
@@ -212,11 +331,146 @@ function ErrorCorrectionFields() {
   );
 }
 
-function MatchingFields() {
+function MatchingPairRow({
+  name,
+  restField,
+  remove,
+  form,
+  allMedia = [],
+  index,
+}: {
+  name: number;
+  restField: any;
+  remove: (index: number) => void;
+  form: FormInstance;
+  allMedia?: MediaItem[];
+  index: number;
+}) {
+  const initialLeftMediaId = form.getFieldValue(["pairs", name, "leftMediaId"]);
+  const initialLeftMediaVal = form.getFieldValue(["pairs", name, "leftMediaVal"]);
+  const [leftType, setLeftType] = useState<"text" | "media">(
+    initialLeftMediaId || initialLeftMediaVal?.mediaId || initialLeftMediaVal?.file ? "media" : "text"
+  );
+
+  useEffect(() => {
+    const mId = form.getFieldValue(["pairs", name, "leftMediaId"]);
+    const mVal = form.getFieldValue(["pairs", name, "leftMediaVal"]);
+    if (mId || mVal?.mediaId || mVal?.file) {
+      setLeftType("media");
+    }
+  }, [name, form]);
+
+  return (
+    <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center">
+            {index + 1}
+          </span>
+          <span className="text-xs font-semibold text-slate-700">Cặp ghép đôi {index + 1}</span>
+        </div>
+        <Button
+          type="text"
+          danger
+          size="small"
+          icon={<DeleteOutlined />}
+          onClick={() => remove(name)}
+          className="text-slate-400 hover:text-rose-600"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+        {/* Left Side (Vế trái) */}
+        <div className="bg-slate-50/80 p-2.5 rounded-lg border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-indigo-700">Vế trái (Cột A)</span>
+            <Segmented
+              size="small"
+              value={leftType}
+              onChange={(val) => {
+                setLeftType(val as "text" | "media");
+                if (val === "text") {
+                  form.setFieldValue(["pairs", name, "leftMediaVal"], undefined);
+                  form.setFieldValue(["pairs", name, "leftMediaId"], undefined);
+                }
+              }}
+              options={[
+                { label: "Văn bản", value: "text" },
+                { label: "Ảnh / Âm thanh", value: "media" },
+              ]}
+              className="text-[11px] p-0.5"
+            />
+          </div>
+
+          {leftType === "text" ? (
+            <Form.Item
+              {...restField}
+              name={[name, "leftText"]}
+              rules={[{ required: true, message: "Nhập nội dung vế trái!" }]}
+              className="mb-0"
+            >
+              <Input placeholder="Nhập văn bản vế trái (Ví dụ: Con mèo)" className="rounded-lg text-sm" />
+            </Form.Item>
+          ) : (
+            <div className="space-y-1.5">
+              <Form.Item
+                {...restField}
+                name={[name, "leftMediaVal"]}
+                rules={[
+                  {
+                    validator: (_, val) => {
+                      const existingId = form.getFieldValue(["pairs", name, "leftMediaId"]);
+                      if (!val && !existingId) {
+                        return Promise.reject(new Error("Chọn hoặc tải tệp media cho vế trái!"));
+                      }
+                      if (val && !val.mediaId && !val.file && !existingId) {
+                        return Promise.reject(new Error("Chọn hoặc tải tệp media cho vế trái!"));
+                      }
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
+                className="mb-0"
+              >
+                <MediaPickerInput
+                  acceptType="all"
+                  allMedia={allMedia}
+                  placeholder="Chọn ảnh hoặc audio từ thư viện / tải từ máy..."
+                />
+              </Form.Item>
+              <Form.Item {...restField} name={[name, "leftText"]} className="mb-0">
+                <Input placeholder="Chú thích chữ kèm theo (tùy chọn)" className="rounded-lg text-xs" />
+              </Form.Item>
+            </div>
+          )}
+        </div>
+
+        {/* Right Side (Vế phải) */}
+        <div className="bg-slate-50/80 p-2.5 rounded-lg border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-emerald-700">Vế phải (Cột B)</span>
+            <span className="text-[11px] text-slate-400">Đáp án ghép nối</span>
+          </div>
+
+          <Form.Item
+            {...restField}
+            name={[name, "rightText"]}
+            rules={[{ required: true, message: "Nhập nội dung vế phải!" }]}
+            className="mb-0"
+          >
+            <Input placeholder="Nhập văn bản vế phải (Ví dụ: Cat)" className="rounded-lg text-sm" />
+          </Form.Item>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchingFields({ allMedia = [], form }: { allMedia?: MediaItem[]; form: FormInstance }) {
   return (
     <div className="bg-slate-50 p-4 rounded-xl space-y-3">
       <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-        <Settings size={15} className="text-slate-500" /> Cấu hình ghép đôi
+        <Settings size={15} className="text-slate-500" /> Cấu hình ghép đôi (Matching)
       </span>
       <Row gutter={16}>
         <Col span={12}>
@@ -232,24 +486,28 @@ function MatchingFields() {
       </Row>
       <Form.List name="pairs">
         {(fields, { add, remove }) => (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-semibold text-slate-600">Các cặp ghép đôi</span>
-              <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => add({ leftText: "", rightText: "" })}>
-                Thêm cặp
+              <span className="text-xs font-semibold text-slate-600">Các cặp ghép đôi ({fields.length})</span>
+              <Button
+                type="dashed"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => add({ leftText: "", rightText: "", leftMediaId: undefined })}
+              >
+                Thêm cặp ghép đôi
               </Button>
             </div>
-            {fields.map(({ key, name, ...restField }) => (
-              <Space key={key} style={{ display: "flex" }} align="baseline">
-                <Form.Item {...restField} name={[name, "leftText"]} rules={[{ required: true, message: "Vui lòng nhập vế trái!" }]}>
-                  <Input placeholder="Cột trái" className="rounded-lg w-36" />
-                </Form.Item>
-                <ArrowLeftRight size={14} className="text-slate-400" />
-                <Form.Item {...restField} name={[name, "rightText"]} rules={[{ required: true, message: "Vui lòng nhập vế phải!" }]}>
-                  <Input placeholder="Cột phải" className="rounded-lg w-36" />
-                </Form.Item>
-                <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />
-              </Space>
+            {fields.map(({ key, name, ...restField }, index) => (
+              <MatchingPairRow
+                key={key}
+                name={name}
+                restField={restField}
+                remove={remove}
+                form={form}
+                allMedia={allMedia}
+                index={index}
+              />
             ))}
           </div>
         )}
@@ -259,13 +517,31 @@ function MatchingFields() {
 }
 
 /** Renders the type-specific detail section inside the form. */
-function QuestionDetailFields({ type, passages }: { type: string; passages: Passage[] }) {
-  if (CHOICE_TYPES.includes(type)) return <ChoiceFields type={type} passages={passages} />;
-  if (type === "word_ordering")   return <WordOrderingFields />;
+function QuestionDetailFields({
+  type,
+  passages,
+  allMedia,
+  form,
+}: {
+  type: string;
+  passages: Passage[];
+  allMedia?: MediaItem[];
+  form: FormInstance;
+}) {
+  if (CHOICE_TYPES.includes(type))
+    return (
+      <ChoiceFields
+        type={type}
+        passages={passages}
+        allMedia={allMedia}
+        form={form}
+      />
+    );
+  if (type === "word_ordering") return <WordOrderingFields />;
   if (type === "sentence_rewrite") return <SentenceRewriteFields />;
-  if (type === "hint_rewrite")    return <HintRewriteFields />;
+  if (type === "hint_rewrite") return <HintRewriteFields />;
   if (type === "error_correction") return <ErrorCorrectionFields />;
-  if (type === "matching")        return <MatchingFields />;
+  if (type === "matching") return <MatchingFields allMedia={allMedia} form={form} />;
   return null;
 }
 
@@ -281,15 +557,15 @@ function extractErrorMsg(error: any, fallback = "Thao tác thất bại"): strin
 // ── Media section & Item component ────────────────────────────
 
 interface MediaItemRowProps {
-  form:            FormInstance;
-  name:            number;
-  restField:       any;
-  index:           number;
-  remove:          (index: number) => void;
-  filteredMedia:   MediaItem[];
-  availableRoles:  MediaRole[];
-  onPreviewAsset:  (a: MediaItem) => void;
-  currentType:     string;
+  form: FormInstance;
+  name: number;
+  restField: any;
+  index: number;
+  remove: (index: number) => void;
+  filteredMedia: MediaItem[];
+  availableRoles: MediaRole[];
+  onPreviewAsset: (a: MediaItem) => void;
+  currentType: string;
   onRegisterObjectUrl: (url: string) => void;
 }
 
@@ -335,11 +611,11 @@ function MediaItemRow({
     });
   }, [name, form]);
 
-  const currentMediaId    = itemState.mediaId;
-  const currentFile       = itemState.file;
+  const currentMediaId = itemState.mediaId;
+  const currentFile = itemState.file;
   const currentPreviewUrl = itemState.previewUrl;
-  const currentFileName   = itemState.fileName;
-  const currentFileType   = itemState.fileType;
+  const currentFileName = itemState.fileName;
+  const currentFileType = itemState.fileType;
 
   const hasItem = Boolean(currentFile || currentMediaId);
 
@@ -367,7 +643,7 @@ function MediaItemRow({
 
   const handleClearItem = () => {
     if (currentPreviewUrl) {
-      try { URL.revokeObjectURL(currentPreviewUrl); } catch (_) {}
+      try { URL.revokeObjectURL(currentPreviewUrl); } catch (_) { }
     }
     form.setFieldValue(["mediaIds", name, "file"], undefined);
     form.setFieldValue(["mediaIds", name, "previewUrl"], undefined);
@@ -381,10 +657,10 @@ function MediaItemRow({
   return (
     <div className="relative bg-white border border-slate-200 rounded-2xl p-3.5 hover:border-indigo-200 transition-all duration-200 shadow-xs">
       {/* Header bar */}
-      <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="shrink-0 w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
-            {index + 1}
+      <div className="flex items-center justify-between gap-3 pb-2.5 mb-2.5 border-b border-slate-100">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="shrink-0 w-6 h-6 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+            #{index + 1}
           </div>
 
           {!hasItem ? (
@@ -392,7 +668,7 @@ function MediaItemRow({
               size="small"
               value={mode}
               onChange={(val) => setMode(val as "upload" | "library")}
-              className="bg-slate-100 p-0.5"
+              className="bg-slate-100 p-0.5 text-xs"
               options={[
                 {
                   label: (
@@ -415,31 +691,31 @@ function MediaItemRow({
               ]}
             />
           ) : (
-            <div className="flex items-center gap-1.5 truncate">
+            <div className="flex items-center gap-1.5 truncate flex-wrap">
               {currentFile ? (
-                <Tag color="cyan" className="text-[10px] px-2 py-0.5 rounded-full font-medium m-0">
-                  Tệp từ máy tính (Sẵn sàng lưu)
-                </Tag>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <UploadOutlined className="text-[11px]" /> Tệp tải lên
+                </span>
               ) : (
-                <Tag color="blue" className="text-[10px] px-2 py-0.5 rounded-full font-medium m-0">
-                  Từ thư viện Media
-                </Tag>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                  <FolderOpen size={11} /> Thư viện Media
+                </span>
               )}
 
               {isImg && (
-                <Tag color="geekblue" className="text-[10px] px-1.5 py-0 leading-normal m-0 inline-flex items-center gap-1">
-                  <LucideImage size={10} /> Hình ảnh
-                </Tag>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  <LucideImage size={11} /> Hình ảnh
+                </span>
               )}
               {isAud && (
-                <Tag color="purple" className="text-[10px] px-1.5 py-0 leading-normal m-0 inline-flex items-center gap-1">
-                  <Volume2 size={10} /> Âm thanh
-                </Tag>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                  <Volume2 size={11} /> Âm thanh
+                </span>
               )}
               {isVid && (
-                <Tag color="orange" className="text-[10px] px-1.5 py-0 leading-normal m-0 inline-flex items-center gap-1">
-                  <Video size={10} /> Video
-                </Tag>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                  <Video size={11} /> Video
+                </span>
               )}
             </div>
           )}
@@ -455,6 +731,7 @@ function MediaItemRow({
 
         {/* Role & Delete */}
         <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-slate-500 font-medium leading-none">Vai trò:</span>
           <Form.Item
             {...restField}
             name={[name, "role"]}
@@ -470,9 +747,9 @@ function MediaItemRow({
                 },
               },
             ]}
-            className="mb-0 w-44"
+            noStyle
           >
-            <Select placeholder="Vai trò" size="small" className="w-full">
+            <Select placeholder="Chọn vai trò" size="small" className="w-44 text-xs">
               {availableRoles.map((r) => (
                 <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
               ))}
@@ -484,13 +761,12 @@ function MediaItemRow({
               type="text"
               danger
               size="small"
-              shape="circle"
-              icon={<DeleteOutlined />}
+              icon={<DeleteOutlined className="text-sm" />}
               onClick={() => {
                 handleClearItem();
                 remove(name);
               }}
-              className="hover:bg-red-50 flex items-center justify-center"
+              className="w-6 h-6 rounded-md hover:bg-rose-50 flex items-center justify-center text-rose-500 hover:text-rose-600 transition-colors p-0"
             />
           </Tooltip>
         </div>
@@ -502,14 +778,17 @@ function MediaItemRow({
           <Upload.Dragger
             showUploadList={false}
             accept={
-              currentType === "audio_choice"
+              currentType === "audio_choice" || currentType === "audio_image_choice"
                 ? "audio/*,.mp3,.wav,.m4a,.ogg,.aac"
                 : currentType === "image_choice"
-                ? "image/*,.png,.jpg,.jpeg,.webp,.svg"
-                : "audio/*,image/*,video/*"
+                  ? "image/*,.png,.jpg,.jpeg,.webp,.svg"
+                  : "audio/*,image/*,video/*"
             }
             beforeUpload={(file) => {
-              if (currentType === "audio_choice" && !file.type.startsWith("audio/")) {
+              if (
+                (currentType === "audio_choice" || currentType === "audio_image_choice") &&
+                !file.type.startsWith("audio/")
+              ) {
                 message.error("Câu hỏi dạng âm thanh chỉ chấp nhận tệp âm thanh (audio/*)!");
                 return false;
               }
@@ -528,17 +807,17 @@ function MediaItemRow({
               const fileType = file.type.startsWith("image/")
                 ? "image"
                 : file.type.startsWith("audio/")
-                ? "audio"
-                : "video";
+                  ? "audio"
+                  : "video";
 
               const defaultRole =
                 availableRoles.length === 1
                   ? availableRoles[0].value
                   : currentType === "image_choice" || fileType === "image"
-                  ? "prompt_image"
-                  : currentType === "audio_choice" || fileType === "audio"
-                  ? "prompt_audio"
-                  : "prompt_image";
+                    ? "prompt_image"
+                    : currentType === "audio_choice" || currentType === "audio_image_choice" || fileType === "audio"
+                      ? "prompt_audio"
+                      : "prompt_image";
 
               form.setFieldValue(["mediaIds", name, "file"], file);
               form.setFieldValue(["mediaIds", name, "previewUrl"], previewUrl);
@@ -572,8 +851,8 @@ function MediaItemRow({
                 {currentType === "audio_choice"
                   ? "Hỗ trợ MP3, WAV, M4A, OGG (Tối đa 20MB) • Xem trước ngay"
                   : currentType === "image_choice"
-                  ? "Hỗ trợ PNG, JPG, JPEG, WEBP, SVG (Tối đa 20MB) • Xem trước ngay"
-                  : "Hỗ trợ Âm thanh, Hình ảnh hoặc Video (Tối đa 20MB) • Xem trước ngay"}
+                    ? "Hỗ trợ PNG, JPG, JPEG, WEBP, SVG (Tối đa 20MB) • Xem trước ngay"
+                    : "Hỗ trợ Âm thanh, Hình ảnh hoặc Video (Tối đa 20MB) • Xem trước ngay"}
               </p>
             </div>
           </Upload.Dragger>
@@ -602,10 +881,10 @@ function MediaItemRow({
                   availableRoles.length === 1
                     ? availableRoles[0].value
                     : currentType === "image_choice" || isImageFile
-                    ? "prompt_image"
-                    : currentType === "audio_choice" || chosen.type === "audio"
-                    ? "prompt_audio"
-                    : "prompt_image";
+                      ? "prompt_image"
+                      : currentType === "audio_choice" || currentType === "audio_image_choice" || chosen.type === "audio"
+                        ? "prompt_audio"
+                        : "prompt_image";
                 form.setFieldValue(["mediaIds", name, "role"], defaultRole);
               }
 
@@ -653,48 +932,75 @@ function MediaItemRow({
 
       {/* When Has Item: Rich Preview Card */}
       {hasItem && (
-        <div className="flex items-center gap-3 p-3 bg-slate-50/80 border border-slate-200 rounded-xl">
+        <div className="flex items-center gap-3.5 p-3 bg-slate-50/80 border border-slate-200 rounded-xl">
           {/* Thumbnail / Icon */}
           {isImg ? (
-            <div className="shrink-0 w-24 h-24 rounded-xl overflow-hidden border border-slate-200 bg-white flex items-center justify-center relative shadow-xs">
+            <div className="shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-slate-200 bg-white flex items-center justify-center relative shadow-xs">
               <AppImage
                 src={previewSrc}
                 autoResolve={!currentFile}
                 alt={displayName}
-                className="w-24 h-24 object-cover"
+                className="w-16 h-16 object-cover"
                 maskText="Xem ảnh"
               />
             </div>
           ) : isAud ? (
-            <div className="shrink-0 w-20 h-20 rounded-xl bg-violet-50 border border-violet-200 flex flex-col items-center justify-center text-violet-600 shadow-xs">
-              <Volume2 size={26} className="mb-0.5 text-violet-600" />
-              <span className="text-[10px] font-bold text-violet-700 uppercase tracking-wider">Audio</span>
+            <div className="shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 border border-violet-400/30 flex flex-col items-center justify-center text-white shadow-xs">
+              <Volume2 size={24} className="text-white" />
+              <span className="text-[9px] font-bold text-violet-100 uppercase tracking-wider mt-0.5">Audio</span>
             </div>
           ) : isVid ? (
-            <div className="shrink-0 w-20 h-20 rounded-xl bg-orange-50 border border-orange-200 flex flex-col items-center justify-center text-orange-600 shadow-xs">
-              <Video size={26} className="mb-0.5 text-orange-600" />
-              <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Video</span>
+            <div className="shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 border border-amber-400/30 flex flex-col items-center justify-center text-white shadow-xs">
+              <Video size={24} className="text-white" />
+              <span className="text-[9px] font-bold text-amber-100 uppercase tracking-wider mt-0.5">Video</span>
             </div>
           ) : (
-            <div className="shrink-0 w-20 h-20 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 text-xs">
+            <div className="shrink-0 w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 text-xs">
               Media
             </div>
           )}
 
           {/* Details & Controls */}
           <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <div
-              className="font-semibold text-sm text-slate-800 truncate"
-              title={displayName}
-            >
-              {displayName}
+            <div className="flex items-center justify-between gap-2">
+              <div
+                className="font-semibold text-sm text-slate-800 truncate"
+                title={displayName}
+              >
+                {displayName}
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<ArrowLeftRight size={12} />}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-medium px-2 py-0.5 h-auto rounded-md flex items-center gap-1"
+                  onClick={handleClearItem}
+                >
+                  Đổi tệp
+                </Button>
+
+                {selectedAsset && !isImg && (
+                  <Button
+                    type="text"
+                    size="small"
+                    className="text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 px-2 py-0.5 h-auto rounded-md"
+                    onClick={() => onPreviewAsset(selectedAsset)}
+                  >
+                    Chi tiết
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Note if local file */}
             {currentFile ? (
-              <div className="text-xs text-indigo-600 font-medium mt-0.5 flex items-center gap-1.5">
+              <div className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                {(currentFile.size / 1024 / 1024).toFixed(2)} MB • Sẵn sàng tải lên khi bạn nhấn &quot;Lưu lại&quot;
+                <span className="font-semibold text-slate-700">{(currentFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-indigo-600">Sẵn sàng tải lên khi bạn nhấn &quot;Lưu lại&quot;</span>
               </div>
             ) : (
               <div className="text-xs text-slate-400 mt-0.5">
@@ -704,38 +1010,15 @@ function MediaItemRow({
 
             {/* Inline Audio Player if audio */}
             {isAud && previewSrc && (
-              <div className="mt-2">
+              <div className="mt-2.5">
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <audio
                   src={currentFile ? previewSrc : resolveMediaUrl(previewSrc)}
                   controls
-                  className="h-8 w-full max-w-[340px]"
+                  className="h-8 w-full max-w-lg rounded-lg"
                 />
               </div>
             )}
-
-            <div className="flex items-center gap-3 mt-2">
-              <Button
-                type="link"
-                size="small"
-                icon={<ArrowLeftRight size={13} />}
-                className="p-0 h-auto text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                onClick={handleClearItem}
-              >
-                Đổi tệp khác
-              </Button>
-
-              {selectedAsset && !isImg && (
-                <Button
-                  type="link"
-                  size="small"
-                  className="p-0 h-auto text-xs text-slate-500 hover:text-slate-700"
-                  onClick={() => onPreviewAsset(selectedAsset)}
-                >
-                  Xem chi tiết
-                </Button>
-              )}
-            </div>
           </div>
         </div>
       )}
@@ -751,11 +1034,11 @@ function MediaSection({
   currentType,
   onRegisterObjectUrl,
 }: {
-  form:            FormInstance;
-  filteredMedia:   MediaItem[];
-  availableRoles:  MediaRole[];
-  onPreviewAsset:  (a: MediaItem) => void;
-  currentType:     string;
+  form: FormInstance;
+  filteredMedia: MediaItem[];
+  availableRoles: MediaRole[];
+  onPreviewAsset: (a: MediaItem) => void;
+  currentType: string;
   onRegisterObjectUrl: (url: string) => void;
 }) {
   return (
@@ -806,9 +1089,9 @@ function MediaSection({
                   const defaultRole = availableRoles.length === 1 ? availableRoles[0].value : "prompt_image";
                   add({ mediaId: undefined, role: defaultRole });
                 }}
-                className="w-full rounded-xl h-9 text-slate-500 hover:text-indigo-500 hover:border-indigo-300 transition-all duration-200"
+                className="w-full rounded-xl h-9 text-slate-600 hover:text-indigo-600 hover:border-indigo-400 transition-all duration-200 font-medium text-xs flex items-center justify-center gap-1.5 bg-slate-50/50 hover:bg-indigo-50/30"
               >
-                + Thêm liên kết Media
+                Thêm tệp đa phương tiện
               </Button>
             </div>
           )}
@@ -847,12 +1130,28 @@ export default function QuestionFormModal({
   tags,
   passages,
   filteredMedia,
+  allMedia,
   availableRoles,
   onPreviewAsset,
   onUploadMedia,
 }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const objectUrlsRef = useRef<string[]>([]);
+  const formTopRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      const resetScroll = () => {
+        const modalBody = formTopRef.current?.closest(".ant-modal-body") as HTMLElement | null;
+        if (modalBody) {
+          modalBody.scrollTop = 0;
+        }
+      };
+      resetScroll();
+      const frame = requestAnimationFrame(resetScroll);
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [open]);
 
   const handleRegisterObjectUrl = (url: string) => {
     objectUrlsRef.current.push(url);
@@ -860,7 +1159,7 @@ export default function QuestionFormModal({
 
   const cleanupObjectUrls = () => {
     objectUrlsRef.current.forEach((url) => {
-      try { URL.revokeObjectURL(url); } catch (_) {}
+      try { URL.revokeObjectURL(url); } catch (_) { }
     });
     objectUrlsRef.current = [];
   };
@@ -908,9 +1207,9 @@ export default function QuestionFormModal({
           rowStore.role ||
           (currentType === "image_choice"
             ? "prompt_image"
-            : currentType === "audio_choice"
-            ? "prompt_audio"
-            : "prompt_image");
+            : currentType === "audio_choice" || currentType === "audio_image_choice"
+              ? "prompt_audio"
+              : "prompt_image");
 
         if (file) {
           // Chỉ khi người dùng nhấn "Lưu lại" (submit) mới tiến hành tải tệp lên server
@@ -950,19 +1249,66 @@ export default function QuestionFormModal({
             throw new Error("Câu hỏi lựa chọn hình ảnh cần ít nhất một hình ảnh đề bài!");
           }
         }
-      } else if (currentType === "audio_choice") {
+      } else if (currentType === "audio_choice" || currentType === "audio_image_choice") {
         const hasPromptAud = processedMediaIds.some((m) => m.role === "prompt_audio");
         if (!hasPromptAud) {
           if (processedMediaIds.length > 0) {
             processedMediaIds[0].role = "prompt_audio";
           } else {
-            throw new Error("Câu hỏi lựa chọn âm thanh cần ít nhất một tệp âm thanh đề bài!");
+            throw new Error("Câu hỏi cần ít nhất một tệp âm thanh đề bài!");
           }
         }
       }
 
+      // 1. Process options (audio_image_choice) mediaVal
+      const rawOptions = values.options ?? [];
+      const processedOptions = [];
+      for (let i = 0; i < rawOptions.length; i++) {
+        const opt = rawOptions[i];
+        if (!opt) continue;
+        let optMediaId = opt.mediaId;
+        const mediaVal = opt.mediaVal || form.getFieldValue(["options", i, "mediaVal"]);
+        if (mediaVal?.file) {
+          const uploaded = onUploadMedia
+            ? await onUploadMedia(mediaVal.file, mediaVal.fileName)
+            : await learningCmsService.mediaAssets.upload(mediaVal.file, mediaVal.fileName);
+          optMediaId = uploaded?.id || (uploaded as any)?.data?.id;
+        } else if (mediaVal?.mediaId) {
+          optMediaId = mediaVal.mediaId;
+        }
+        processedOptions.push({
+          ...opt,
+          mediaId: optMediaId,
+        });
+      }
+
+      // 2. Process matching pairs mediaVal
+      const rawPairs = values.pairs ?? [];
+      const processedPairs = [];
+      for (let i = 0; i < rawPairs.length; i++) {
+        const pair = rawPairs[i];
+        if (!pair) continue;
+        let leftMediaId = pair.leftMediaId;
+        const leftMediaVal = pair.leftMediaVal || form.getFieldValue(["pairs", i, "leftMediaVal"]);
+        if (leftMediaVal?.file) {
+          const uploaded = onUploadMedia
+            ? await onUploadMedia(leftMediaVal.file, leftMediaVal.fileName)
+            : await learningCmsService.mediaAssets.upload(leftMediaVal.file, leftMediaVal.fileName);
+          leftMediaId = uploaded?.id || (uploaded as any)?.data?.id;
+        } else if (leftMediaVal?.mediaId) {
+          leftMediaId = leftMediaVal.mediaId;
+        }
+
+        processedPairs.push({
+          ...pair,
+          leftMediaId,
+        });
+      }
+
       await onFinish({
         ...values,
+        options: processedOptions,
+        pairs: processedPairs,
         mediaIds: processedMediaIds,
       });
 
@@ -987,8 +1333,8 @@ export default function QuestionFormModal({
             {isDuplicating
               ? "Nhân bản câu hỏi"
               : isEditing
-              ? "Cập nhật câu hỏi"
-              : "Tạo câu hỏi mới"}
+                ? "Cập nhật câu hỏi"
+                : "Tạo câu hỏi mới"}
           </span>
           {isDuplicating && (
             <Tag color="purple" className="rounded-full text-[11px] font-medium border-0">
@@ -1007,10 +1353,10 @@ export default function QuestionFormModal({
         submitting
           ? "Đang lưu..."
           : isDuplicating
-          ? "Tạo câu hỏi mới"
-          : isEditing
-          ? "Lưu lại"
-          : "Tạo câu hỏi"
+            ? "Tạo câu hỏi mới"
+            : isEditing
+              ? "Lưu lại"
+              : "Tạo câu hỏi"
       }
       cancelButtonProps={{ disabled: submitting }}
       width={800}
@@ -1021,6 +1367,7 @@ export default function QuestionFormModal({
       className="rounded-2xl"
       cancelText="Hủy"
     >
+      <div ref={formTopRef} />
       <Form
         form={form}
         layout="vertical"
@@ -1046,10 +1393,32 @@ export default function QuestionFormModal({
                   onTypeChange(val);
                   form.setFieldsValue({ options: [], pairs: [], correctTokens: "", acceptedAnswers: "", passageId: undefined });
                   if (CHOICE_TYPES.includes(val)) {
-                    form.setFieldsValue({ options: [
-                      { label: "A", content: "", isCorrect: false },
-                      { label: "B", content: "", isCorrect: false },
-                    ]});
+                    if (val === "true_false") {
+                      form.setFieldsValue({
+                        options: [
+                          { label: "A", content: "Đúng", isCorrect: true },
+                          { label: "B", content: "Sai", isCorrect: false },
+                        ]
+                      });
+                    } else if (val === "audio_image_choice") {
+                      form.setFieldsValue({
+                        options: [
+                          { label: "A", content: "", mediaId: undefined, isCorrect: true },
+                          { label: "B", content: "", mediaId: undefined, isCorrect: false },
+                          { label: "C", content: "", mediaId: undefined, isCorrect: false },
+                          { label: "D", content: "", mediaId: undefined, isCorrect: false },
+                        ]
+                      });
+                    } else {
+                      form.setFieldsValue({
+                        options: [
+                          { label: "A", content: "", isCorrect: false },
+                          { label: "B", content: "", isCorrect: false },
+                          { label: "C", content: "", isCorrect: false },
+                          { label: "D", content: "", isCorrect: false },
+                        ]
+                      });
+                    }
                   }
                 }}
               >
@@ -1086,9 +1455,15 @@ export default function QuestionFormModal({
         </Row>
 
         <Form.Item name="tagIds" label="Thẻ gắn">
-          <Select mode="multiple" className="rounded-xl" placeholder="Chọn các thẻ..." allowClear>
-            {tags.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-          </Select>
+          <SafeSelect
+            mode="multiple"
+            showSearch
+            optionFilterProp="label"
+            className="rounded-xl"
+            placeholder="Chọn các thẻ..."
+            allowClear
+            options={tags.map((t) => ({ label: t.name, value: t.id }))}
+          />
         </Form.Item>
 
         <Divider className="my-3" />
@@ -1125,7 +1500,12 @@ export default function QuestionFormModal({
         <Divider className="my-3" />
 
         {/* Type-specific fields */}
-        <QuestionDetailFields type={currentType} passages={passages} />
+        <QuestionDetailFields
+          type={currentType}
+          passages={passages}
+          allMedia={allMedia || filteredMedia}
+          form={form}
+        />
 
         <Divider className="my-3" />
 

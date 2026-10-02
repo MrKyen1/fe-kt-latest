@@ -306,16 +306,20 @@ export default function ManageQuestionsModal({
   const getQuestionObj = (questionId: string) => {
     const q = allQuestions.find((allQ) => allQ.id === questionId);
     let groupQ: any = null;
-    if (!q) {
-      for (const grp of randomResult?.groups || []) {
-        const matched = grp.questions?.find((gq: any) => gq.id === questionId);
-        if (matched) {
-          groupQ = matched;
-          break;
-        }
+    for (const grp of randomResult?.groups || []) {
+      const matched = grp.questions?.find((gq: any) => gq.id === questionId);
+      if (matched) {
+        groupQ = matched;
+        break;
       }
     }
-    return questionDetails[questionId] ?? q ?? groupQ;
+    const cached = questionDetails[questionId];
+    if (!q && !groupQ && !cached) return undefined;
+    return {
+      ...(groupQ ?? {}),
+      ...(q ?? {}),
+      ...(cached ?? {}),
+    };
   };
 
   const mismatchedQuestions = useMemo(() => {
@@ -457,7 +461,9 @@ export default function ManageQuestionsModal({
               dataSource={examQuestions}
               renderItem={(eq: ExamQuestion, index) => {
                 const q = allQuestions.find((q) => q.id === eq.questionId);
-                const detail = questionDetails[q?.id ?? ""] ?? q;
+                const detail = q
+                  ? { ...q, ...(questionDetails[q.id] ?? {}) }
+                  : questionDetails[eq.questionId] ?? { id: eq.questionId };
                 return (
                   <List.Item
                     actions={[
@@ -586,7 +592,7 @@ export default function ManageQuestionsModal({
                     <QuestionRowItem
                       key={q.id}
                       index={index + 1}
-                      question={questionDetails[q.id] ?? q}
+                      question={questionDetails[q.id] ? { ...q, ...questionDetails[q.id] } : q}
                       skills={skills}
                       levels={levels}
                       topics={topics}

@@ -20,8 +20,9 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
     },
 
     async list(params?: Record<string, unknown>): Promise<TItem[]> {
-      // Thử unwrapData trước (nếu BE trả thẳng array), nếu không thì unwrap từ paginated
-      const response = await apiClient.get<ApiEnvelope<TItem[]>>(path, { params });
+      // Backend mới bổ sung pagination mặc định limit=20; gửi limit: 100 nếu chưa chỉ định để không thiếu dữ liệu dropdown/danh sách
+      const queryParams = { limit: 100, ...params };
+      const response = await apiClient.get<ApiEnvelope<TItem[]>>(path, { params: queryParams });
       // BE có thể trả { data: [...] } (array) hoặc { data: [...], meta: {...} } (paginated)
       const payload = response.data?.data;
       if (Array.isArray(payload)) return payload;

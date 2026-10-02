@@ -7,8 +7,21 @@ import { tokenStorage } from "../../services/tokenStorage";
 import { learningCmsService } from "../../services/learningCmsService";
 import { AppImage } from "../../components/AppImagePreview";
 import { useAuth } from "../../contexts/AuthContext";
+import { resolveMediaUrl } from "../../services/apiClient";
+import { normalizeLineBreaks } from "../../utils/textFormatters";
+import { shuffleTokensWithSeed } from "../../utils/shuffleTokens";
 
-const CHOICE_TYPES = ["multiple_choice", "audio_choice", "image_choice", "reading_comprehension", "multiple-choice", "listening"];
+const CHOICE_TYPES = [
+  "multiple_choice",
+  "audio_choice",
+  "image_choice",
+  "audio_image_choice",
+  "true_false",
+  "reading_comprehension",
+  "multiple-choice",
+  "listening",
+  "true-false",
+];
 
 interface QuestionCardProps {
   question: ExamQuestion;
@@ -21,6 +34,7 @@ interface QuestionCardProps {
   isLastQuestion?: boolean;
   isReviewMode?: boolean;
   isPracticeMode?: boolean;
+  isMastered?: boolean;
 }
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
@@ -34,6 +48,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   isLastQuestion,
   isReviewMode,
   isPracticeMode = true,
+  isMastered = false,
 }) => {
   const [regradeModalOpen, setRegradeModalOpen] = React.useState(false);
   const [regradeLoading, setRegradeLoading] = React.useState(false);
@@ -116,6 +131,68 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     return Array.isArray(currentAnswer) ? currentAnswer : [];
   }, [currentAnswer]);
 
+  const isWordOrdering = question.type === "word_ordering" || question.type === "word-ordering";
+
+  // Đảm bảo các từ/token trong câu hỏi sắp xếp từ luôn được xáo trộn, không trùng thứ tự với đáp án
+  const displayWordOptions = useMemo(() => {
+    const rawOpts = question.options || [];
+    if (!isWordOrdering || rawOpts.length <= 1) return rawOpts;
+
+    const corrTokens: string[] = Array.isArray(question.correctAnswer)
+      ? question.correctAnswer.map(String)
+      : typeof question.correctAnswer === "string"
+      ? question.correctAnswer.split(" ").filter(Boolean)
+      : [];
+
+    const isIdentical =
+      corrTokens.length === rawOpts.length &&
+      rawOpts.every((opt: any, idx: number) => {
+        const w = typeof opt === "string" ? opt : opt?.id || opt?.content;
+        return w === corrTokens[idx];
+      });
+
+    if (isIdentical) {
+      return shuffleTokensWithSeed(rawOpts as string[], question.id || "word_ord");
+    }
+    return rawOpts;
+  }, [isWordOrdering, question.id, question.options, question.correctAnswer]);
+
+  // Lưu vết index của từng thẻ từ đã chọn để hỗ trợ câu có nhiều từ trùng nhau (VD: "an", "an")
+  const [selectedWordIndices, setSelectedWordIndices] = React.useState<number[]>([]);
+
+  React.useEffect(() => {
+    setSelectedWordIndices((prev) => {
+      const opts = displayWordOptions;
+      if (orderedWords.length === 0) return [];
+      // Kiểm tra xem mảng index hiện tại có còn khớp với orderedWords không
+      if (
+        prev.length === orderedWords.length &&
+        prev.every((optIdx, i) => {
+          const opt = opts[optIdx];
+          const w = typeof opt === "string" ? opt : opt?.id || opt?.content;
+          return w === orderedWords[i];
+        })
+      ) {
+        return prev;
+      }
+      // Khôi phục danh sách index tương ứng theo thứ tự từng từ (dùng khi load lại câu đã trả lời)
+      const used = new Set<number>();
+      const reconstructed: number[] = [];
+      for (const word of orderedWords) {
+        const foundIdx = opts.findIndex((opt, idx) => {
+          if (used.has(idx)) return false;
+          const w = typeof opt === "string" ? opt : opt?.id || opt?.content;
+          return w === word;
+        });
+        if (foundIdx !== -1) {
+          used.add(foundIdx);
+          reconstructed.push(foundIdx);
+        }
+      }
+      return reconstructed;
+    });
+  }, [question.id, displayWordOptions, orderedWords]);
+
   const mediaItems = useMemo(() => {
     if (!question.media) return [];
 
@@ -182,15 +259,25 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const getOptionValue = (option: string | ExamOption) =>
     typeof option === "string" ? option : option.id || option.content;
 
-  const getOptionLabel = (option: string | ExamOption) =>
-    typeof option === "string"
+  const getOptionLabel = (option: string | ExamOption) => {
+    const raw = typeof option === "string"
       ? option
       : [option.label, option.content].filter(Boolean).join(". ");
+    return normalizeLineBreaks(raw);
+  };
 
   const resolveItemText = (itemId: any): string => {
     if (itemId === undefined || itemId === null || itemId === "") return "";
+    const isUuid = (val: any) =>
+      !val ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val).trim()) ||
+      /^[0-9a-f]{24}$/i.test(String(val).trim());
+
     if (typeof itemId !== "string") {
-      return itemId.text || itemId.content || itemId.label || itemId.prompt || itemId.title || String(itemId);
+      const raw = itemId.text || itemId.content || itemId.label || itemId.prompt || itemId.title;
+      if (raw && !isUuid(raw)) return raw;
+      if (itemId.media) return "[Hình ảnh/Âm thanh]";
+      return isUuid(itemId.id) ? "" : String(itemId.id || "");
     }
 
     const norm = (s: any) => String(s ?? "").trim();
@@ -200,7 +287,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     const fLeft = leftItems.find((l: any) => norm(l?.id || l) === norm(itemId));
     if (fLeft) {
       const txt = fLeft.text || fLeft.content || fLeft.label || fLeft.prompt || (typeof fLeft === "string" ? fLeft : "");
-      if (txt) return txt;
+      if (txt && !isUuid(txt)) return txt;
+      if (fLeft.media) return "[Hình ảnh/Âm thanh]";
     }
 
     // 2. Search in rightItems
@@ -208,7 +296,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     const fRight = rightItems.find((r: any) => norm(r?.id || r) === norm(itemId));
     if (fRight) {
       const txt = fRight.text || fRight.content || fRight.label || fRight.prompt || (typeof fRight === "string" ? fRight : "");
-      if (txt) return txt;
+      if (txt && !isUuid(txt)) return txt;
+      if (fRight.media) return "[Hình ảnh/Âm thanh]";
     }
 
     // 3. Search in options
@@ -216,7 +305,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     const fOpt = options.find((o: any) => norm(o?.id || o?.key || o) === norm(itemId));
     if (fOpt) {
       const txt = fOpt.content || fOpt.text || fOpt.label || fOpt.title || (typeof fOpt === "string" ? fOpt : "");
-      if (txt) return txt;
+      if (txt && !isUuid(txt)) return txt;
+      if (fOpt.media || fOpt.imageUrl || fOpt.image) return "[Hình ảnh/Âm thanh]";
     }
 
     // 4. Search in pairs
@@ -227,14 +317,17 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     if (fPair) {
       if (norm(fPair.leftItemId || fPair.leftId || fPair.id) === norm(itemId)) {
         const txt = fPair.leftText || fPair.leftContent || fPair.text || "";
-        if (txt) return txt;
+        if (txt && !isUuid(txt)) return txt;
+        if (fPair.leftMedia) return "[Hình ảnh/Âm thanh]";
       }
       if (norm(fPair.rightItemId || fPair.rightId) === norm(itemId)) {
         const txt = fPair.rightText || fPair.rightContent || fPair.text || "";
-        if (txt) return txt;
+        if (txt && !isUuid(txt)) return txt;
+        if (fPair.rightMedia) return "[Hình ảnh/Âm thanh]";
       }
     }
 
+    if (isUuid(itemId)) return "";
     return itemId;
   };
 
@@ -242,19 +335,78 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     answer?: string | string[] | Record<string, string>,
   ) => {
     let targetAnswer = answer;
+    const isUuid = (val: any) =>
+      !val ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val).trim()) ||
+      /^[0-9a-f]{24}$/i.test(String(val).trim());
+
+    // Helper format 1 option
+    const formatOption = (opt: any) => {
+      if (typeof opt === "string") return opt;
+      const content = opt.content && !isUuid(opt.content) ? opt.content : (opt.media ? "[Hình ảnh/Âm thanh]" : "");
+      return [opt.label, content].filter(Boolean).join(". ") || opt.label || "";
+    };
+
+    // 1. If question has options and targetAnswer is empty/undefined, find all correct options
     if (targetAnswer === undefined || targetAnswer === null || targetAnswer === "") {
-      const correctOpt = question.options?.find((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"));
-      if (correctOpt) {
-        if (typeof correctOpt === "string") return correctOpt;
-        return [correctOpt.label, correctOpt.content].filter(Boolean).join(". ");
+      const correctOpts = question.options?.filter((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true")) || [];
+      if (correctOpts.length > 0) {
+        return correctOpts.map(formatOption).join(", ");
       }
       return "";
     }
 
-    // 1. Multiple choice types where options exist
+    // 2. Array of answers (e.g. string[] of option IDs or multiple correct answers)
+    if (Array.isArray(targetAnswer)) {
+      if (question.options && question.options.length > 0 && targetAnswer.length > 0 && typeof targetAnswer[0] === "string") {
+        const norm = (s: any) => String(s ?? "").toLowerCase().trim();
+        const labels = targetAnswer.map((ans) => {
+          const ansStr = norm(ans);
+          const matchedOpt = question.options?.find((o: any) => {
+            const val = typeof o === "string" ? { content: o } : o;
+            return norm(val.id) === ansStr || norm(val.label) === ansStr || norm(val.content) === ansStr;
+          });
+          return matchedOpt ? formatOption(matchedOpt) : ans;
+        });
+        return labels.join(", ");
+      }
+      return targetAnswer.join(" ");
+    }
+
+    // 3. Object with selectedOptionIds (multiple choice payload)
+    if (typeof targetAnswer === "object" && targetAnswer !== null && Array.isArray((targetAnswer as any).selectedOptionIds)) {
+      const ids: string[] = (targetAnswer as any).selectedOptionIds;
+      const labels = ids.map((id) => {
+        const opt = question.options?.find((o: any) => o?.id === id || o?.key === id);
+        return opt ? formatOption(opt) : id;
+      });
+      return labels.join(", ");
+    }
+
+    // 4. Object with correctOptionIds
+    if (typeof targetAnswer === "object" && targetAnswer !== null && Array.isArray((targetAnswer as any).correctOptionIds)) {
+      const ids: string[] = (targetAnswer as any).correctOptionIds;
+      const labels = ids.map((id) => {
+        const opt = question.options?.find((o: any) => o?.id === id || o?.key === id);
+        return opt ? formatOption(opt) : id;
+      });
+      return labels.join(", ");
+    }
+
+    // 5. Choice types where options exist and targetAnswer is a single string
     if (question.options && question.options.length > 0 && typeof targetAnswer !== "object") {
       const norm = (s: any) => String(s ?? "").toLowerCase().trim();
       const ansStr = norm(targetAnswer);
+
+      // Check if all correct options should be shown if targetAnswer matches only one but options has multiple
+      const allCorrectOpts = question.options.filter((o: any) => {
+        const val = typeof o === "string" ? { content: o } : o;
+        return val.isCorrect === true || String(val.isCorrect) === "true";
+      });
+
+      if (allCorrectOpts.length > 1) {
+        return allCorrectOpts.map(formatOption).join(", ");
+      }
 
       // Match by option ID, label, or content
       let matchedOpt = question.options.find((o: any) => {
@@ -266,30 +418,13 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         );
       });
 
-      if (!matchedOpt) {
-        matchedOpt = question.options.find((o: any) => {
-          const val = typeof o === "string" ? { content: o } : o;
-          return val.isCorrect === true || String(val.isCorrect) === "true";
-        });
+      if (!matchedOpt && allCorrectOpts.length > 0) {
+        matchedOpt = allCorrectOpts[0];
       }
 
       if (matchedOpt) {
-        if (typeof matchedOpt === "string") return matchedOpt;
-        return [matchedOpt.label, matchedOpt.content].filter(Boolean).join(". ");
+        return formatOption(matchedOpt);
       }
-    }
-
-    // 2. Object with selectedOptionIds (e.g. multiple_choice payload)
-    if (typeof targetAnswer === "object" && targetAnswer !== null && Array.isArray((targetAnswer as any).selectedOptionIds)) {
-      const ids: string[] = (targetAnswer as any).selectedOptionIds;
-      const labels = ids.map((id) => {
-        const opt = question.options?.find((o: any) => o?.id === id || o?.key === id);
-        if (opt) {
-          return typeof opt === "string" ? opt : [opt.label, opt.content].filter(Boolean).join(". ");
-        }
-        return id;
-      });
-      return labels.join(", ");
     }
 
     // 3. Matching questions (or object with pairs / matches)
@@ -356,9 +491,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   // Word Ordering
   // =========================
 
-  const addWord = (word: string) => {
+  const addWord = (word: string, optionIndex: number) => {
     if (showFeedback) return;
 
+    setSelectedWordIndices((prev) => [...prev, optionIndex]);
     const newWords = [...orderedWords, word];
     onAnswerChange(newWords);
   };
@@ -366,6 +502,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const removeWord = (indexToRemove: number) => {
     if (showFeedback) return;
 
+    setSelectedWordIndices((prev) => prev.filter((_, index) => index !== indexToRemove));
     const newWords = orderedWords.filter((_, index) => index !== indexToRemove);
 
     onAnswerChange(newWords);
@@ -414,22 +551,60 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       case "multiple_choice":
       case "audio_choice":
       case "image_choice":
+      case "audio_image_choice":
+      case "true_false":
       case "reading_comprehension":
       case "multiple-choice":
       case "listening":
-      case "true-false":
+      case "true-false": {
+        // Tự động nhận diện động dựa trên kết quả trả về từ backend:
+        // Nếu có nhiều hơn 1 đáp án đúng (từ question.options có isCorrect, hoặc question.correctAnswer là mảng/chứa nhiều ID)
+        const correctCount = (question.options || []).filter((opt: any) =>
+          checkOptionIsCorrect(opt, question.correctAnswer)
+        ).length;
+
+        const isMulti =
+          correctCount > 1 ||
+          (Array.isArray(question.correctAnswer) && question.correctAnswer.length > 1) ||
+          (typeof question.correctAnswer === "object" && question.correctAnswer !== null && (
+            (Array.isArray((question.correctAnswer as any).selectedOptionIds) && (question.correctAnswer as any).selectedOptionIds.length > 1) ||
+            (Array.isArray((question.correctAnswer as any).correctOptionIds) && (question.correctAnswer as any).correctOptionIds.length > 1)
+          ));
+
+        const selectedAnswers: string[] = Array.isArray(currentAnswer)
+          ? currentAnswer.map(String)
+          : currentAnswer !== undefined && currentAnswer !== null && currentAnswer !== ""
+          ? [String(currentAnswer)]
+          : [];
+
+        const handleOptionToggle = (optVal: string) => {
+          if (isMulti) {
+            const exists = selectedAnswers.includes(optVal);
+            const nextAnswers = exists
+              ? selectedAnswers.filter((id) => id !== optVal)
+              : [...selectedAnswers, optVal];
+            onAnswerChange(nextAnswers);
+          } else {
+            onAnswerChange(optVal);
+          }
+        };
+
         return (
           <div className="grid grid-cols-1 gap-3 mb-6">
             {question.options?.map((option, index) => {
-              const optionValue = getOptionValue(option);
+              const optionValue = String(getOptionValue(option));
               const optionLabel = getOptionLabel(option);
-              const isSelected = currentAnswer === optionValue;
+              const isSelected = isMulti
+                ? selectedAnswers.includes(optionValue)
+                : (currentAnswer !== undefined && String(currentAnswer) === optionValue);
               const isThisOptionCorrect = checkOptionIsCorrect(option, question.correctAnswer) || (showFeedback && isSelected && isCorrect === true);
 
               let containerClass =
                 "flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-colors ";
 
-              let inputClass = "w-4 h-4 focus:ring-2 ";
+              let inputClass = isMulti
+                ? "w-4 h-4 rounded-full text-emerald-600 focus:ring-emerald-500 cursor-pointer appearance-none border border-slate-300 checked:bg-emerald-500 checked:border-emerald-500 relative flex items-center justify-center "
+                : "w-4 h-4 rounded-full text-emerald-600 focus:ring-emerald-500 cursor-pointer ";
 
               let textClass = "ml-4 text-sm ";
 
@@ -450,17 +625,38 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               return (
                 <label key={`${optionValue}-${index}`} className={containerClass}>
                   <div className="flex items-center">
-                    <input
-                      type="radio"
-                      name={`q-${question.id}`}
-                      value={optionValue}
-                      checked={isSelected}
-                      disabled={showFeedback}
-                      onChange={(e) => onAnswerChange(e.target.value)}
-                      className={inputClass}
-                    />
+                    <div className="relative flex items-center justify-center">
+                      <input
+                        type={isMulti ? "checkbox" : "radio"}
+                        name={`q-${question.id}`}
+                        value={optionValue}
+                        checked={isSelected}
+                        disabled={showFeedback}
+                        onChange={() => handleOptionToggle(optionValue)}
+                        className={`w-4 h-4 rounded-full cursor-pointer transition-all ${
+                          isSelected
+                            ? "border-emerald-500 bg-emerald-500 ring-2 ring-emerald-200"
+                            : "border border-slate-300 bg-white hover:border-emerald-400"
+                        }`}
+                        style={{ appearance: "none", WebkitAppearance: "none" }}
+                      />
+                      {isSelected && (
+                        <div className="absolute w-1.5 h-1.5 bg-white rounded-full pointer-events-none" />
+                      )}
+                    </div>
 
-                    <span className={textClass}>{optionLabel}</span>
+                    <div className="flex-1 ml-4">
+                      {optionLabel && <span className={`${textClass.trim()} whitespace-pre-line`}>{optionLabel}</span>}
+                      {typeof option !== "string" && (option.media?.url || (option as any).imageUrl) && (
+                        <div className="mt-2 max-w-[220px] max-h-[150px] rounded-lg overflow-hidden border border-slate-200 bg-white">
+                          <AppImage
+                            src={resolveMediaUrl(option.media?.url || (option as any).imageUrl)}
+                            alt={optionLabel || "Option"}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {showFeedback && isThisOptionCorrect && (
                     <Check size={18} className="text-emerald-600 font-bold ml-2 shrink-0" />
@@ -470,6 +666,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             })}
           </div>
         );
+      }
 
       case "sentence_rewrite":
       case "hint_rewrite":
@@ -532,16 +729,16 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
             {/* Options */}
             <div className="flex flex-wrap gap-2">
-              {question.options?.map((option, index) => {
+              {displayWordOptions?.map((option, index) => {
                 const word = getOptionValue(option);
-                const isSelected = orderedWords.includes(word);
+                const isSelected = selectedWordIndices.includes(index);
 
                 return (
                   <button
                     type="button"
                     key={`${word}-${index}`}
                     disabled={isSelected || showFeedback}
-                    onClick={() => addWord(word)}
+                    onClick={() => addWord(word, index)}
                     className={`
                       px-3 py-1.5 text-sm font-medium rounded-md transition-all
                       ${
@@ -586,38 +783,51 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   // Header
   // =========================
 
-  const renderQuestionHeader = () => (
-    <div className="mb-6 shrink-0">
-      <div className="text-[11px] text-emerald-700 font-bold mb-3 uppercase tracking-widest bg-emerald-50 inline-block px-3 py-1 rounded-full border border-emerald-100">
-        {question.type.replace(/-/g, " ").replace(/_/g, " ")}
+  const renderQuestionHeader = () => {
+    const promptText = normalizeLineBreaks(question.questionContent ?? "").trim();
+    const extraIncorrect =
+      question.incorrectSentence &&
+      question.incorrectSentence.trim() !== promptText &&
+      !promptText.includes(question.incorrectSentence.trim())
+        ? normalizeLineBreaks(question.incorrectSentence.trim())
+        : "";
+    const extraSource =
+      question.sourceSentence &&
+      question.sourceSentence.trim() !== promptText &&
+      !promptText.includes(question.sourceSentence.trim())
+        ? normalizeLineBreaks(question.sourceSentence.trim())
+        : "";
+
+    return (
+      <div className="mb-6 shrink-0">
+        <h2 className="text-[16px] md:text-[17px] font-bold leading-relaxed text-slate-800 whitespace-pre-line">
+          {normalizeLineBreaks(question.questionContent)}
+        </h2>
+
+        {extraIncorrect && (
+          <div className="mt-2.5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-[15px] text-slate-800 font-medium whitespace-pre-line">
+            {extraIncorrect}
+          </div>
+        )}
+
+        {(extraSource || question.hintWord) && (
+          <div className="mt-2.5 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl text-[15px] text-slate-800 font-medium space-y-2">
+            {extraSource && <div className="whitespace-pre-line">{extraSource}</div>}
+            {question.hintWord && (
+              <div className="text-xs text-slate-600">
+                Gợi ý sử dụng từ:{" "}
+                <strong className="text-indigo-600 bg-indigo-100/70 px-2 py-0.5 rounded font-mono">
+                  {question.hintWord}
+                </strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        {renderInlineMedia()}
       </div>
-
-      <h2 className="text-[16px] md:text-[17px] font-bold leading-relaxed text-slate-800">
-        {question.questionContent}
-      </h2>
-
-      {question.incorrectSentence && (
-        <div className="mt-3 p-4 bg-rose-50/60 border border-rose-100 rounded-xl text-[15px] text-slate-700 font-medium">
-          <span className="text-rose-600 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần sửa lỗi:</span>
-          {question.incorrectSentence}
-        </div>
-      )}
-
-      {question.sourceSentence && (
-        <div className="mt-3 p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl text-[15px] text-slate-700 font-medium">
-          <span className="text-indigo-600 font-bold block text-xs uppercase tracking-wider mb-1">Câu gốc cần viết lại:</span>
-          {question.sourceSentence}
-          {question.hintWord && (
-            <span className="block mt-2 pt-2 border-t border-indigo-100/50 text-xs text-slate-500">
-              Gợi ý sử dụng từ: <strong className="text-indigo-600 bg-indigo-100/50 px-1.5 py-0.5 rounded font-mono">{question.hintWord}</strong>
-            </span>
-          )}
-        </div>
-      )}
-
-      {renderInlineMedia()}
-    </div>
-  );
+    );
+  };
 
   // =========================
   // Feedback
@@ -627,39 +837,43 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     if (!showFeedback) return null;
     const hasManagePerm = hasPermission(["learning.manage", "learning.write"], { mode: "any" });
     const correctAnsText = formatCorrectAnswer(question.correctAnswer);
+    const normalizedExplanation = normalizeLineBreaks(question.explanation || "");
+    const hasExplanation = Boolean(normalizedExplanation && normalizedExplanation.trim());
 
     return (
       <div
-        className={`mt-2 mb-6 p-5 rounded-2xl border-l-4 shadow-sm flex justify-between items-start gap-4 ${
+        className={`mt-2 mb-[5px] p-4 rounded-2xl border-l-4 shadow-sm flex justify-between items-start gap-4 ${
           isCorrect
             ? "bg-emerald-50 border-emerald-400"
             : "bg-rose-50 border-rose-400"
         }`}
       >
         <div className="flex-1">
-          <p
-            className={`text-sm font-bold ${
-              isCorrect ? "text-emerald-800" : "text-rose-800"
-            }`}
-          >
-            {isCorrect ? "Tuyệt vời! Chính xác!" : "Giải thích chi tiết:"}
-          </p>
+          {(isCorrect || hasExplanation) && (
+            <p
+              className={`text-sm font-bold ${
+                isCorrect ? "text-emerald-800" : "text-rose-800"
+              }`}
+            >
+              {isCorrect ? "Tuyệt vời! Chính xác!" : "Giải thích chi tiết:"}
+            </p>
+          )}
 
           <div
-            className={`text-[13px] mt-1.5 leading-relaxed ${
+            className={`text-[13px] ${isCorrect || hasExplanation ? "mt-1.5" : ""} leading-relaxed ${
               isCorrect ? "text-emerald-700" : "text-rose-700"
             }`}
           >
             {!isCorrect && correctAnsText && (
-              <div className="mb-2 text-[14px] flex flex-wrap items-center gap-2">
+              <div className={`${hasExplanation ? "mb-2" : ""} text-[14px] flex flex-wrap items-center gap-2`}>
                 <strong className="text-slate-700">Đáp án đúng:</strong>
-                <span className="bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg text-emerald-900 font-bold font-mono inline-block max-w-full break-words leading-relaxed">
+                <span className="bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg text-emerald-900 font-bold font-mono inline-block max-w-full break-words leading-relaxed whitespace-pre-line">
                   {correctAnsText}
                 </span>
               </div>
             )}
 
-            <p>{question.explanation || (isCorrect ? "" : "Chưa có giải thích chi tiết cho câu hỏi này.")}</p>
+            {hasExplanation && <p className="whitespace-pre-line">{normalizedExplanation}</p>}
           </div>
         </div>
         {isReviewMode && hasManagePerm && question.questionVersionId && (
@@ -686,7 +900,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     <div className="flex flex-col h-full w-full max-w-3xl mx-auto">
       {renderQuestionHeader()}
 
-      <div className="flex-1 pb-4 overflow-x-hidden">{renderInputArea()}</div>
+      <div className="flex-1 pb-2 overflow-x-hidden">{renderInputArea()}</div>
 
       {renderFeedbackBox()}
     </div>
@@ -694,7 +908,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-white/50">
-      <div className="flex-1 overflow-hidden p-6 md:p-8 flex flex-col lg:flex-row gap-6 lg:gap-10">
+      <div className="flex-1 overflow-hidden px-6 pt-6 pb-[5px] md:px-8 md:pt-8 md:pb-[5px] flex flex-col lg:flex-row gap-6 lg:gap-10">
         {hasSplitLayout ? (
           <>
             {/* Left */}
@@ -733,7 +947,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             <div className="flex-1 overflow-y-auto lg:pl-6 lg:border-l border-slate-200 pr-2 pt-2">
               {!question.passage ? (
                 <div className="flex flex-col h-full w-full max-w-3xl mx-auto">
-                  <div className="flex-1 pb-4 overflow-x-hidden pt-2">
+                  <div className="flex-1 pb-2 overflow-x-hidden pt-2">
                     <h3 className="text-sm font-bold text-slate-500 mb-4 uppercase tracking-wider">
                       Chọn đáp án của bạn:
                     </h3>
@@ -793,9 +1007,19 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         ) : (
           <button
             onClick={onNext}
-            className="px-8 py-3 rounded-xl font-bold bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 flex items-center gap-2 transition-all group"
+            className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all group ${
+              isLastQuestion && isReviewMode && !isMastered
+                ? "bg-amber-600 hover:bg-amber-700"
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
           >
-            {isLastQuestion ? (isReviewMode ? "Thoát xem đáp án" : "Hoàn thành bài thi") : "Câu tiếp theo"}
+            {isLastQuestion
+              ? isReviewMode
+                ? isMastered
+                  ? "Hoàn thành & Xem kết quả"
+                  : "Làm lại các câu sai →"
+                : "Hoàn thành bài thi"
+              : "Câu tiếp theo"}
 
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -899,21 +1123,56 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 <h3 className="font-semibold text-slate-700 text-xs mb-2">Ghép các cặp:</h3>
                 {question.leftItems.map((left: any) => {
                   const leftId = left.id || left;
-                  const leftText = left.text || left;
+                  const leftMedia = left.media;
+                  const isUuid = (t?: string) => !t || t === leftId || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t.trim());
+                  const leftText = leftMedia && isUuid(left.text) ? "" : (left.text || (leftMedia ? "" : left));
                   return (
                     <Form.Item
                       key={leftId}
                       name={["matchingPairs", leftId]}
-                      label={<span>Mục bên trái: <strong>{leftText}</strong></span>}
+                      label={
+                        <div className="flex items-center gap-2">
+                          <span>Mục bên trái:</span>
+                          {leftMedia && (
+                            leftMedia.type === "image" ? (
+                              <AppImage
+                                src={resolveMediaUrl(leftMedia.url)}
+                                alt={leftText || "Ảnh"}
+                                className="w-8 h-8 rounded object-cover border border-slate-200"
+                              />
+                            ) : (
+                              // eslint-disable-next-line jsx-a11y/media-has-caption
+                              <audio src={resolveMediaUrl(leftMedia.url)} controls className="h-6 max-w-[150px]" />
+                            )
+                          )}
+                          {leftText && <strong>{leftText}</strong>}
+                        </div>
+                      }
                       rules={[{ required: true, message: "Chọn mục ghép đôi phù hợp!" }]}
                     >
                       <Select placeholder="Chọn mục bên phải..." className="rounded-xl">
                         {(question.rightItems ?? []).map((right: any) => {
                           const rightId = right.id || right;
-                          const rightText = right.text || right;
+                          const rightMedia = right.media;
+                          const isRightUuid = (t?: string) =>
+                            !t ||
+                            t === rightId ||
+                            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(t).trim()) ||
+                            /^[0-9a-f]{24}$/i.test(String(t).trim());
+                          const rawRightText = right.text || (typeof right === "string" ? right : "");
+                          const rightLabel = rightMedia && isRightUuid(rawRightText) ? "Hình ảnh" : (rawRightText || (rightMedia ? "Hình ảnh" : rightId));
                           return (
                             <Select.Option key={rightId} value={rightId}>
-                              {rightText}
+                              <div className="flex items-center gap-2">
+                                {rightMedia && rightMedia.type === "image" && (
+                                  <img
+                                    src={resolveMediaUrl(rightMedia.url)}
+                                    alt="Ảnh"
+                                    className="w-6 h-6 rounded object-cover border border-slate-200 shrink-0 inline-block mr-1"
+                                  />
+                                )}
+                                <span>{rightLabel}</span>
+                              </div>
                             </Select.Option>
                           );
                         })}

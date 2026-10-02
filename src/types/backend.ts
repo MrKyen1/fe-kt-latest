@@ -143,6 +143,7 @@ export interface StudentAuthClass {
 
 export interface StudentAuthProfile {
   id: string;
+  birthYear?: number;
   classes?: StudentAuthClass[];
 }
 
@@ -173,6 +174,7 @@ export interface TeacherProfile {
 
 export interface StudentProfile {
   id?: string;
+  birthYear?: number;
   parentFullName?: string;
   classIds?: string[];
   classes?: ClassRoom[];
@@ -204,6 +206,7 @@ export interface CreateUserRequest {
     }>;
   };
   studentProfile?: {
+    birthYear?: number;
     parentFullName?: string;
     classIds: string[];
   };
@@ -366,6 +369,30 @@ export type UpdateQuestionRequest = Partial<CreateQuestionRequest> & {
   expectedUpdatedAt?: string;
 };
 
+export interface ExamVersionQuestionDetail {
+  id: string;
+  questionId: string;
+  versionNumber: number;
+  type: string;
+  orderIndex: number;
+  snapshot?: {
+    prompt?: string;
+    options?: any[];
+    pairs?: any[];
+    detail?: Record<string, any>;
+    feedback?: Record<string, any>;
+    explanation?: string | null;
+    instruction?: string | null;
+    media?: any[];
+    [key: string]: any;
+  };
+  correctAnswer?: Record<string, any>;
+  feedback?: {
+    explanation?: string | null;
+    [key: string]: any;
+  };
+}
+
 export interface ExamVersion {
   id: string;
   versionNumber: number;
@@ -374,6 +401,12 @@ export interface ExamVersion {
   questionCount?: number;
   isCurrent?: boolean;
   createdAt?: string;
+}
+
+export interface ExamVersionDetail extends ExamVersion {
+  examId?: string;
+  examType?: string;
+  questions: ExamVersionQuestionDetail[];
 }
 
 export interface Exam {
@@ -500,6 +533,7 @@ export interface StudentExamAssignment {
     mastered?: boolean;
     taskStatus?: "in_progress" | "finished" | "mastered";
     requiresRemediation?: boolean;
+    redoAttempts?: Attempt[];
     // NOTE: maxAttempts da bi xoa (migration 1780000030000).
   }>;
   /** Diem tien tong assignment */
@@ -554,6 +588,7 @@ export interface StudentCurriculumAssignment {
     mastered?: boolean;
     taskStatus?: "in_progress" | "finished" | "mastered";
     requiresRemediation?: boolean;
+    redoAttempts?: Attempt[];
     exam?: Exam;
     curriculumExam?: { id: string; orderIndex: number; isRequired: boolean };
   }>;
@@ -617,6 +652,7 @@ export interface Attempt {
   examType?: "practice" | "exam";
   finished?: boolean;
   attemptPhase?: "initial" | "remediation";
+  isRedo?: boolean;
   expiresAt?: string | null;
   firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
   remainingQuestionCount?: number;

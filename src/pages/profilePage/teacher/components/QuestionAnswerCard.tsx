@@ -8,6 +8,7 @@ import {
 } from "@ant-design/icons";
 import { resolveMediaUrl } from "../../../../services/apiClient";
 import { formatScore } from "../../../../utils/studentExamUtils";
+import { AppImage } from "../../../../components/AppImagePreview";
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
   single_choice: "Trắc nghiệm đơn",
@@ -162,7 +163,10 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
           const letter = String.fromCharCode(65 + optIdx);
           const optId = String(opt.id ?? "");
           const optLabel = String(opt.label || letter);
-          const optContent = opt.content || opt.text || opt.title || `Lựa chọn ${letter}`;
+          const rawContent = opt.content || opt.text || opt.title;
+          const optMediaUrl = opt.image || opt.imageUrl || opt.mediaUrl || (opt.media?.url ? opt.media.url : null);
+          const isContentUuid = rawContent ? isUuid(rawContent) || rawContent === optId : false;
+          const optContent = optMediaUrl && isContentUuid ? "" : (rawContent || (optMediaUrl ? "" : `Lựa chọn ${letter}`));
 
           const isStudentPick =
             studentIds.includes(optId) ||
@@ -210,9 +214,6 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
             );
           }
 
-          // Option media (image/audio)
-          const optMediaUrl = opt.image || opt.imageUrl || opt.mediaUrl || (opt.media?.url ? opt.media.url : null);
-
           return (
             <div
               key={optId || optIdx}
@@ -220,13 +221,13 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
             >
               <div className="mt-0.5 sm:mt-0">{icon}</div>
               <div className="flex-1 min-w-0">
-                <span className="text-xs sm:text-sm">{optContent}</span>
+                {optContent ? <span className="text-xs sm:text-sm">{optContent}</span> : null}
                 {optMediaUrl && (
-                  <div className="mt-1">
-                    <img
+                  <div className="mt-1 max-w-[200px] max-h-[140px] rounded-lg overflow-hidden border border-slate-200 bg-white flex items-center justify-center p-1">
+                    <AppImage
                       src={resolveMediaUrl(optMediaUrl)}
-                      alt={optContent}
-                      className="max-h-24 rounded-lg border border-slate-200 object-contain bg-white"
+                      alt={optContent || "Lựa chọn"}
+                      className="max-h-[130px] w-auto object-contain"
                     />
                   </div>
                 )}
@@ -255,11 +256,19 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
     );
   };
 
+  const isUuid = (val?: string) =>
+    !val ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val).trim()) ||
+    /^[0-9a-f]{24}$/i.test(String(val).trim());
+
   // Helper to resolve human-readable text for matching items
   const resolveMatchingItemText = (itemId: string, fallbackPrefix = "") => {
     if (!itemId) return fallbackPrefix;
     const opt = options.find((o: any) => o.id === itemId || o.key === itemId);
-    if (opt) return opt.content || opt.text || opt.label || opt.title || itemId;
+    if (opt) {
+      const txt = opt.content || opt.text || opt.label || opt.title;
+      if (txt && !isUuid(txt)) return txt;
+    }
 
     const qSnapshot = ans.questionSnapshot || ans.question || {};
     const detail = qSnapshot.detail || {};
@@ -267,9 +276,17 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
     const leftItems: any[] = qSnapshot.leftItems || detail.leftItems || [];
     const rightItems: any[] = qSnapshot.rightItems || detail.rightItems || [];
     const fLeft = leftItems.find((l: any) => (l?.id || l) === itemId);
-    if (fLeft) return fLeft.text || fLeft.content || (typeof fLeft === "string" ? fLeft : itemId);
+    if (fLeft) {
+      const txt = fLeft.text || fLeft.content || (typeof fLeft === "string" ? fLeft : "");
+      if (txt && !isUuid(txt)) return txt;
+      if (fLeft.media) return "";
+    }
     const fRight = rightItems.find((r: any) => (r?.id || r) === itemId);
-    if (fRight) return fRight.text || fRight.content || (typeof fRight === "string" ? fRight : itemId);
+    if (fRight) {
+      const txt = fRight.text || fRight.content || (typeof fRight === "string" ? fRight : "");
+      if (txt && !isUuid(txt)) return txt;
+      if (fRight.media) return "";
+    }
 
     const pairs: any[] = detail.pairs || qSnapshot.pairs || [];
     const fPair = pairs.find(
@@ -282,10 +299,14 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
     );
     if (fPair) {
       if (fPair.leftItemId === itemId || fPair.leftId === itemId) {
-        return fPair.leftText || fPair.text || itemId;
+        const txt = fPair.leftText || fPair.text || "";
+        if (txt && !isUuid(txt)) return txt;
+        if (fPair.leftMedia) return "";
       }
       if (fPair.rightItemId === itemId || fPair.rightId === itemId) {
-        return fPair.rightText || fPair.text || itemId;
+        const txt = fPair.rightText || fPair.text || "";
+        if (txt && !isUuid(txt)) return txt;
+        if (fPair.rightMedia) return "";
       }
     }
 
@@ -294,15 +315,14 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
         correctAns.pairs || correctAns.matches || (Array.isArray(correctAns) ? correctAns : []);
       const cp = corrPairs.find((p: any) => p.leftItemId === itemId || p.rightItemId === itemId);
       if (cp) {
-        if (cp.leftItemId === itemId && cp.leftText) return cp.leftText;
-        if (cp.rightItemId === itemId && cp.rightText) return cp.rightText;
+        if (cp.leftItemId === itemId && cp.leftText && !isUuid(cp.leftText)) return cp.leftText;
+        if (cp.rightItemId === itemId && cp.rightText && !isUuid(cp.rightText)) return cp.rightText;
       }
     }
 
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId);
-    if (!isUuid) return itemId;
+    if (isUuid(itemId)) return "";
 
-    return fallbackPrefix || `Mục ${itemId.substring(0, 6)}`;
+    return itemId;
   };
 
   // -------- B) Matching (Ghép đôi) --------
@@ -340,10 +360,36 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
           const correctRight = correctMap[p.leftItemId];
           const pairCorrect = studentRight === correctRight;
 
-          const leftText = p.leftText || resolveMatchingItemText(p.leftItemId, `Vế ${i + 1}`);
-          const rightText = p.rightText || resolveMatchingItemText(studentRight, "Chưa chọn");
-          const correctRightText =
-            p.correctRightText || resolveMatchingItemText(correctRight, "Đáp án đúng");
+          const qSnapshot = ans.questionSnapshot || ans.question || {};
+          const detail = qSnapshot.detail || {};
+          const leftItems: any[] = qSnapshot.leftItems || detail.leftItems || [];
+          const rightItems: any[] = qSnapshot.rightItems || detail.rightItems || [];
+          const fLeft = leftItems.find((l: any) => (l?.id || l) === p.leftItemId);
+          const fRight = rightItems.find((r: any) => (r?.id || r) === studentRight);
+          const fCorrectRight = rightItems.find((r: any) => (r?.id || r) === correctRight);
+
+          const leftMedia = p.leftMedia || fLeft?.media;
+          const rightMedia = p.rightMedia || fRight?.media;
+          const correctRightMedia = p.correctRightMedia || fCorrectRight?.media;
+
+          const isUuidOrSame = (str?: string, id?: string) =>
+            !str || isUuid(str) || (id && (str === id || str.trim() === id.trim()));
+
+          let leftText = p.leftText || resolveMatchingItemText(p.leftItemId, "");
+          if (leftMedia && isUuidOrSame(leftText, p.leftItemId)) {
+            leftText = "";
+          }
+
+          let rightText = p.rightText || resolveMatchingItemText(studentRight, "");
+          if (rightMedia && isUuidOrSame(rightText, studentRight)) {
+            rightText = "";
+          }
+
+          let correctRightText =
+            p.correctRightText || resolveMatchingItemText(correctRight, "");
+          if (correctRightMedia && isUuidOrSame(correctRightText, correctRight)) {
+            correctRightText = "";
+          }
 
           return (
             <div
@@ -354,26 +400,68 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
                   : "bg-rose-50/50 border-rose-200"
               }`}
             >
-              <div className="font-semibold text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs">
-                {leftText}
+              <div className="font-semibold text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs flex items-center gap-2">
+                {leftMedia && (
+                  leftMedia.type === "image" ? (
+                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-white flex items-center justify-center p-0.5">
+                      <AppImage
+                        src={resolveMediaUrl(leftMedia.url)}
+                        alt={leftText || "Ảnh"}
+                        className="w-full h-full object-contain"
+                        maskText="Xem ảnh"
+                      />
+                    </div>
+                  ) : leftMedia.type === "audio" ? (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <audio src={resolveMediaUrl(leftMedia.url)} controls className="h-6 max-w-[140px]" />
+                  ) : null
+                )}
+                {leftText ? <span>{leftText}</span> : null}
               </div>
               <span className="text-slate-400 font-bold px-1">➔</span>
               <div
-                className={`font-semibold px-3 py-1.5 rounded-lg shadow-2xs ${
+                className={`font-semibold px-3 py-1.5 rounded-lg shadow-2xs flex items-center gap-2 ${
                   pairCorrect
                     ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
                     : "bg-rose-100 text-rose-800 border border-rose-300"
                 }`}
               >
-                {rightText}
+                {rightMedia && (
+                  rightMedia.type === "image" ? (
+                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-white flex items-center justify-center p-0.5">
+                      <AppImage
+                        src={resolveMediaUrl(rightMedia.url)}
+                        alt={rightText || "Ảnh"}
+                        className="w-full h-full object-contain"
+                        maskText="Xem ảnh"
+                      />
+                    </div>
+                  ) : rightMedia.type === "audio" ? (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <audio src={resolveMediaUrl(rightMedia.url)} controls className="h-6 max-w-[140px]" />
+                  ) : null
+                )}
+                {rightText ? <span>{rightText}</span> : (!rightMedia ? <span>{studentRight ? (isUuid(studentRight) ? "Chưa chọn" : studentRight) : "Chưa chọn"}</span> : null)}
               </div>
 
               {!pairCorrect && correctRight && (
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 ml-1">
                   <span>(Đáp án đúng:</span>
-                  <span className="font-semibold text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded">
-                    {correctRightText}
-                  </span>
+                  <div className="font-semibold text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded flex items-center gap-1.5">
+                    {correctRightMedia && (
+                      correctRightMedia.type === "image" ? (
+                        <div className="w-10 h-10 rounded overflow-hidden border border-emerald-300 shrink-0 bg-white flex items-center justify-center">
+                          <AppImage
+                            src={resolveMediaUrl(correctRightMedia.url)}
+                            alt={correctRightText || "Đáp án đúng"}
+                            className="w-full h-full object-contain"
+                            maskText="Xem"
+                          />
+                        </div>
+                      ) : null
+                    )}
+                    {correctRightText ? <span>{correctRightText}</span> : null}
+                  </div>
                   <span>)</span>
                 </div>
               )}

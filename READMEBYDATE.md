@@ -14,6 +14,174 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-10-01
+
+### Xem chi tiết snapshot câu hỏi của một phiên bản exam
+
+API mới:
+
+```http
+GET /api/v1/learning/exams/:id/versions/:versionId
+```
+
+Chỉ role `admin` và `teacher` được gọi API này vì response có đáp án đúng của snapshot.
+
+API trả metadata của version cùng `questions[]` theo đúng `orderIndex` đã publish. Mỗi câu giữ nguyên snapshot tại thời điểm tạo version, gồm `questionId`, `versionNumber`, `type`, `snapshot`, `correctAnswer` và `feedback`; không lấy nội dung câu hỏi đang được chỉnh sửa ở hiện tại.
+
+`versionId` phải thuộc exam có `id` trên URL. Nếu exam hoặc version không tồn tại, hoặc version thuộc exam khác, Backend trả `404`.
+
+Ví dụ response `data`:
+
+```jsonc
+{
+  "id": "<versionId>",
+  "examId": "<examId>",
+  "versionNumber": 2,
+  "title": "Grammar test",
+  "examType": "exam",
+  "timeLimitSeconds": 900,
+  "createdAt": "2026-10-01T01:00:00.000Z",
+  "questions": [
+    {
+      "id": "<questionVersionId>",
+      "questionId": "<questionId>",
+      "versionNumber": 3,
+      "type": "multiple_choice",
+      "orderIndex": 1,
+      "snapshot": { "prompt": "...", "options": [] },
+      "correctAnswer": { "selectedOptionIds": ["<optionId>"] },
+      "feedback": { "explanation": "..." },
+    },
+  ],
+}
+```
+
+### Phân trang các danh sách có thể tăng lớn
+
+Các API sau nhận thêm `page` và `limit`. Mặc định là `page=1`, `limit=20`; `limit` không vượt quá `100`.
+
+- `GET /api/v1/users`
+- `GET /api/v1/centers`
+- `GET /api/v1/classes`
+- `GET /api/v1/specializations`
+- `GET /api/v1/homepage/teachers`
+- `GET /api/v1/admin/homepage/media`
+- `GET /api/v1/learning/exams/:id/versions`
+- `GET /api/v1/learning/student/exam-assignments/:assignmentStudentId/attempts`
+
+Ví dụ: `GET /api/v1/users?roleCode=student&page=2&limit=20`.
+
+Response giữ envelope chuẩn. Dữ liệu của trang nằm trong `data`; thông tin phân trang nằm trong `meta`:
+
+```jsonc
+{
+  "success": true,
+  "data": [
+    /* tối đa 20 bản ghi */
+  ],
+  "meta": { "page": 2, "limit": 20, "total": 53, "totalPages": 3 },
+}
+```
+
+### Giáo viên quản lý trạng thái và xóa nội dung học tập
+
+Role `teacher` hiện có thể thực hiện cùng role `admin` các thao tác sau:
+
+- Xuất bản, chuyển về draft hoặc archive exam: `PATCH /api/v1/learning/exams/:id/status`.
+- Xóa mềm exam: `DELETE /api/v1/learning/exams/:id`.
+- Xóa mềm câu hỏi: `DELETE /api/v1/learning/questions/:id`.
+
+URL, request body và response của các API không thay đổi. Các role khác không có quyền gọi ba API trên sẽ nhận `403`.
+
+### Giáo viên quản lý học sinh
+
+Role `teacher` hiện có thể tạo, sửa và xóa mềm tài khoản có role `student`:
+
+- `POST /api/v1/users`
+- `PATCH /api/v1/users/:id`
+- `DELETE /api/v1/users/:id`
+
+Request body và response giữ nguyên contract tạo user hiện có. Giáo viên không thể dùng các API này với tài khoản `admin` hoặc `teacher`; Backend trả `403`.
+
+### Ôn tiếp câu sai sau khi làm lại toàn bộ đề
+
+Sửa luồng ôn tập sau lượt `isRedo: true` cho cả bài giáo viên giao và bài trong chương trình học. Trước đây, nếu học sinh đã đạt 100% ở lượt chính thức, nộp lượt redo còn câu sai rồi yêu cầu ôn tiếp, Backend trả `mastered: true` và không tạo attempt mới. Nay Backend tạo lượt ôn các câu sai/chưa trả lời trong chu kỳ redo đó.
+
+Hai API bắt đầu làm bài giữ nguyên URL và body:
+
+```http
+POST /api/v1/learning/student/curriculums/:curriculumId/exams/:examId/attempts
+POST /api/v1/learning/student/exam-assignments/:assignmentStudentId/exams/:examId/attempts
+```
+
+- **Ôn tiếp câu sai:** gửi `{}` hoặc `{ "restart": false }`. Nếu lượt redo đã nộp còn câu sai/chưa trả lời, API trả attempt mới có `id`, `isRedo: true` và `answers[]` chỉ gồm những câu đó.
+- **Làm lại toàn bộ đề:** gửi `{ "restart": true }`. Điều kiện vẫn là đã làm đúng toàn bộ câu hỏi ở các lượt chính thức, tính cộng dồn qua các lượt đã nộp. Điểm chu kỳ redo mới bắt đầu từ 0; có thể bắt đầu chu kỳ mới dù chu kỳ redo trước đã nộp nhưng chưa đạt 100%.
+- **Có lượt đang làm:** API tiếp tục trả lượt đó, kể cả gửi `restart: true`.
+- `score`, `percentage`, `cumulativeCorrectCount` và `remainingQuestionCount` của lượt ôn tiếp được tính cộng dồn trong **chu kỳ redo hiện tại**, tách biệt với thành tích chính thức. `attemptQuestionCount` là số câu cần làm trong lượt này.
+- Với lượt redo đã nộp nhưng chưa đạt 100%, kể cả `examType: "exam"`, response có `mastered: false`, `finished: false`, `taskStatus: "in_progress"` và `requiresRemediation: true`.
+- Khi sửa đúng hết câu còn lại và nộp, chu kỳ redo đạt 100%. Gọi tiếp với `restart: false` trả `mastered: true`, không có `id` attempt mới.
+- Tất cả lượt ôn tiếp của redo vẫn có `isRedo: true`; không cập nhật tiến độ chính thức, leaderboard, điểm tốt nhất hoặc lượt làm chính thức gần nhất. Không cần migration.
+
+#### Phân biệt `restart`, `isRedo` và `mastered`
+
+- `restart` là **yêu cầu trong body** của API bắt đầu lượt làm bài; bỏ trống tương đương `false`. Đây không phải thuộc tính xác định loại lượt trong response.
+- `isRedo` là **thuộc tính của attempt trả về**: `false` cho lượt tính tiến độ chính thức; `true` cho lượt thuộc chu kỳ ôn lại, bao gồm cả lượt sửa câu sai của chu kỳ đó. Vì vậy, gửi `restart: false` vẫn có thể nhận `isRedo: true`.
+- `mastered` trong response attempt phản ánh tiến độ của lượt/chu kỳ đang xem. Một lượt redo có thể có `mastered: false` dù thành tích chính thức của đề đã đạt 100%.
+- Điều kiện cho phép restart toàn bộ dựa trên **mastery chính thức đã đạt 100%**, không yêu cầu chu kỳ redo vừa nộp phải đạt 100%.
+
+#### Bảng tình huống gọi API bắt đầu lượt làm bài
+
+Áp dụng giống nhau cho assignment và curriculum. Ví dụ đề có 10 câu; các dòng đã nộp giả định không còn attempt `in_progress`.
+
+| Trạng thái trước khi gọi API                              | Body                                        | Kết quả Backend                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Có attempt `in_progress`, dù chính thức hay redo          | `{}`, `restart: false` hoặc `restart: true` | Trả lại attempt đang làm với cùng `id` và `isRedo`; không tạo lượt mới, không reset đáp án.           |
+| Chưa từng làm đề                                          | `{}` hoặc `restart: false`                  | Tạo lượt đầu đủ 10 câu, điểm từ 0, `isRedo: false`.                                                   |
+| Chưa từng làm đề                                          | `restart: true`                             | Vẫn tạo lượt đầu đủ 10 câu, điểm từ 0, `isRedo: false`; chưa có mastery chính thức để tạo redo.       |
+| Các lượt chính thức đã nộp mới đạt cộng dồn 7/10          | `{}` hoặc `restart: false`                  | Tạo lượt ôn 3 câu chưa đúng, điểm ban đầu 7/10, `isRedo: false`.                                      |
+| Các lượt chính thức đã nộp mới đạt cộng dồn 7/10          | `restart: true`                             | Vẫn chỉ ôn 3 câu chưa đúng, điểm ban đầu 7/10, `isRedo: false`.                                       |
+| Chính thức đã đạt 10/10, chưa có lượt redo                | `{}` hoặc `restart: false`                  | Trả `mastered: true`, không có `id` attempt mới.                                                      |
+| Chính thức đã đạt 10/10, chưa có lượt redo                | `restart: true`                             | Tạo chu kỳ redo mới đủ 10 câu, điểm từ 0, `isRedo: true`.                                             |
+| Chính thức đã đạt 10/10, chu kỳ redo vừa nộp mới đạt 7/10 | `{}` hoặc `restart: false`                  | Tạo lượt ôn 3 câu chưa đúng của chu kỳ redo hiện tại, điểm ban đầu 7/10, `isRedo: true`.              |
+| Chính thức đã đạt 10/10, chu kỳ redo vừa nộp mới đạt 7/10 | `restart: true`                             | Bắt đầu chu kỳ redo mới đủ 10 câu, điểm từ 0, `isRedo: true`; không tiếp tục sửa 3 câu của chu kỳ cũ. |
+| Chu kỳ redo đã đạt 10/10 và đã nộp                        | `{}` hoặc `restart: false`                  | Trả `mastered: true`, không có `id` attempt mới.                                                      |
+| Chu kỳ redo đã đạt 10/10 và đã nộp                        | `restart: true`                             | Bắt đầu chu kỳ redo mới đủ 10 câu, điểm từ 0, `isRedo: true`.                                         |
+
+Với loại `exam`, lượt chính thức đã nộp có thể có `finished: true` dù mới đạt 7/10. `finished` không thay thế điều kiện mastery chính thức khi quyết định restart toàn bộ. FE cần phân biệt trạng thái hoàn thành nhiệm vụ và số câu đã làm đúng.
+
+Ví dụ đề 10 câu: lượt redo đầu đúng 9 câu, lượt ôn tiếp chỉ chứa 1 câu nhưng bắt đầu với `score: "9.00"`. Khi làm đúng câu cuối và nộp, kết quả là `score: "10.00"`, `percentage: "100.00"`, `mastered: true`.
+
+Response `data` rút gọn khi tạo lượt ôn 1 câu còn lại:
+
+```jsonc
+{
+  "id": "redo-remediation-attempt-id",
+  "isRedo": true,
+  "status": "in_progress",
+  "score": "9.00",
+  "maxScore": "10.00",
+  "percentage": "90.00",
+  "totalQuestions": 10,
+  "attemptQuestionCount": 1,
+  "cumulativeCorrectCount": 9,
+  "remainingQuestionCount": 1,
+  "mastered": false,
+  "finished": false,
+  "taskStatus": "in_progress",
+  "answers": [{ "questionId": "wrong-question-id", "answer": null }],
+}
+```
+
+Luồng FE:
+
+1. Nút **Ôn tập lại toàn bộ** gọi API bắt đầu với `{ "restart": true }`; chỉ cho phép thao tác này khi mastery chính thức đã đạt 100%. Không dùng riêng `mastered` của lượt redo đang xem để xác định điều kiện này.
+2. Sau khi nộp, nếu `requiresRemediation: true`, nút **Làm lại câu sai** gọi cùng API với `{}` hoặc `{ "restart": false }`, mở attempt bằng `data.id` và dùng `data.answers[]`.
+3. Không tự động gọi lại `restart: true` khi nhận `mastered: true` mà không có `id`; trường hợp đó không có lượt mới để mở.
+
+Kiểm tra sau sửa: **73/73 unit test của module learning pass** (11 test suites), gồm chu kỳ redo nhiều lượt và restart chu kỳ mới cho cả assignment và curriculum. Lint các file thay đổi và TypeScript theo cấu hình build đều pass; chưa kiểm thử API trên database thực.
+
+---
+
 ## 2026-09-20
 
 ### 1. Đề xuất Public API: Danh sách cơ sở Kata Edu cho Khách vãng lai & Trang chủ (Footer)

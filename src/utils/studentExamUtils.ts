@@ -15,6 +15,7 @@ export interface FlattenedAssignedExam {
   hasInProgress: boolean;
   bestPct?: string;
   bestScore?: string;
+  maxScore?: string | number;
   bestPctVal: number;
   /** mastered = đã làm đúng 100% tất cả câu hỏi (từ backend) */
   mastered: boolean;
@@ -102,6 +103,12 @@ export function flattenAssignedExams(assignments: any[]): FlattenedAssignedExam[
 
       const bestPct = ep.bestPercentage || bestAttempt?.percentage;
       const bestScore = bestAttempt?.score;
+      const maxScore =
+        bestAttempt?.maxScore ??
+        ep.firstAttemptResult?.maxScore ??
+        currentExam?.questionsCount ??
+        currentExam?.questionCount ??
+        currentExam?.questions?.length;
       const examType: "exam" | "practice" = currentExam?.examType ?? ep.examType ?? "practice";
       const isExamType = examType === "exam";
 
@@ -135,6 +142,7 @@ export function flattenAssignedExams(assignments: any[]): FlattenedAssignedExam[
         hasInProgress,
         bestPct,
         bestScore,
+        maxScore,
         bestPctVal: pctVal,
         mastered,
         isFinished,
@@ -289,3 +297,77 @@ export function getAssignedExamAction(item: FlattenedAssignedExam): ExamActionDe
     isPrimary: true,
   };
 }
+
+export interface ExamScoreDisplay {
+  primaryText: string;
+  subText?: string;
+  tooltip: string;
+}
+
+/**
+ * Hiển thị điểm số theo mô hình Hướng 3 (Hybrid):
+ * - Đề Kiểm tra (exam): Quy đổi về thang 10 chuẩn (VD: 10 đ, 8.5 đ). Subtext/Tooltip: đúng x/y câu.
+ * - Đề Ôn tập (practice): Hiển thị số câu hoàn thành (VD: 4/4 câu, 32/35 câu). Tooltip: thành thạo/tiến độ.
+ */
+export function formatStudentExamScoreDisplay(options: {
+  isExamType: boolean;
+  score?: any;
+  maxScore?: any;
+  percentage?: any;
+}): ExamScoreDisplay {
+  const pct = parseFloat(String(options.percentage ?? "0"));
+  const rawScore =
+    options.score !== undefined && options.score !== null && options.score !== "" && options.score !== "—"
+      ? Number(options.score)
+      : null;
+  const rawMax =
+    options.maxScore !== undefined && options.maxScore !== null && options.maxScore !== "" && options.maxScore !== "—"
+      ? Number(options.maxScore)
+      : null;
+
+  if (options.isExamType) {
+    // --- BÀI KIỂM TRA: Quy đổi về Thang 10 ---
+    // Điểm = (pct / 100) * 10 = pct / 10
+    const score10 = Math.round((pct / 10) * 10) / 10;
+    const formattedScore10 = Number.isInteger(score10) ? `${score10}` : score10.toFixed(1);
+
+    const questionsText =
+      rawScore !== null && rawMax !== null && rawMax > 0
+        ? `${rawScore}/${rawMax} câu`
+        : rawScore !== null
+        ? `${rawScore} câu`
+        : "";
+
+    return {
+      primaryText: `${formattedScore10} đ`,
+      subText: questionsText,
+      tooltip: questionsText
+        ? `Điểm: ${formattedScore10} / 10 đ (Đúng ${questionsText} - ${pct.toFixed(0)}%)`
+        : `Điểm: ${formattedScore10} / 10 đ (${pct.toFixed(0)}%)`,
+    };
+  } else {
+    // --- BÀI ÔN TẬP: Hiển thị số câu hoàn thành / thành thạo ---
+    const isMastered = pct >= 100;
+    if (rawScore !== null && rawMax !== null && rawMax > 0) {
+      return {
+        primaryText: `${rawScore}/${rawMax} câu`,
+        tooltip: isMastered
+          ? `Đã hoàn thành xuất sắc toàn bộ ${rawScore}/${rawMax} câu (100% - Thành thạo)`
+          : `Tiến độ ôn tập: Đúng ${rawScore}/${rawMax} câu (${pct.toFixed(0)}%)`,
+      };
+    } else if (rawScore !== null) {
+      return {
+        primaryText: `${rawScore} câu`,
+        tooltip: isMastered
+          ? `Đã làm đúng toàn bộ ${rawScore} câu (100% - Thành thạo)`
+          : `Đã làm đúng ${rawScore} câu (${pct.toFixed(0)}%)`,
+      };
+    } else {
+      return {
+        primaryText: `${pct.toFixed(0)}%`,
+        tooltip: isMastered ? "Đã hoàn thành 100% (Thành thạo)" : `Tiến độ ôn tập: ${pct.toFixed(0)}%`,
+      };
+    }
+  }
+}
+

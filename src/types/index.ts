@@ -2,6 +2,8 @@ export type QuestionType =
   | "multiple_choice"
   | "audio_choice"
   | "image_choice"
+  | "true_false"
+  | "audio_image_choice"
   | "word_ordering"
   | "reading_comprehension"
   | "sentence_rewrite"
@@ -24,6 +26,9 @@ export interface ExamOption {
   label?: string;
   content: string;
   orderIndex?: number;
+  mediaId?: string;
+  media?: ExamMedia;
+  isCorrect?: boolean;
 }
 
 export interface ExamQuestion {
@@ -36,8 +41,8 @@ export interface ExamQuestion {
 
 
   
-  leftItems?: Array<string | { id: string; text: string }>;
-  rightItems?: Array<string | { id: string; text: string }>;
+  leftItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
+  rightItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
 
   correctAnswer?: string | string[] | Record<string, string>;
 

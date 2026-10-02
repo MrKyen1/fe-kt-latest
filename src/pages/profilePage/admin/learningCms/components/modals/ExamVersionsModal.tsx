@@ -1,19 +1,12 @@
-import { Button, Modal, Table, Tag } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
-import { History, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { Button, Modal, Table, Tag, Spin, message, Pagination } from "antd";
+import { PlusOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
+import { History, AlertTriangle, HelpCircle } from "lucide-react";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
-import { message } from "antd";
+import { ExamVersion, ExamVersionDetail } from "../../../../../../types/backend";
+import { ExamVersionQuestionCard } from "./ExamVersionQuestionCard";
 
 // ── Types ────────────────────────────────────────────────────
-
-interface ExamVersion {
-  id: string;
-  versionNumber: number;
-  isCurrent?: boolean;
-  questionCount?: number;
-  timeLimitSeconds?: number;
-  createdAt?: string;
-}
 
 interface Exam {
   id: string;
@@ -32,53 +25,103 @@ interface Props {
   onLoadAllData:  () => void;
 }
 
-// ── Columns ──────────────────────────────────────────────────
+// ── Inner Component for Paginated Question List ─────────────
 
-const COLUMNS = [
-  {
-    title: "Phiên bản",
-    dataIndex: "versionNumber",
-    key: "versionNumber",
-    render: (num: number, r: ExamVersion) => (
-      <span className="font-bold text-indigo-600">
-        v{num}{" "}
-        {r.isCurrent && (
-          <Tag color="success" className="ml-2 border-none rounded-full px-2 text-[10px] font-bold">
-            Hiện hành
-          </Tag>
+const ExamVersionQuestionsList: React.FC<{
+  detail: ExamVersionDetail;
+  versionNumber: number;
+}> = ({ detail, versionNumber }) => {
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(5);
+
+  const questions = detail.questions || [];
+
+  if (questions.length === 0) {
+    return (
+      <div className="py-8 px-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 text-center text-slate-400 text-xs">
+        Phiên bản v{versionNumber} không có câu hỏi nào được lưu trong snapshot.
+      </div>
+    );
+  }
+
+  const paginatedQuestions = questions.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  return (
+    <div className="py-4 px-4 sm:px-5 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-4">
+      {/* ── LIST HEADER WITH PAGINATION ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/70 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+            <HelpCircle size={15} />
+          </div>
+          <div>
+            <div className="font-bold text-slate-800 text-xs sm:text-sm">
+              Snapshot câu hỏi phiên bản v{versionNumber}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Tổng số {questions.length} câu hỏi • Thời điểm lưu: {detail.createdAt ? new Date(detail.createdAt).toLocaleString("vi-VN") : "—"}
+            </div>
+          </div>
+        </div>
+
+        {/* Top Pagination controls */}
+        {questions.length > 5 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Pagination
+              size="small"
+              current={currentPage}
+              pageSize={pageSize}
+              total={questions.length}
+              onChange={(p, ps) => {
+                setCurrentPage(p);
+                if (ps && ps !== pageSize) setPageSize(ps);
+              }}
+              showSizeChanger={questions.length > 10}
+              pageSizeOptions={["5", "10", "20"]}
+              className="text-xs"
+            />
+          </div>
         )}
-      </span>
-    ),
-  },
-  {
-    title: "Số câu hỏi",
-    dataIndex: "questionCount",
-    key: "questionCount",
-    render: (cnt: number) => (
-      <span className="font-semibold text-slate-700">{cnt ?? 0} câu</span>
-    ),
-  },
-  {
-    title: "Thời gian",
-    dataIndex: "timeLimitSeconds",
-    key: "timeLimitSeconds",
-    render: (sec: number) => (sec ? `${Math.round(sec / 60)} phút` : "Không giới hạn"),
-  },
-  {
-    title: "Ngày tạo",
-    dataIndex: "createdAt",
-    key: "createdAt",
-    render: (date: string) => new Date(date).toLocaleString("vi-VN"),
-  },
-];
+      </div>
 
-// ── Component ────────────────────────────────────────────────
+      {/* ── QUESTIONS LIST (CARD STYLE LIKE EXAM) ── */}
+      <div className="space-y-3.5 max-h-[520px] overflow-y-auto pr-1">
+        {paginatedQuestions.map((q, idx) => {
+          const globalIdx = (currentPage - 1) * pageSize + idx;
+          return (
+            <ExamVersionQuestionCard
+              key={q.id || globalIdx}
+              question={q}
+              index={globalIdx}
+            />
+          );
+        })}
+      </div>
 
-/**
- * Exam version history modal.
- * Shows a table of published versions and, when there are unpublished
- * changes, provides a "Tạo phiên bản mới" button.
- */
+      {/* ── BOTTOM PAGINATION ── */}
+      {questions.length > 5 && (
+        <div className="flex items-center justify-between border-t border-slate-200/60 pt-3 text-xs text-slate-400">
+          <span>
+            Đang xem câu {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, questions.length)} / {questions.length} câu
+          </span>
+          <Pagination
+            size="small"
+            current={currentPage}
+            pageSize={pageSize}
+            total={questions.length}
+            onChange={(p) => setCurrentPage(p)}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main Modal Component ─────────────────────────────────────
+
 export default function ExamVersionsModal({
   open,
   viewingExam,
@@ -87,6 +130,29 @@ export default function ExamVersionsModal({
   onRefresh,
   onLoadAllData,
 }: Props) {
+  const [versionDetails, setVersionDetails] = useState<Record<string, ExamVersionDetail>>({});
+  const [loadingVersionIds, setLoadingVersionIds] = useState<Record<string, boolean>>({});
+  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
+
+  const handleExpand = async (expanded: boolean, record: ExamVersion) => {
+    if (expanded) {
+      setExpandedRowKeys((prev) => [...prev, record.id]);
+      if (!versionDetails[record.id] && !loadingVersionIds[record.id] && viewingExam) {
+        setLoadingVersionIds((prev) => ({ ...prev, [record.id]: true }));
+        try {
+          const detail = await learningCmsService.exams.getVersion(viewingExam.id, record.id);
+          setVersionDetails((prev) => ({ ...prev, [record.id]: detail }));
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || `Không thể tải câu hỏi của phiên bản v${record.versionNumber}`);
+        } finally {
+          setLoadingVersionIds((prev) => ({ ...prev, [record.id]: false }));
+        }
+      }
+    } else {
+      setExpandedRowKeys((prev) => prev.filter((k) => k !== record.id));
+    }
+  };
+
   const handleUpgrade = async () => {
     if (!viewingExam) return;
     try {
@@ -107,6 +173,102 @@ export default function ExamVersionsModal({
     }
   };
 
+  const renderExpandedVersion = (record: ExamVersion) => {
+    const isLoading = loadingVersionIds[record.id];
+    const detail = versionDetails[record.id];
+
+    if (isLoading) {
+      return (
+        <div className="py-8 px-4 bg-slate-50/80 rounded-2xl border border-slate-200/60 flex items-center justify-center gap-3 text-slate-500 text-xs">
+          <Spin size="small" />
+          <span>Đang tải snapshot câu hỏi của phiên bản v{record.versionNumber}...</span>
+        </div>
+      );
+    }
+
+    if (!detail) {
+      return null;
+    }
+
+    return (
+      <ExamVersionQuestionsList
+        detail={detail}
+        versionNumber={record.versionNumber}
+      />
+    );
+  };
+
+  const columns = [
+    {
+      title: "Phiên bản",
+      dataIndex: "versionNumber",
+      key: "versionNumber",
+      width: 140,
+      render: (num: number, r: ExamVersion) => (
+        <span className="font-bold text-indigo-600 inline-flex items-center gap-1.5">
+          v{num}
+          {r.isCurrent && (
+            <Tag color="success" className="border-none rounded-full px-2 text-[10px] font-bold">
+              Hiện hành
+            </Tag>
+          )}
+        </span>
+      ),
+    },
+    {
+      title: "Số câu hỏi",
+      dataIndex: "questionCount",
+      key: "questionCount",
+      width: 120,
+      render: (cnt: number) => (
+        <span className="font-semibold text-slate-700">{cnt ?? 0} câu</span>
+      ),
+    },
+    {
+      title: "Thời gian",
+      dataIndex: "timeLimitSeconds",
+      key: "timeLimitSeconds",
+      width: 140,
+      render: (sec: number) => (sec ? `${Math.round(sec / 60)} phút` : "Không giới hạn"),
+    },
+    {
+      title: "Ngày tạo",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      render: (date: string) => (date ? new Date(date).toLocaleString("vi-VN") : "—"),
+    },
+    {
+      title: "Xem câu hỏi",
+      key: "expandAction",
+      width: 130,
+      align: "right" as const,
+      render: (_: any, r: ExamVersion) => {
+        const isExpanded = expandedRowKeys.includes(r.id);
+        return (
+          <Button
+            type="text"
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleExpand(!isExpanded, r);
+            }}
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold p-0 h-auto"
+          >
+            {isExpanded ? (
+              <span className="inline-flex items-center gap-1">
+                Thu gọn <DownOutlined className="text-[10px]" />
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                Xem câu hỏi <RightOutlined className="text-[10px]" />
+              </span>
+            )}
+          </Button>
+        );
+      },
+    },
+  ];
+
   return (
     <Modal
       title={
@@ -116,14 +278,17 @@ export default function ExamVersionsModal({
         </div>
       }
       open={open}
-      onCancel={onCancel}
+      onCancel={() => {
+        setExpandedRowKeys([]);
+        onCancel();
+      }}
       footer={null}
       centered
       maskClosable={false}
-      width={720}
+      width={900}
       styles={{
         body: {
-          maxHeight: "74vh",
+          maxHeight: "82vh",
           overflowY: "auto",
           overflowX: "hidden",
           paddingRight: "8px",
@@ -161,7 +326,12 @@ export default function ExamVersionsModal({
           pagination={false}
           size="small"
           className="border border-slate-100 rounded-xl overflow-hidden shadow-sm"
-          columns={COLUMNS}
+          columns={columns}
+          expandable={{
+            expandedRowRender: renderExpandedVersion,
+            expandedRowKeys,
+            onExpand: handleExpand,
+          }}
         />
       </div>
     </Modal>

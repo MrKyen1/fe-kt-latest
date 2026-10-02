@@ -9,7 +9,7 @@ import { Modal } from "antd";
 import { Trophy } from "lucide-react";
 import { studentLearningService } from "../../services/studentLearningService";
 import { parseBackendAnswer } from "./ExamDetail";
-import { formatScore, formatPercentage } from "../../utils/studentExamUtils";
+import { formatScore, formatPercentage, formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
 
 interface ExamContainerProps {
   examData: ExamData;
@@ -39,11 +39,46 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
     case "multiple_choice":
     case "audio_choice":
     case "image_choice":
+    case "audio_image_choice":
+    case "true_false":
     case "reading_comprehension":
     case "multiple-choice":
     case "listening":
     case "true-false": {
       const options: any[] = question.options || [];
+
+      // Lấy danh sách ID các đáp án đúng từ câu hỏi (options có isCorrect hoặc correctAnswer)
+      const correctOptionIdsFromOptions = options
+        .filter((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"))
+        .map((o: any) => norm(o.id || o.label || o.content));
+
+      let backendCorrectIds: string[] = [];
+      if (Array.isArray(correct)) {
+        backendCorrectIds = correct.map(norm);
+      } else if (typeof correct === "object" && correct !== null) {
+        if (Array.isArray((correct as any).selectedOptionIds)) {
+          backendCorrectIds = (correct as any).selectedOptionIds.map(norm);
+        } else if (Array.isArray((correct as any).correctOptionIds)) {
+          backendCorrectIds = (correct as any).correctOptionIds.map(norm);
+        }
+      } else if (correct !== undefined && correct !== null && correct !== "") {
+        backendCorrectIds = [norm(correct)];
+      }
+
+      const allCorrectIds = Array.from(new Set([...correctOptionIdsFromOptions, ...backendCorrectIds])).filter(Boolean);
+
+      // Nếu người dùng chọn mảng (câu hỏi chọn nhiều đáp án)
+      if (Array.isArray(answer)) {
+        const userSelectedIds = answer.map((a) => {
+          const opt = options.find((o: any) => norm(o.id) === norm(a) || norm(o.label) === norm(a) || norm(o.content) === norm(a));
+          return opt ? norm(opt.id || opt.label || opt.content) : norm(a);
+        });
+
+        if (allCorrectIds.length > 0) {
+          if (userSelectedIds.length !== allCorrectIds.length) return false;
+          return allCorrectIds.every((id) => userSelectedIds.includes(id));
+        }
+      }
 
       // 1. Check if selected option object itself has isCorrect === true
       const ansOpt = options.find((o: any) => {
@@ -55,32 +90,33 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
         );
       });
 
-      if (ansOpt && (ansOpt.isCorrect === true || String((ansOpt as any).isCorrect) === "true")) {
-        return true;
-      }
-
-      // 2. Check if question.correctAnswer matches answer or ansOpt
-      if (correct !== undefined && correct !== null && correct !== "") {
-        const corrStr = norm(correct);
-        if (ansStr === corrStr) return true;
-        if (ansOpt) {
-          if (norm(ansOpt.id) === corrStr || norm(ansOpt.label) === corrStr || norm(ansOpt.content) === corrStr) {
-            return true;
-          }
-        }
-        if (typeof correct === "object" && Array.isArray((correct as any).selectedOptionIds)) {
-          const ids = (correct as any).selectedOptionIds.map(norm);
-          if (ids.includes(ansStr) || (ansOpt && (ids.includes(norm(ansOpt.id)) || ids.includes(norm(ansOpt.label)) || ids.includes(norm(ansOpt.content))))) {
-            return true;
-          }
-        }
-      }
-
-      // 3. Fallback: match against any option in options list that has isCorrect: true
-      const correctOpt = options.find((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"));
-      if (correctOpt && ansOpt) {
-        if (ansOpt === correctOpt || (ansOpt.id && ansOpt.id === correctOpt.id) || (ansOpt.content && norm(ansOpt.content) === norm(correctOpt.content))) {
+      // Nếu là câu đơn đáp án đúng
+      if (allCorrectIds.length <= 1) {
+        if (ansOpt && (ansOpt.isCorrect === true || String((ansOpt as any).isCorrect) === "true")) {
           return true;
+        }
+
+        if (correct !== undefined && correct !== null && correct !== "") {
+          const corrStr = norm(correct);
+          if (ansStr === corrStr) return true;
+          if (ansOpt) {
+            if (norm(ansOpt.id) === corrStr || norm(ansOpt.label) === corrStr || norm(ansOpt.content) === corrStr) {
+              return true;
+            }
+          }
+          if (typeof correct === "object" && Array.isArray((correct as any).selectedOptionIds)) {
+            const ids = (correct as any).selectedOptionIds.map(norm);
+            if (ids.includes(ansStr) || (ansOpt && (ids.includes(norm(ansOpt.id)) || ids.includes(norm(ansOpt.label)) || ids.includes(norm(ansOpt.content))))) {
+              return true;
+            }
+          }
+        }
+
+        const correctOpt = options.find((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"));
+        if (correctOpt && ansOpt) {
+          if (ansOpt === correctOpt || (ansOpt.id && ansOpt.id === correctOpt.id) || (ansOpt.content && norm(ansOpt.content) === norm(correctOpt.content))) {
+            return true;
+          }
         }
       }
 
@@ -273,11 +309,29 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return count;
   }, [examData.questions, questionResults]);
 
+  const isCurrentMastered100 =
+    submitResult
+      ? Boolean((submitResult as any)?.mastered) || (currentMasteredCount === examData.questions.length && examData.questions.length > 0)
+      : examData.questions.length === 0 ||
+        (currentMasteredCount === examData.questions.length && examData.questions.length > 0) ||
+        Boolean(examData.mastered);
+
   const isPracticeCompleted100 =
     !isInitialExam &&
     (isExamComplete || examData.status === "submitted") &&
     !isReviewMode &&
-    (examData.questions.length === 0 || (currentMasteredCount === examData.questions.length && examData.questions.length > 0));
+    isCurrentMastered100;
+
+  const isExamType = examData.examType === "exam";
+
+  const currentScoreDisplay = useMemo(() => {
+    return formatStudentExamScoreDisplay({
+      isExamType,
+      score: submitResult?.score ?? examData.score,
+      maxScore: submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length,
+      percentage: submitResult?.percentage ?? examData.percentage,
+    });
+  }, [isExamType, submitResult, examData]);
 
   const totalQuestions = activeQuestions.length;
   const safeIndex = currentIndex >= totalQuestions ? 0 : currentIndex;
@@ -502,7 +556,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       if (currentIndex < totalQuestions - 1) {
         setCurrentIndex((prev) => prev + 1);
       } else {
-        navigate(-1);
+        // Nếu đã hoàn thành 100%, thoát xem đáp án về màn hình chúc mừng / kết quả
+        if (isCurrentMastered100) {
+          setIsReviewMode(false);
+          setIsExamComplete(true);
+        } else {
+          // Nếu chưa đạt 100%, tự động tạo lượt làm lại các câu sai để học sinh làm tiếp tới khi đúng hết
+          handleRetryNewAttempt();
+        }
       }
       return;
     }
@@ -546,6 +607,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       case "multiple_choice":
       case "audio_choice":
       case "image_choice":
+      case "audio_image_choice":
+      case "true_false":
       case "reading_comprehension":
       case "multiple-choice":
       case "listening":
@@ -930,36 +993,73 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const [isRetrying, setIsRetrying] = useState(false);
 
-  const handleRetryNewAttempt = async () => {
+  const handleRetryNewAttempt = async (forceRestart = false) => {
     if (isRetrying) return;
     try {
       setIsRetrying(true);
       let attemptResult: any = null;
-      if (examData.source === "teacher_assigned") {
-        const targetExamId = examData.examId || examData.id;
+      const targetExamId = examData.examId || (examData as any).exam?.id || examData.id;
+      const shouldRestart = forceRestart;
+
+      const isTeacherAssigned =
+        examData.source === "teacher_assigned" ||
+        (!examData.source && !!examData.assignmentStudentId);
+
+      const isCurriculum =
+        examData.source === "self_study" ||
+        (!examData.source && (!!(examData as any).curriculumId || !!(examData as any).curriculumAssignmentStudentId));
+
+      console.log("[handleRetryNewAttempt] Start with forceRestart:", forceRestart, "shouldRestart:", shouldRestart);
+      if (isTeacherAssigned) {
         if (!examData.assignmentStudentId || !targetExamId) {
           throw new Error("Thông tin bài giao không hợp lệ.");
         }
         attemptResult = await studentLearningService.examAssignments.startAttempt(
           examData.assignmentStudentId,
-          targetExamId
+          targetExamId,
+          shouldRestart ? { restart: true } : undefined
         );
-      } else if (examData.source === "self_study") {
-        const curriculumId = (examData as any).curriculumId;
-        const targetExamId = examData.examId || examData.id;
+        console.log("[handleRetryNewAttempt] teacherAssigned attemptResult:", attemptResult);
+      } else if (isCurriculum) {
+        let curriculumId = (examData as any).curriculumId;
+        if (!curriculumId && (examData as any).curriculumAssignmentStudentId) {
+          try {
+            const currList = await studentLearningService.curriculums.list({ limit: 100 });
+            const list = Array.isArray(currList) ? currList : (currList as any)?.data ?? [];
+            const matched = list.find((c: any) =>
+              c.enrollmentId === (examData as any).curriculumAssignmentStudentId ||
+              (c as any).id === (examData as any).curriculumAssignmentStudentId ||
+              c.curriculumId === (examData as any).curriculumAssignmentStudentId
+            );
+            if (matched) {
+              curriculumId = matched.curriculumId || (matched as any).id;
+            }
+          } catch (cErr) {
+            console.warn("Failed to resolve curriculumId in handleRetryNewAttempt:", cErr);
+          }
+        }
         if (!curriculumId || !targetExamId) {
           throw new Error("Thông tin lộ trình học không hợp lệ.");
         }
         attemptResult = await studentLearningService.curriculums.startAttempt(
           curriculumId,
-          targetExamId
+          targetExamId,
+          shouldRestart ? { restart: true } : undefined
         );
+        console.log("[handleRetryNewAttempt] curriculum attemptResult:", attemptResult);
       } else {
         throw new Error("Nguồn bài thi không hỗ trợ làm lại.");
       }
 
       const attemptId = attemptResult?.id;
       if (!attemptId) {
+        if ((attemptResult as any)?.mastered) {
+          Modal.success({
+            title: "Hoàn thành bài thi",
+            content: "Bạn đã hoàn thành 100% bài thi này!",
+          });
+          return;
+        }
         throw new Error("Không thể tạo lượt làm bài mới.");
       }
       
@@ -997,7 +1097,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const handleBackClick = () => {
     if (isReviewMode) {
-      navigate(-1);
+      setIsReviewMode(false);
+      setIsExamComplete(true);
       return;
     }
     Modal.confirm({
@@ -1068,6 +1169,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             >
               Xem lại tất cả đáp án
             </button>
+            <button
+              onClick={() => handleRetryNewAttempt(true)}
+              disabled={isRetrying}
+              title="Làm lại toàn bộ đề"
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+            >
+              {isRetrying ? "Đang tạo lượt mới..." : "Ôn tập lại"}
+            </button>
           </div>
         </div>
       </div>
@@ -1094,29 +1203,31 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     // Stat cards
     const stats: { label: string; value: React.ReactNode; bg: string; labelColor: string; valueColor: string }[] = [
       {
-        label: "Điểm số",
-        value: `${formatScore(submitResult?.score)} / ${formatScore(submitResult?.maxScore)}`,
+        label: isExamType ? "Điểm số (Thang 10)" : "Tiến độ ôn tập",
+        value: isExamType
+          ? `${currentScoreDisplay.primaryText} / 10 đ`
+          : (isMastered ? "100% (Thành thạo)" : `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`),
         bg: "bg-emerald-50 border-emerald-100",
         labelColor: "text-emerald-600",
         valueColor: "text-emerald-700",
       },
       {
-        label: "Tỷ lệ đúng",
-        value: `${formatPercentage(submitResult?.percentage)}%`,
+        label: "Tỷ lệ chính xác",
+        value: `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`,
         bg: isMastered ? "bg-indigo-50 border-indigo-100" : "bg-amber-50 border-amber-100",
         labelColor: isMastered ? "text-indigo-600" : "text-amber-600",
         valueColor: isMastered ? "text-indigo-700" : "text-amber-700",
       },
       {
-        label: "Số câu đúng",
-        value: submitResult?.displayResult ?? `${formatScore(submitResult?.score)} / ${formatScore(submitResult?.maxScore)}`,
+        label: isExamType ? "Số câu làm đúng" : "Số câu hoàn thành",
+        value: `${formatScore(submitResult?.score ?? examData.score)} / ${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu`,
         bg: "bg-slate-50 border-slate-200",
         labelColor: "text-slate-500",
         valueColor: "text-slate-800",
       },
       {
         label: "Chưa trả lời",
-        value: totalUnanswered,
+        value: `${totalUnanswered} câu`,
         bg: "bg-slate-50 border-slate-200",
         labelColor: "text-slate-500",
         valueColor: "text-slate-800",
@@ -1177,18 +1288,39 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             >
               Xem lại đáp án
             </button>
-            {!isMastered && (
+            {isMastered ? (
               <button
-                onClick={handleRetryNewAttempt}
+                onClick={() => handleRetryNewAttempt(true)}
                 disabled={isRetrying}
+                title="Làm lại toàn bộ đề"
                 className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                {isRetrying
-                  ? "Đang tạo lượt mới..."
-                  : remainingCount > 0
-                  ? `Làm lại câu sai (${remainingCount} câu)`
-                  : "Làm tiếp / Làm lại"}
+                {isRetrying ? "Đang tạo lượt mới..." : "Ôn tập lại"}
               </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleRetryNewAttempt(false)}
+                  disabled={isRetrying}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {isRetrying
+                    ? "Đang tạo lượt mới..."
+                    : remainingCount > 0
+                    ? `Làm lại câu sai (${remainingCount} câu)`
+                    : "Làm tiếp / Làm lại"}
+                </button>
+                {((examData as any).isRedo || (examData as any).is_redo) && (
+                  <button
+                    onClick={() => handleRetryNewAttempt(true)}
+                    disabled={isRetrying}
+                    title="Bắt đầu lại chu kỳ ôn tập với toàn bộ câu hỏi"
+                    className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition disabled:opacity-50"
+                  >
+                    Ôn tập lại cả đề
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1218,7 +1350,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           {isReviewMode ? (
             <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
               <span className="text-sm font-bold text-emerald-700">
-                Điểm: {formatScore(submitResult?.score ?? examData.score)} / {formatScore(submitResult?.maxScore ?? examData.maxScore)} ({formatPercentage(submitResult?.percentage ?? examData.percentage)}%)
+                {isExamType
+                  ? `Điểm: ${currentScoreDisplay.primaryText} / 10 đ (Đúng ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu)`
+                  : `Ôn tập: Đúng ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu (${formatPercentage(submitResult?.percentage ?? examData.percentage)}%)`}
               </span>
             </div>
           ) : (
@@ -1381,6 +1515,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     isLastQuestion={isReviewMode ? currentIndex === totalQuestions - 1 : (currentIndex === totalQuestions - 1 || (!isInitialExam && currentMasteredCount === totalQuestions))}
                     isReviewMode={isReviewMode}
                     isPracticeMode={!isInitialExam}
+                    isMastered={isCurrentMastered100}
                   />
                 </motion.div>
               </AnimatePresence>

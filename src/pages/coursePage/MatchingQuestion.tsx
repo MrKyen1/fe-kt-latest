@@ -6,7 +6,8 @@ import {
   DragEndEvent,
 } from "@dnd-kit/core";
 import { motion } from "framer-motion";
-import { ExamQuestion } from "../../types";
+import { ExamQuestion, ExamMedia } from "../../types";
+import { AppImage } from "../../components/AppImagePreview";
 
 const UNASSIGNED_ZONE_ID = "choices";
 
@@ -55,15 +56,24 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
   );
 };
 
+const isUuidOrId = (text?: string, id?: string) => {
+  if (!text) return true;
+  const trimmed = text.trim();
+  if (id && (trimmed === id || trimmed === id.trim())) return true;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+};
+
 const DropZone: React.FC<{
   id: string;
   label: string;
+  media?: ExamMedia;
   matchedId?: string;
   matchedLabel?: string;
   isCorrect?: boolean;
   showFeedback?: boolean;
-}> = ({ id, label, matchedId, matchedLabel, isCorrect, showFeedback }) => {
+}> = ({ id, label, media, matchedId, matchedLabel, isCorrect, showFeedback }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const displayLabel = media && isUuidOrId(label, id) ? "" : label;
 
   return (
     <div
@@ -78,11 +88,30 @@ const DropZone: React.FC<{
           : "border-slate-200"
       } ${isOver ? "ring-2 ring-emerald-500/60" : ""}`}
     >
-      <span className="font-medium text-slate-700">
-        {label}
-      </span>
+      <div className="flex items-center gap-3 min-w-0">
+        {media && (
+          media.type === "image" ? (
+            <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-white flex items-center justify-center">
+              <AppImage
+                src={media.url}
+                alt={displayLabel || "Hình ảnh ghép đôi"}
+                className="w-full h-full object-cover"
+                maskText="Xem ảnh"
+              />
+            </div>
+          ) : media.type === "audio" ? (
+            <div className="shrink-0">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio src={media.url} controls className="h-7 max-w-[200px]" />
+            </div>
+          ) : null
+        )}
+        {displayLabel ? (
+          <span className="font-medium text-slate-700 text-sm">{displayLabel}</span>
+        ) : null}
+      </div>
 
-      <div className="flex items-center gap-3 min-w-[120px] justify-end">
+      <div className="flex items-center gap-3 min-w-[120px] justify-end shrink-0">
         {matchedId && matchedLabel ? (
           <DraggableItem id={matchedId} label={matchedLabel} disabled={showFeedback} />
         ) : (
@@ -105,9 +134,11 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
   const leftItemsList = useMemo(() => {
     return (question.leftItems || []).map((item) => {
       if (typeof item === "string") {
-        return { id: item, text: item };
+        return { id: item, text: item, media: undefined };
       }
-      return item as { id: string; text: string };
+      const rawText = item.text || "";
+      const text = item.media && isUuidOrId(rawText, item.id) ? "" : rawText;
+      return { id: item.id, text, media: item.media };
     });
   }, [question.leftItems]);
 
@@ -116,7 +147,9 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
       if (typeof item === "string") {
         return { id: item, text: item };
       }
-      return item as { id: string; text: string };
+      const rawText = item.text || "";
+      const text = (item as any).media && isUuidOrId(rawText, item.id) ? "" : rawText;
+      return { id: item.id, text };
     });
   }, [question.rightItems]);
 
@@ -185,6 +218,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
                   key={item.id}
                   id={item.id}
                   label={item.text}
+                  media={item.media}
                   matchedId={matched}
                   matchedLabel={matchedItem?.text}
                   isCorrect={isCorrect}

@@ -629,8 +629,8 @@ export function ExamAnalyticsModal({
             </div>
           </div>
         }
-        width={960}
-        className="rounded-3xl overflow-hidden"
+        width={1120}
+        className="rounded-3xl overflow-hidden max-w-[96vw]"
         styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
       >
         {loading ? (

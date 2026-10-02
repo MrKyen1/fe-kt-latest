@@ -8,6 +8,7 @@ import {
 } from "@ant-design/icons";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, PAGE_SIZE_QUESTIONS } from "../constants";
 import { Can } from "../../../../../components/Can";
+import { QuestionPopover } from "./QuestionPopoverContent";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -20,12 +21,20 @@ interface Question {
   status: string;
   skillId?: string;
   difficultyLevelId?: string;
+  topicId?: string;
+  tags?: Array<{ id?: string; name?: string; tagId?: string; tag?: { id: string; name: string } }>;
+  options?: any[];
+  detail?: Record<string, any>;
+  explanation?: string;
 }
 
 interface Props {
   questions: Question[];
   skills:    TaxItem[];
   levels:    TaxItem[];
+  topics?:   TaxItem[];
+  tags?:     TaxItem[];
+  questionDetails?: Record<string, any>;
   onCreateClick:        () => void;
   onEditClick:          (record: Question) => void;
   onDuplicateClick:     (record: Question) => void;
@@ -46,43 +55,49 @@ function StatusTag({ status }: { status: string }) {
 // ── Columns ──────────────────────────────────────────────────
 
 function buildColumns(
-  skills:         TaxItem[],
-  levels:         TaxItem[],
-  onEdit:         (r: Question) => void,
-  onDuplicate:    (r: Question) => void,
-  onDelete:       (r: Question) => void,
-  onViewVersions: (r: Question) => void,
+  skills:          TaxItem[],
+  levels:          TaxItem[],
+  topics:          TaxItem[],
+  tags:            TaxItem[],
+  questionDetails: Record<string, any>,
+  onEdit:          (r: Question) => void,
+  onDuplicate:     (r: Question) => void,
+  onDelete:        (r: Question) => void,
+  onViewVersions:  (r: Question) => void,
 ) {
   return [
     {
       title: "Đề bài",
       dataIndex: "prompt",
       width: "50%",
-      render: (val: string, record: Question) => (
-        <div>
-          <Tooltip
-            title={
+      render: (val: string, record: Question) => {
+        const fullQuestion = questionDetails?.[record.id]
+          ? { ...record, ...questionDetails[record.id] }
+          : record;
+        return (
+          <div>
+            <QuestionPopover
+              question={fullQuestion}
+              skills={skills}
+              levels={levels}
+              topics={topics}
+              tags={tags}
+              placement="right"
+            >
               <div
-                className="max-h-64 overflow-y-auto p-1 text-xs leading-relaxed text-slate-100"
+                className="font-semibold text-slate-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 transition-colors w-fit max-w-full"
                 dangerouslySetInnerHTML={{ __html: val }}
               />
-            }
-            placement="topLeft"
-            overlayStyle={{ maxWidth: 520 }}
-          >
-            <div
-              className="font-semibold text-slate-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 transition-colors"
-              dangerouslySetInnerHTML={{ __html: val }}
-            />
-          </Tooltip>
-          <Tag
-            color={QUESTION_TYPE_COLORS[record.type] ?? "default"}
-            className="rounded border-none text-[10px] mt-1.5 font-bold uppercase"
-          >
-            {QUESTION_TYPE_LABELS[record.type] ?? record.type}
-          </Tag>
-        </div>
-      ),
+            </QuestionPopover>
+            <Tag
+              color={QUESTION_TYPE_COLORS[record.type] ?? "default"}
+              className="rounded border-none text-[10px] mt-1.5 font-bold uppercase"
+            >
+              {QUESTION_TYPE_LABELS[record.type] ?? record.type}
+            </Tag>
+          </div>
+        );
+      },
     },
     {
       title: "Phân loại",
@@ -156,6 +171,9 @@ export default function QuestionsTab({
   questions,
   skills,
   levels,
+  topics = [],
+  tags = [],
+  questionDetails = {},
   onCreateClick,
   onEditClick,
   onDuplicateClick,
@@ -165,6 +183,9 @@ export default function QuestionsTab({
   const columns = buildColumns(
     skills,
     levels,
+    topics,
+    tags,
+    questionDetails,
     onEditClick,
     onDuplicateClick,
     onDeleteClick,

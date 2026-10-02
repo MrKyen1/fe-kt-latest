@@ -24,7 +24,10 @@ import {
   Progress,
   Alert,
   Segmented,
+  DatePicker,
 } from "antd";
+import dayjs from "dayjs";
+import { SafeSelect } from "../../../components/SafeSelect";
 
 import {
   BookOutlined,
@@ -46,6 +49,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   TrophyOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import { ClipboardList, Info, Building2, Filter } from "lucide-react";
 
@@ -90,7 +94,18 @@ interface StudentOption {
   id: string;
   fullName?: string;
   code?: string;
-  studentProfile?: { id?: string; classes?: { id: string; centerId?: string; class?: { centerId?: string } }[] };
+  phone?: string;
+  email?: string;
+  dateOfBirth?: string;
+  startDate?: string;
+  citizenId?: string;
+  address?: string;
+  studentProfile?: {
+    id?: string;
+    parentFullName?: string;
+    birthYear?: number;
+    classes?: { id: string; name?: string; centerId?: string; class?: { id: string; name?: string; centerId?: string } }[];
+  };
 }
 
 // ==================== STATUS TAG ====================
@@ -345,14 +360,22 @@ export default function TeacherAssignments() {
 
   // ==================== USER CENTERS & SPECIALIZATIONS ====================
   const teacherClassIds = useMemo(() => {
-    return (user?.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? []).filter(Boolean);
+    const list1 = user?.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? [];
+    const list2 = user?.teacher?.classes?.map((c: any) => c.classId || c.id) ?? [];
+    const list3 = (user?.teacherProfile as any)?.classIds ?? [];
+    return Array.from(new Set([...list1, ...list2, ...list3].filter(Boolean)));
   }, [user]);
 
   const userCenters = useMemo(() => {
     const set = new Set<string>();
     if (user?.centerId) set.add(user.centerId);
     if (user?.teacherProfile?.centerId) set.add(user.teacherProfile.centerId);
+    if ((user?.teacher as any)?.centerId) set.add((user.teacher as any).centerId);
     (user?.teacherProfile?.classes ?? []).forEach((c: any) => {
+      const cid = c.centerId || c.center?.id || c.class?.centerId || c.class?.center?.id;
+      if (cid) set.add(cid);
+    });
+    (user?.teacher?.classes ?? []).forEach((c: any) => {
       const cid = c.centerId || c.center?.id || c.class?.centerId || c.class?.center?.id;
       if (cid) set.add(cid);
     });
@@ -363,10 +386,27 @@ export default function TeacherAssignments() {
     return Array.from(set);
   }, [user, allClasses, teacherClassIds]);
 
+  const displayCenters = useMemo(() => {
+    if (isTeacher) {
+      const matched = centers.filter((c) => userCenters.includes(c.id));
+      if (matched.length > 0) return matched;
+      if (user?.centerId) {
+        const fallback = centers.filter((c) => c.id === user.centerId);
+        if (fallback.length > 0) return fallback;
+      }
+      return [];
+    }
+    return centers;
+  }, [isTeacher, centers, userCenters, user?.centerId]);
+
   const teacherSpecializationIds = useMemo(() => {
     const set = new Set<string>();
     (user?.teacherProfile?.specializationIds ?? []).forEach((id: string) => set.add(id));
     (user?.teacherProfile?.specializations ?? []).forEach((s: any) => set.add(s.id));
+    (user?.teacher?.teacherSpecializations ?? []).forEach((ts: any) => {
+      if (ts.specializationId) set.add(ts.specializationId);
+      if (ts.specialization?.id) set.add(ts.specialization.id);
+    });
     (allClasses ?? []).forEach((c: any) => {
       if (teacherClassIds.includes(c.id) && c.specializationId) {
         set.add(c.specializationId);
@@ -447,16 +487,31 @@ export default function TeacherAssignments() {
   // Auto initialize selectedCenterId based on user context
   useEffect(() => {
     if (!centerInitialized && centers.length > 0) {
-      if (userCenters.length > 0) {
-        setSelectedCenterId(userCenters[0]);
-      } else if (user?.centerId) {
-        setSelectedCenterId(user.centerId);
-      } else if (!isTeacher && centers.length > 0) {
-        setSelectedCenterId(centers[0].id);
+      if (isTeacher) {
+        if (userCenters.length > 0) {
+          setSelectedCenterId(userCenters[0]);
+        } else if (user?.centerId) {
+          setSelectedCenterId(user.centerId);
+        } else if (displayCenters.length > 0) {
+          setSelectedCenterId(displayCenters[0].id);
+        }
+      } else {
+        setSelectedCenterId("all");
       }
       setCenterInitialized(true);
     }
-  }, [centers, userCenters, user?.centerId, centerInitialized, isTeacher]);
+  }, [centers, userCenters, user?.centerId, centerInitialized, isTeacher, displayCenters]);
+
+  // Ensure teacher never has an invalid centerId or 'all' when they only have 1 center
+  useEffect(() => {
+    if (isTeacher && centerInitialized && userCenters.length > 0) {
+      if (selectedCenterId !== "all" && !userCenters.includes(selectedCenterId)) {
+        setSelectedCenterId(userCenters[0]);
+      } else if (selectedCenterId === "all" && userCenters.length === 1) {
+        setSelectedCenterId(userCenters[0]);
+      }
+    }
+  }, [isTeacher, centerInitialized, userCenters, selectedCenterId]);
 
   // ==================== HELPER RESOLVERS ====================
   const getCenterName = (centerId?: string) => {
@@ -573,6 +628,13 @@ export default function TeacherAssignments() {
     return examAssignments.filter((record) => {
       const itemCenterId = getRecordCenterId(record);
 
+      // Strict Teacher Center Boundary: Never show records from other centers
+      if (isTeacher) {
+        if (itemCenterId && userCenters.length > 0 && !userCenters.includes(itemCenterId) && !isMyRecord(record)) {
+          return false;
+        }
+      }
+
       // Center Filter
       if (selectedCenterId !== "all") {
         if (itemCenterId && itemCenterId !== selectedCenterId) return false;
@@ -602,11 +664,18 @@ export default function TeacherAssignments() {
 
       return true;
     });
-  }, [examAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, resolveStudentName]);
+  }, [examAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, userCenters, resolveStudentName]);
 
   const filteredCurriculumAssignments = useMemo(() => {
     return curriculumAssignments.filter((record) => {
       const itemCenterId = getRecordCenterId(record);
+
+      // Strict Teacher Center Boundary: Never show records from other centers
+      if (isTeacher) {
+        if (itemCenterId && userCenters.length > 0 && !userCenters.includes(itemCenterId) && !isMyRecord(record)) {
+          return false;
+        }
+      }
 
       // Center Filter
       if (selectedCenterId !== "all") {
@@ -637,34 +706,83 @@ export default function TeacherAssignments() {
 
       return true;
     });
-  }, [curriculumAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, resolveStudentName]);
+  }, [curriculumAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, userCenters, resolveStudentName]);
+
+  // Helper to resolve all class IDs for a student
+  const getStudentClassIds = useCallback((student: StudentOption): string[] => {
+    const profile = student.studentProfile as any;
+    if (!profile) return [];
+    const ids = new Set<string>();
+    if (Array.isArray(profile.classIds)) {
+      profile.classIds.forEach((id: string) => ids.add(id));
+    }
+    if (Array.isArray(profile.classes)) {
+      profile.classes.forEach((c: any) => {
+        const cid = c.classId || c.id || c.class?.id;
+        if (cid) ids.add(cid);
+      });
+    }
+    return Array.from(ids);
+  }, []);
 
   // ==================== MODAL OPTIONS ====================
   const teacherAssignedClasses = useMemo(() => {
     if (!isTeacher) return [];
-    const authClasses = user?.teacher?.classes || [];
-    if (authClasses.length > 0) {
-      return authClasses
-        .filter((tc: any) => tc.isActive !== false && tc.class && tc.class.isActive !== false)
-        .map((tc: any) => ({
-          id: tc.classId,
-          name: tc.class.name,
-          centerId: tc.class.centerId,
-          specializationId: tc.class.specializationId,
-          center: tc.class.center,
-          specialization: tc.class.specialization,
-          specializationName: tc.class.specialization?.name,
-        }));
-    }
-    // Fallback if auth profile classes is not yet populated
-    return (user?.teacherProfile?.classes || []).map((c: any) => {
+
+    const classMap = new Map<string, any>();
+
+    // 1. From allClasses that match teacherClassIds
+    allClasses.filter((c) => teacherClassIds.includes(c.id)).forEach((c) => {
       const spec = specializations.find((s) => s.id === c.specializationId);
-      return {
+      classMap.set(c.id, {
         ...c,
-        specializationName: spec?.name || c.specialization?.name,
-      };
+        specializationName: spec?.name || (c as any).specialization?.name,
+      });
     });
-  }, [isTeacher, user, specializations]);
+
+    // 2. From user?.teacher?.classes (Auth profile)
+    (user?.teacher?.classes || [])
+      .filter((tc: any) => tc.isActive !== false && tc.class && tc.class.isActive !== false)
+      .forEach((tc: any) => {
+        const cid = tc.classId || tc.class?.id;
+        if (cid) {
+          const spec = specializations.find((s) => s.id === (tc.class.specializationId || tc.specializationId));
+          classMap.set(cid, {
+            id: cid,
+            name: tc.class.name,
+            centerId: tc.class.centerId || tc.centerId,
+            specializationId: tc.class.specializationId || tc.specializationId,
+            center: tc.class.center,
+            specialization: tc.class.specialization,
+            specializationName: spec?.name || tc.class.specialization?.name,
+          });
+        }
+      });
+
+    // 3. Fallback from user?.teacherProfile?.classes
+    (user?.teacherProfile?.classes || []).forEach((c: any) => {
+      const cid = c.id || c.classId;
+      if (cid && !classMap.has(cid)) {
+        const spec = specializations.find((s) => s.id === c.specializationId);
+        classMap.set(cid, {
+          ...c,
+          id: cid,
+          specializationName: spec?.name || c.specialization?.name,
+        });
+      }
+    });
+
+    let teacherClasses = Array.from(classMap.values());
+
+    // Filter by selected center if specific center selected
+    if (selectedCenterId && selectedCenterId !== "all") {
+      teacherClasses = teacherClasses.filter((c) => c.centerId === selectedCenterId);
+    } else if (userCenters.length > 0) {
+      teacherClasses = teacherClasses.filter((c) => c.centerId && userCenters.includes(c.centerId));
+    }
+
+    return teacherClasses;
+  }, [isTeacher, allClasses, teacherClassIds, user, specializations, selectedCenterId, userCenters]);
 
   const modalClasses = useMemo(() => {
     let list = allClasses;
@@ -685,9 +803,8 @@ export default function TeacherAssignments() {
 
   const modalExams = useMemo(() => {
     if (selectedClassForExam) {
-      const classSpecId = isTeacher
-        ? teacherAssignedClasses.find((c: any) => c.id === selectedClassForExam)?.specializationId || getClassSpecializationId(selectedClassForExam)
-        : getClassSpecializationId(selectedClassForExam);
+      const cls = assignableClasses.find((c) => c.id === selectedClassForExam) || allClasses.find((c) => c.id === selectedClassForExam);
+      const classSpecId = cls?.specializationId || (cls as any)?.specialization?.id;
       if (classSpecId) {
         return exams.filter((e) => e.specializationId === classSpecId);
       }
@@ -696,11 +813,12 @@ export default function TeacherAssignments() {
       return exams.filter((e) => e.specializationId && teacherSpecializationIds.includes(e.specializationId));
     }
     return exams;
-  }, [exams, selectedClassForExam, allClasses, isTeacher, teacherSpecializationIds, teacherAssignedClasses]);
+  }, [exams, selectedClassForExam, assignableClasses, allClasses, isTeacher, teacherSpecializationIds]);
 
   const modalDirectCurriculums = useMemo(() => {
     if (selectedClassForCurriculum) {
-      const classSpecId = getClassSpecializationId(selectedClassForCurriculum);
+      const cls = assignableClasses.find((c) => c.id === selectedClassForCurriculum) || allClasses.find((c) => c.id === selectedClassForCurriculum);
+      const classSpecId = cls?.specializationId || (cls as any)?.specialization?.id;
       if (classSpecId) {
         return curriculums.filter((c) => c.specializationId === classSpecId);
       }
@@ -709,7 +827,7 @@ export default function TeacherAssignments() {
       return curriculums.filter((c) => c.specializationId && teacherSpecializationIds.includes(c.specializationId));
     }
     return curriculums;
-  }, [curriculums, selectedClassForCurriculum, allClasses, isTeacher, teacherSpecializationIds]);
+  }, [curriculums, selectedClassForCurriculum, assignableClasses, allClasses, isTeacher, teacherSpecializationIds]);
 
   const handleClassChangeForExam = (classId?: string) => {
     setSelectedClassForExam(classId);
@@ -751,7 +869,7 @@ export default function TeacherAssignments() {
   };
 
   const handleResetFilters = () => {
-    const defaultCenter = userCenters.length > 0 ? userCenters[0] : (user?.centerId || "all");
+    const defaultCenter = isTeacher && userCenters.length > 0 ? userCenters[0] : (isTeacher && user?.centerId ? user.centerId : "all");
     setSelectedCenterId(defaultCenter);
     setAssignmentScope(isTeacher ? "my" : "center");
     setSearchKeyword("");
@@ -759,28 +877,53 @@ export default function TeacherAssignments() {
 
   /**
    * Lọc học sinh theo lớp và trung tâm.
+   * Với giáo viên: CHỈ hiển thị học sinh thuộc các lớp do giáo viên phụ trách tại trung tâm của giáo viên.
    */
   const getStudentsForClass = (classId?: string) => {
     let list = allStudents;
-    const activeCenterId = selectedCenterId !== "all" ? selectedCenterId : (userCenters[0] || undefined);
 
+    if (isTeacher) {
+      // 1. Học sinh bắt buộc phải thuộc ít nhất 1 lớp mà giáo viên này phụ trách
+      list = list.filter((s) => {
+        const studentClassIds = getStudentClassIds(s);
+        return studentClassIds.some((cid) => teacherClassIds.includes(cid));
+      });
+
+      // 2. Khóa học sinh theo trung tâm của giáo viên
+      const activeCenterId = selectedCenterId !== "all" ? selectedCenterId : userCenters[0];
+      if (activeCenterId) {
+        list = list.filter((s) => {
+          const studentClassIds = getStudentClassIds(s);
+          return studentClassIds.some((cid) => {
+            const cls = allClasses.find((c) => c.id === cid);
+            return cls && cls.centerId === activeCenterId;
+          });
+        });
+      }
+
+      // 3. Nếu đã chọn lớp cụ thể, lọc đúng học sinh của lớp đó
+      if (classId) {
+        return list.filter((s) => getStudentClassIds(s).includes(classId));
+      }
+      return list;
+    }
+
+    // Với Admin / Quản lý
+    const activeCenterId = selectedCenterId !== "all" ? selectedCenterId : undefined;
     if (activeCenterId) {
-      list = allStudents.filter((s) => {
-        const studentClasses = s.studentProfile?.classes ?? [];
-        return studentClasses.some((sc: any) => {
-          const matchedClass = allClasses.find((c) => c.id === (sc.id || sc.classId));
-          return matchedClass && matchedClass.centerId === activeCenterId;
+      list = list.filter((s) => {
+        const studentClassIds = getStudentClassIds(s);
+        return studentClassIds.some((cid) => {
+          const cls = allClasses.find((c) => c.id === cid);
+          return cls && cls.centerId === activeCenterId;
         });
       });
     }
 
-    if (!classId) return list;
-    return list.filter((s) => {
-      const classIds = (s.studentProfile as any)?.classIds ?? [];
-      if (classIds.includes(classId)) return true;
-      const classesArr = s.studentProfile?.classes ?? [];
-      return classesArr.some((c: any) => c.id === classId || c.classId === classId);
-    });
+    if (classId) {
+      return list.filter((s) => getStudentClassIds(s).includes(classId));
+    }
+    return list;
   };
 
   // ==================== EXAM ASSIGNMENT HANDLERS ====================
@@ -908,50 +1051,61 @@ export default function TeacherAssignments() {
   const examAssignmentColumns = [
     {
       title: "Bài thi",
+      width: 240,
       render: (_: any, record: any) => {
         const examItems = record.exams || [];
         const titleStr = record.title;
         return (
-          <div>
-            {titleStr && <div className="font-semibold text-slate-800 mb-1">{titleStr}</div>}
-            <div className="text-slate-600 text-sm space-y-1">
-              {examItems.map((item: any, idx: number) => (
-                <div key={item.examId || idx} className={titleStr ? "pl-2 border-l-2 border-slate-200" : ""}>
-                  <div className={titleStr ? "text-xs font-normal" : "font-semibold text-slate-800"}>
-                    {item.exam?.title || item.exam?.code || item.examId}
-                  </div>
-                  {item.exam?.code && <div className="text-[10px] text-slate-400 font-mono">{item.exam.code}</div>}
+          <div className="max-w-[230px]">
+            {titleStr && (
+              <Tooltip title={titleStr} placement="topLeft">
+                <div className="font-semibold text-slate-800 mb-1 truncate cursor-pointer hover:text-indigo-600 transition-colors">
+                  {titleStr}
                 </div>
-              ))}
+              </Tooltip>
+            )}
+            <div className="text-slate-600 text-sm space-y-1">
+              {examItems.map((item: any, idx: number) => {
+                const examTitle = item.exam?.title || item.exam?.code || item.examId;
+                return (
+                  <div key={item.examId || idx} className={titleStr ? "pl-2 border-l-2 border-slate-200" : ""}>
+                    <Tooltip title={examTitle} placement="topLeft">
+                      <div className={`truncate cursor-pointer hover:text-indigo-600 transition-colors ${titleStr ? "text-xs font-normal" : "font-semibold text-slate-800"}`}>
+                        {examTitle}
+                      </div>
+                    </Tooltip>
+                    {item.exam?.code && (
+                      <Tooltip title={item.exam.code}>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">{item.exam.code}</div>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              })}
               {examItems.length === 0 && !titleStr && <span className="text-slate-400">—</span>}
             </div>
           </div>
-        );
-      }
-    },
-    {
-      title: "Trung tâm",
-      render: (_: any, record: any) => {
-        const centerId = getRecordCenterId(record);
-        const centerName = getCenterName(centerId);
-        return centerName ? (
-          <Tag color="cyan" className="rounded-full px-2.5 py-0.5 border-none font-medium">
-            <BankOutlined className="mr-1" />
-            {centerName}
-          </Tag>
-        ) : (
-          <span className="text-slate-400 text-xs">—</span>
         );
       },
     },
     {
       title: "Lớp học",
-      render: (_: any, record: any) => record.class?.name
-        ? <Tag color="blue" className="rounded-full">{record.class.name}</Tag>
-        : <span className="text-slate-400 text-sm">—</span>,
+      width: 140,
+      render: (_: any, record: any) => {
+        const className = record.class?.name;
+        if (!className) return <span className="text-slate-400 text-sm">—</span>;
+        return (
+          <Tooltip title={className} placement="topLeft">
+            <Tag color="blue" className="rounded-full max-w-[130px] truncate inline-block align-middle cursor-pointer">
+              {className}
+            </Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "Người giao",
+      width: 160,
       render: (_: any, record: any) => {
         const isMe =
           (record.teacherId && (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)) ||
@@ -962,10 +1116,18 @@ export default function TeacherAssignments() {
           record.teacher?.name ||
           (isMe ? user?.fullName : undefined);
         return (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm text-slate-700">{teacherName || "—"}</span>
+          <div className="flex items-center gap-1.5 flex-nowrap max-w-[150px]">
+            {teacherName ? (
+              <Tooltip title={teacherName} placement="topLeft">
+                <span className="text-sm text-slate-700 truncate inline-block cursor-pointer">
+                  {teacherName}
+                </span>
+              </Tooltip>
+            ) : (
+              <span className="text-sm text-slate-400">—</span>
+            )}
             {isMe && (
-              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold">
+              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold shrink-0">
                 Tôi
               </Tag>
             )}
@@ -975,57 +1137,77 @@ export default function TeacherAssignments() {
     },
     {
       title: "Đối tượng",
+      width: 130,
       render: (_: any, record: any) => {
         const students = record.students || [];
         const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
         const cnt = record.studentIds?.length ?? studentList.length;
         if (cnt) {
           const tooltipContent = (
-            <div className="space-y-1 text-xs">
+            <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
               {studentList.map((s: any, idx: number) => {
                 const name = resolveStudentName(s);
                 const statusText = s.status === "finished" ? "Đã hoàn thành" : s.status === "in_progress" ? "Đang làm" : "Chưa bắt đầu";
-                return <div key={s.id || idx}>{name}: <span className="font-semibold">{statusText}</span></div>;
+                return (
+                  <div key={s.id || idx} className="truncate">
+                    <span className="font-medium">{name}</span>: <span className="font-semibold text-emerald-300">{statusText}</span>
+                  </div>
+                );
               })}
             </div>
           );
           const content = (
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-slate-600 truncate inline-block cursor-pointer">
               <UserOutlined className="mr-1 text-indigo-400" />
               {cnt} học sinh
             </span>
           );
-          return <Tooltip title={tooltipContent}>{content}</Tooltip>;
+          return <Tooltip title={tooltipContent} placement="topLeft">{content}</Tooltip>;
         }
-        return <span className="text-sm text-slate-600"><TeamOutlined className="mr-1 text-emerald-400" />Toàn bộ lớp</span>;
+        return <span className="text-sm text-slate-600 whitespace-nowrap"><TeamOutlined className="mr-1 text-emerald-400" />Toàn bộ lớp</span>;
       },
     },
     {
       title: "Hình thức",
+      width: 120,
+      align: "center" as const,
       render: (_: any, record: any) => {
         const examItems = record.exams || [];
         const isExam = examItems.some((e: any) => e.exam?.examType === "exam");
         return isExam ? (
-          <Tag color="purple" className="rounded-full border-none text-xs font-semibold">
+          <Tag color="purple" className="rounded-full border-none text-xs font-semibold m-0">
             Đề kiểm tra
           </Tag>
         ) : (
-          <Tag color="blue" className="rounded-full border-none text-xs font-semibold">
+          <Tag color="blue" className="rounded-full border-none text-xs font-semibold m-0">
             Đề ôn tập
           </Tag>
         );
       },
     },
-    { title: "Trạng thái", render: (_: any, record: any) => statusTag(record.status) },
+    {
+      title: "Trạng thái",
+      width: 130,
+      align: "center" as const,
+      render: (_: any, record: any) => statusTag(record.status),
+    },
     {
       title: "Ngày tạo",
+      width: 110,
+      align: "center" as const,
       render: (_: any, record: any) => {
         const d = record.createdAt || record.created_at;
-        return d ? <span className="text-xs text-slate-400">{new Date(d).toLocaleDateString("vi-VN")}</span> : "—";
+        return d ? (
+          <Tooltip title={dayjs(d).format("HH:mm:ss DD/MM/YYYY")}>
+            <span className="text-xs text-slate-400 cursor-default">{new Date(d).toLocaleDateString("vi-VN")}</span>
+          </Tooltip>
+        ) : "—";
       },
     },
     {
-      title: "Thao tác", align: "right" as const,
+      title: "Thao tác",
+      width: 85,
+      align: "center" as const,
       render: (_: any, record: any) => (
         <Space size="small">
           <Tooltip title="Xem thống kê">
@@ -1052,38 +1234,44 @@ export default function TeacherAssignments() {
   const curriculumAssignmentColumns = [
     {
       title: "Giáo trình học",
-      render: (_: any, record: any) => (
-        <div>
-          <div className="font-semibold text-slate-800">
-            {record.title || record.curriculum?.title || record.curriculum?.code || "—"}
-          </div>
-          {record.curriculum?.code && <div className="text-xs text-slate-400 font-mono">{record.curriculum.code}</div>}
-        </div>
-      ),
-    },
-    {
-      title: "Trung tâm",
+      width: 250,
       render: (_: any, record: any) => {
-        const centerId = getRecordCenterId(record);
-        const centerName = getCenterName(centerId);
-        return centerName ? (
-          <Tag color="cyan" className="rounded-full px-2.5 py-0.5 border-none font-medium">
-            <BankOutlined className="mr-1" />
-            {centerName}
-          </Tag>
-        ) : (
-          <span className="text-slate-400 text-xs">—</span>
+        const titleStr = record.title || record.curriculum?.title || record.curriculum?.code || "—";
+        const codeStr = record.curriculum?.code;
+        return (
+          <div className="max-w-[240px]">
+            <Tooltip title={titleStr} placement="topLeft">
+              <div className="font-semibold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors">
+                {titleStr}
+              </div>
+            </Tooltip>
+            {codeStr && (
+              <Tooltip title={codeStr}>
+                <div className="text-xs text-slate-400 font-mono truncate">{codeStr}</div>
+              </Tooltip>
+            )}
+          </div>
         );
       },
     },
     {
       title: "Lớp học",
-      render: (_: any, record: any) => record.class?.name
-        ? <Tag color="purple" className="rounded-full">{record.class.name}</Tag>
-        : <span className="text-slate-400 text-sm">—</span>,
+      width: 140,
+      render: (_: any, record: any) => {
+        const className = record.class?.name;
+        if (!className) return <span className="text-slate-400 text-sm">—</span>;
+        return (
+          <Tooltip title={className} placement="topLeft">
+            <Tag color="purple" className="rounded-full max-w-[130px] truncate inline-block align-middle cursor-pointer">
+              {className}
+            </Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "Người giao",
+      width: 160,
       render: (_: any, record: any) => {
         const isMe =
           (record.teacherId && (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)) ||
@@ -1094,10 +1282,18 @@ export default function TeacherAssignments() {
           record.teacher?.name ||
           (isMe ? user?.fullName : undefined);
         return (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm text-slate-700">{teacherName || "—"}</span>
+          <div className="flex items-center gap-1.5 flex-nowrap max-w-[150px]">
+            {teacherName ? (
+              <Tooltip title={teacherName} placement="topLeft">
+                <span className="text-sm text-slate-700 truncate inline-block cursor-pointer">
+                  {teacherName}
+                </span>
+              </Tooltip>
+            ) : (
+              <span className="text-sm text-slate-400">—</span>
+            )}
             {isMe && (
-              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold">
+              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold shrink-0">
                 Tôi
               </Tag>
             )}
@@ -1107,42 +1303,59 @@ export default function TeacherAssignments() {
     },
     {
       title: "Đối tượng",
+      width: 130,
       render: (_: any, record: any) => {
         const students = record.students || [];
         const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
         const cnt = record.studentIds?.length ?? studentList.length;
         if (cnt) {
           const tooltipContent = (
-            <div className="space-y-1 text-xs">
+            <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
               {studentList.map((s: any, idx: number) => {
                 const name = resolveStudentName(s);
                 const statusText = s.status === "finished" ? "Đã hoàn thành" : s.status === "in_progress" ? "Đang làm" : "Chưa bắt đầu";
-                return <div key={s.id || idx}>{name}: <span className="font-semibold">{statusText}</span></div>;
+                return (
+                  <div key={s.id || idx} className="truncate">
+                    <span className="font-medium">{name}</span>: <span className="font-semibold text-purple-300">{statusText}</span>
+                  </div>
+                );
               })}
             </div>
           );
           const content = (
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-slate-600 truncate inline-block cursor-pointer">
               <UserOutlined className="mr-1 text-purple-400" />
               {cnt} học sinh
             </span>
           );
-          return <Tooltip title={tooltipContent}>{content}</Tooltip>;
+          return <Tooltip title={tooltipContent} placement="topLeft">{content}</Tooltip>;
         }
-        return <span className="text-sm text-slate-600"><TeamOutlined className="mr-1 text-emerald-400" />Toàn bộ lớp</span>;
+        return <span className="text-sm text-slate-600 whitespace-nowrap"><TeamOutlined className="mr-1 text-emerald-400" />Toàn bộ lớp</span>;
       },
     },
-
-    { title: "Trạng thái", render: (_: any, record: any) => statusTag(record.status) },
+    {
+      title: "Trạng thái",
+      width: 130,
+      align: "center" as const,
+      render: (_: any, record: any) => statusTag(record.status),
+    },
     {
       title: "Ngày tạo",
+      width: 110,
+      align: "center" as const,
       render: (_: any, record: any) => {
         const d = record.createdAt || record.created_at;
-        return d ? <span className="text-xs text-slate-400">{new Date(d).toLocaleDateString("vi-VN")}</span> : "—";
+        return d ? (
+          <Tooltip title={dayjs(d).format("HH:mm:ss DD/MM/YYYY")}>
+            <span className="text-xs text-slate-400 cursor-default">{new Date(d).toLocaleDateString("vi-VN")}</span>
+          </Tooltip>
+        ) : "—";
       },
     },
     {
-      title: "Thao tác", align: "right" as const,
+      title: "Thao tác",
+      width: 85,
+      align: "center" as const,
       render: (_: any, record: any) => (
         <Space size="small">
           <Tooltip title="Xem thống kê">
@@ -1165,6 +1378,16 @@ export default function TeacherAssignments() {
       ),
     },
   ];
+
+  // ==================== STUDENT MANAGEMENT ====================
+  const reloadStudents = async () => {
+    try {
+      const res = await userService.list({ roleCode: "student", limit: 100 });
+      setAllStudents(res || []);
+    } catch (e) {
+      console.error("Failed to reload students", e);
+    }
+  };
 
   // ==================== RENDER ====================
   return (
@@ -1208,22 +1431,51 @@ export default function TeacherAssignments() {
                       value={selectedCenterId}
                       onChange={(val) => setSelectedCenterId(val)}
                       className="min-w-[210px]"
-                      options={[
-                        { value: "all", label: "Tất cả trung tâm (All)" },
-                        ...centers.map((c) => ({
-                          value: c.id,
-                          label: (
-                            <div className="flex items-center gap-2 justify-between">
-                              <span className="truncate max-w-[180px]">{c.name}</span>
-                              {userCenters.includes(c.id) && (
-                                <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
-                                  Của bạn
-                                </Tag>
-                              )}
-                            </div>
-                          ),
-                        })),
-                      ]}
+                      options={
+                        isTeacher
+                          ? displayCenters.length > 1
+                            ? [
+                                { value: "all", label: "Tất cả trung tâm của bạn" },
+                                ...displayCenters.map((c) => ({
+                                  value: c.id,
+                                  label: (
+                                    <div className="flex items-center gap-2 justify-between">
+                                      <span className="truncate max-w-[180px]">{c.name}</span>
+                                      <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                        Của bạn
+                                      </Tag>
+                                    </div>
+                                  ),
+                                })),
+                              ]
+                            : displayCenters.map((c) => ({
+                                value: c.id,
+                                label: (
+                                  <div className="flex items-center gap-2 justify-between">
+                                    <span className="truncate max-w-[180px]">{c.name}</span>
+                                    <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                      Của bạn
+                                    </Tag>
+                                  </div>
+                                ),
+                              }))
+                          : [
+                              { value: "all", label: "Tất cả trung tâm (All)" },
+                              ...displayCenters.map((c) => ({
+                                value: c.id,
+                                label: (
+                                  <div className="flex items-center gap-2 justify-between">
+                                    <span className="truncate max-w-[180px]">{c.name}</span>
+                                    {userCenters.includes(c.id) && (
+                                      <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                        Của bạn
+                                      </Tag>
+                                    )}
+                                  </div>
+                                ),
+                              })),
+                            ]
+                      }
                     />
                   </div>
 
@@ -1240,11 +1492,16 @@ export default function TeacherAssignments() {
                       onChange={(val: any) => setAssignmentScope(val)}
                       options={
                         isTeacher
-                          ? [
-                            { label: "Bài của tôi", value: "my" },
-                            { label: "Toàn trung tâm", value: "center" },
-                            { label: "Tất cả (All)", value: "all" },
-                          ]
+                          ? displayCenters.length > 1
+                            ? [
+                              { label: "Bài của tôi", value: "my" },
+                              { label: "Toàn trung tâm", value: "center" },
+                              { label: "Tất cả trung tâm của tôi", value: "all" },
+                            ]
+                            : [
+                              { label: "Bài của tôi", value: "my" },
+                              { label: "Toàn trung tâm", value: "center" },
+                            ]
                           : [
                             { label: "Theo trung tâm", value: "center" },
                             { label: "Tất cả hệ thống (All)", value: "all" },
@@ -1264,7 +1521,11 @@ export default function TeacherAssignments() {
                     allowClear
                     className="w-full sm:w-72 rounded-xl"
                   />
-                  {(selectedCenterId !== "all" || (isTeacher ? assignmentScope !== "my" : assignmentScope !== "center") || searchKeyword) && (
+                  {(
+                    (isTeacher ? (userCenters.length > 0 && selectedCenterId !== userCenters[0]) : selectedCenterId !== "all") ||
+                    (isTeacher ? assignmentScope !== "my" : assignmentScope !== "center") ||
+                    searchKeyword
+                  ) && (
                     <Button
                       type="link"
                       size="small"
@@ -1349,9 +1610,15 @@ export default function TeacherAssignments() {
                             <Empty description={<span className="text-slate-400">Không tìm thấy bài thi nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Bài Thi Mới".</span>} />
                           </div>
                         ) : (
-                          <Table dataSource={filteredExamAssignments} columns={examAssignmentColumns} rowKey="id"
-                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
-                            className="rounded-2xl overflow-hidden" />
+                          <Table
+                            dataSource={filteredExamAssignments}
+                            columns={examAssignmentColumns}
+                            rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }}
+                            bordered={false}
+                            scroll={{ x: 1000 }}
+                            className="rounded-2xl overflow-hidden"
+                          />
                         )}
                       </div>
                     ),
@@ -1396,9 +1663,15 @@ export default function TeacherAssignments() {
                             <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được giao phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Giáo Trình Mới".</span>} />
                           </div>
                         ) : (
-                          <Table dataSource={filteredCurriculumAssignments} columns={curriculumAssignmentColumns} rowKey="id"
-                            pagination={{ pageSize: 10, showSizeChanger: false }} bordered={false}
-                            className="rounded-2xl overflow-hidden" />
+                          <Table
+                            dataSource={filteredCurriculumAssignments}
+                            columns={curriculumAssignmentColumns}
+                            rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }}
+                            bordered={false}
+                            scroll={{ x: 1000 }}
+                            className="rounded-2xl overflow-hidden"
+                          />
                         )}
                       </div>
                     ),
@@ -1480,7 +1753,7 @@ export default function TeacherAssignments() {
                 ) : undefined
               }
             >
-              <Select
+              <SafeSelect
                 mode="multiple"
                 showSearch
                 placeholder={selectedClassForExam ? "Chọn bài thi thuộc môn học của lớp..." : "Chọn bài thi..."}
@@ -1509,7 +1782,7 @@ export default function TeacherAssignments() {
                     </div>
                   </Select.Option>
                 ))}
-              </Select>
+              </SafeSelect>
             </Form.Item>
           </div>
 
@@ -1547,7 +1820,7 @@ export default function TeacherAssignments() {
 
           <Form.Item
             name="studentIds"
-            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ học sinh trong lớp)</span></span>}
+            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span></span>}
             extra={!selectedClassForExam ? (
               <div className="text-amber-600 text-xs mt-1 flex items-center gap-1.5">
                 <Info size={13} className="shrink-0" />
@@ -1555,7 +1828,7 @@ export default function TeacherAssignments() {
               </div>
             ) : undefined}
           >
-            <Select
+            <SafeSelect
               mode="multiple"
               showSearch
               placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForExam ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}
@@ -1675,7 +1948,7 @@ export default function TeacherAssignments() {
 
           <Form.Item
             name="studentIds"
-            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ học sinh trong lớp)</span></span>}
+            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span></span>}
             extra={!selectedClassForCurriculum ? (
               <div className="text-amber-600 text-xs mt-1 flex items-center gap-1.5">
                 <Info size={13} className="shrink-0" />
@@ -1683,7 +1956,7 @@ export default function TeacherAssignments() {
               </div>
             ) : undefined}
           >
-            <Select
+            <SafeSelect
               mode="multiple"
               showSearch
               placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForCurriculum ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}

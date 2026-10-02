@@ -42,6 +42,11 @@ export const PATHS = {
       ROOT: "/teacher/assignments",
       CLASS: (classId: string) => `/teacher/assignments/${classId}`,
     },
+    CENTERS: {
+      ROOT: "/teacher/centers",
+      CENTER: (centerId: string, subTab?: string) =>
+        subTab ? `/teacher/centers/${centerId}/${subTab}` : `/teacher/centers/${centerId}`,
+    },
     RANKING: "/teacher/leaderboard",
   },
 
@@ -50,7 +55,8 @@ export const PATHS = {
     PROFILE: "/admin/profile",
     DASHBOARD: {
       ROOT: "/admin/dashboard",
-      CENTER: (centerId: string) => `/admin/dashboard/centers/${centerId}`,
+      CENTER: (centerId: string, subTab?: string) =>
+        subTab ? `/admin/dashboard/centers/${centerId}/${subTab}` : `/admin/dashboard/centers/${centerId}`,
     },
     CMS: {
       ROOT: "/admin/cms",

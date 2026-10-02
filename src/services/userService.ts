@@ -71,6 +71,7 @@ export function mapUserResponse(user: any): User {
 
     mapped.studentProfile = {
       id: user.student.id,
+      birthYear: user.student.birthYear ?? (user.studentProfile as any)?.birthYear,
       parentFullName: user.student.parentFullName,
       classIds: resolvedClassIds,
       classes: resolvedClasses,
@@ -105,7 +106,7 @@ export const userService = {
   },
 
   async list(params?: UserListQuery): Promise<User[]> {
-    const queryParams: any = { ...params };
+    const queryParams: any = { limit: 100, ...params };
     if (queryParams) {
       if (queryParams.isActive === false || queryParams.isActive === "false") {
         queryParams.isActive = "";

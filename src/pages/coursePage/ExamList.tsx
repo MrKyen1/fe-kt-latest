@@ -15,6 +15,7 @@ import {
   HistoryOutlined,
   ArrowRightOutlined,
 } from "@ant-design/icons";
+import { formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
 
 const { Title, Text } = Typography;
 
@@ -282,12 +283,30 @@ export default function ExamList() {
     }
   };
 
-  const handleStartCurriculumExam = async (curriculumId: string, examId: string) => {
+  const handleStartCurriculumExam = async (curriculumId: string, examId: string, restart = false) => {
     try {
       setStartingId(examId);
-      const attempt = await studentLearningService.curriculums.startAttempt(curriculumId, examId);
+      const attempt = await studentLearningService.curriculums.startAttempt(
+        curriculumId,
+        examId,
+        restart ? { restart: true } : undefined
+      );
       const attemptId = getAttemptId(attempt);
-      if (!attemptId) throw new Error("Backend không trả về attemptId.");
+      if (!attemptId) {
+        if ((attempt as any)?.mastered && !restart) {
+          const restartRes = await studentLearningService.curriculums.startAttempt(
+            curriculumId,
+            examId,
+            { restart: true }
+          );
+          const rId = getAttemptId(restartRes);
+          if (rId) {
+            navigate(`/exam/${rId}`);
+            return;
+          }
+        }
+        throw new Error("Backend không trả về attemptId.");
+      }
       navigate(`/exam/${attemptId}`);
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
@@ -448,8 +467,10 @@ export default function ExamList() {
                               >
                                 {isCompleted ? <CheckCircleOutlined style={{ fontSize: 18 }} /> : idx + 1}
                               </div>
-                              <div>
-                                <h3 className="font-bold text-slate-800 text-xl mb-2">{examTitle}</h3>
+                              <div className="min-w-0 flex-1">
+                                <Tooltip title={examTitle} placement="topLeft">
+                                  <h3 className="font-bold text-slate-800 text-xl mb-2 line-clamp-1">{examTitle}</h3>
+                                </Tooltip>
                                 <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-500">
                                   {isRequired ? (
                                     <Tag color="red" className="rounded-full border-none px-2 m-0 text-[10px]">Bắt buộc</Tag>
@@ -469,11 +490,21 @@ export default function ExamList() {
                                     <span className="text-slate-400">{attemptsCount} lần đã làm</span>
                                   )}
 
-                                  {bestPct && (
-                                    <span style={{ color: percentColor(bestPct) }}>
-                                      Tốt nhất: {bestScore !== null && bestScore !== undefined ? `${bestScore}` : ""} ({parseFloat(bestPct).toFixed(1)}%)
-                                    </span>
-                                  )}
+                                  {bestPct && (() => {
+                                    const scoreInfo = formatStudentExamScoreDisplay({
+                                      isExamType: exam?.examType === "exam",
+                                      score: bestScore,
+                                      maxScore: totalQuestions,
+                                      percentage: bestPct,
+                                    });
+                                    return (
+                                      <Tooltip title={scoreInfo.tooltip}>
+                                        <span style={{ color: percentColor(bestPct) }}>
+                                          Tốt nhất: {scoreInfo.primaryText} ({parseFloat(bestPct).toFixed(0)}%)
+                                        </span>
+                                      </Tooltip>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -494,19 +525,21 @@ export default function ExamList() {
                                   />
                                 </Tooltip>
                               )}
-                              <Button
-                                type={isCompleted ? "default" : "primary"}
-                                size="large"
-                                icon={isCompleted ? <ReloadOutlined /> : <PlayCircleOutlined />}
-                                loading={startingId === examId}
-                                onClick={() => handleStartCurriculumExam(selectedCurriculum.curriculumId, examId)}
-                                className={`w-full md:w-auto font-bold h-12 px-6 rounded-xl border-none shadow-sm ${isCompleted
-                                  ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
-                                  : "bg-blue-600 hover:bg-blue-500 text-white"
-                                  }`}
-                              >
-                                {isCompleted ? "Luyện tập lại" : isNeedsRetry ? "Làm lại câu sai" : "Làm bài ngay"}
-                              </Button>
+                              <Tooltip title={isCompleted ? "Làm lại toàn bộ đề" : undefined}>
+                                <Button
+                                  type={isCompleted ? "default" : "primary"}
+                                  size="large"
+                                  icon={isCompleted ? <ReloadOutlined /> : <PlayCircleOutlined />}
+                                  loading={startingId === examId}
+                                  onClick={() => handleStartCurriculumExam(selectedCurriculum.curriculumId, examId, isCompleted)}
+                                  className={`w-full md:w-auto font-bold h-12 px-6 rounded-xl border-none shadow-sm ${isCompleted
+                                    ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
+                                    : "bg-blue-600 hover:bg-blue-500 text-white"
+                                    }`}
+                                >
+                                  {isCompleted ? "Ôn tập lại" : isNeedsRetry ? "Làm lại câu sai" : "Làm bài ngay"}
+                                </Button>
+                              </Tooltip>
                             </div>
                           </div>
                         </Col>

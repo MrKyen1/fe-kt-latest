@@ -6,6 +6,7 @@ import {
   Curriculum,
   Exam,
   ExamVersion,
+  ExamVersionDetail,
   LearningTaxonomy,
   MediaAsset,
   Question,
@@ -318,6 +319,14 @@ export const learningCmsService = {
       return unwrapData(
         await apiClient.get<ApiEnvelope<ExamVersion[]>>(
           `/learning/exams/${examId}/versions`,
+        ),
+      );
+    },
+
+    async getVersion(examId: string, versionId: string): Promise<ExamVersionDetail> {
+      return unwrapData(
+        await apiClient.get<ApiEnvelope<ExamVersionDetail>>(
+          `/learning/exams/${examId}/versions/${versionId}`,
         ),
       );
     },

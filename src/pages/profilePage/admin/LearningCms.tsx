@@ -46,6 +46,7 @@ import { academicService } from "../../../services/academicService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Can } from "../../../components/Can";
 import { getErrorMessage } from "../../../services/apiClient";
+import { formatTextForBackend } from "../../../utils/textFormatters";
 
 // ── Constants ────────────────────────────────────────────────
 import {
@@ -60,6 +61,7 @@ import TaxonomyTab from "./learningCms/components/TaxonomyTab";
 import MediaTab from "./learningCms/components/MediaTab";
 import PassagesTab from "./learningCms/components/PassagesTab";
 import QuestionsTab from "./learningCms/components/QuestionsTab";
+import { invalidateQuestionDetailCache } from "./learningCms/components/QuestionPopoverContent";
 import ExamsTab from "./learningCms/components/ExamsTab";
 import CurriculumsTab from "./learningCms/components/CurriculumsTab";
 
@@ -251,6 +253,7 @@ export default function LearningCms() {
   const [passageModalOpen, setPassageModalOpen] = useState(false);
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
   const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examSubmitting, setExamSubmitting] = useState(false);
   const [examVersionsModalOpen, setExamVersionsModalOpen] = useState(false);
   const [questionVersionsModalOpen, setQuestionVersionsModalOpen] = useState(false);
   const [curriculumModalOpen, setCurriculumModalOpen] = useState(false);
@@ -259,6 +262,7 @@ export default function LearningCms() {
 
   // ── Editing / selected state ───────────────────────────────
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingExamInitialCurriculumId, setEditingExamInitialCurriculumId] = useState<string | undefined>(undefined);
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [selectedCurriculum, setSelectedCurriculum] = useState<any>(null);
   const [currentQuestionType, setCurrentQuestionType] = useState<string>("multiple_choice");
@@ -336,7 +340,7 @@ export default function LearningCms() {
   const getFilteredMedia = () => {
     if (currentQuestionType === "image_choice")
       return media.filter((m) => m.type === "image" || m.mimeType?.startsWith("image"));
-    if (currentQuestionType === "audio_choice")
+    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice")
       return media.filter((m) => m.type === "audio" || m.mimeType?.startsWith("audio"));
     return media;
   };
@@ -344,7 +348,7 @@ export default function LearningCms() {
   const getAvailableRoles = () => {
     if (currentQuestionType === "image_choice")
       return [{ value: "prompt_image", label: "Hình ảnh đề bài" }];
-    if (currentQuestionType === "audio_choice")
+    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice")
       return [{ value: "prompt_audio", label: "Âm thanh đề bài" }];
     return [
       { value: "prompt_audio", label: "Âm thanh đề bài" },
@@ -513,7 +517,19 @@ export default function LearningCms() {
         setExams([]);
       }
 
-      setCurriculums(get(8)?.data ?? []);
+      // Fetch full curriculum details to get exams and level
+      const curriculumList: any[] = get(8)?.data ?? [];
+      if (curriculumList.length > 0) {
+        const detailResults = await Promise.allSettled(
+          curriculumList.map((c) => learningCmsService.curriculums.get(c.id)),
+        );
+        const fullCurriculums = detailResults.map((r, i) =>
+          r.status === "fulfilled" ? r.value : curriculumList[i],
+        );
+        setCurriculums(fullCurriculums);
+      } else {
+        setCurriculums([]);
+      }
     } catch (error: any) {
       message.error(extractErrorMsg(error, "Tải dữ liệu CMS thất bại"));
     } finally {
@@ -792,6 +808,21 @@ export default function LearningCms() {
           && Array.isArray(fullRecord.detail.acceptedAnswers)) {
           detailFields.acceptedAnswers = fullRecord.detail.acceptedAnswers.join("\n");
         }
+        if (fullRecord.type === "matching" && Array.isArray(fullRecord.detail.pairs)) {
+          detailFields.pairs = fullRecord.detail.pairs.map((p: any) => ({
+            leftText: p.leftText ?? "",
+            rightText: p.rightText ?? "",
+            leftMediaId: p.leftMediaId || p.leftMedia?.id,
+            leftMediaVal: (p.leftMediaId || p.leftMedia) ? {
+              mediaId: p.leftMediaId || p.leftMedia?.id,
+              previewUrl: p.leftMedia?.url,
+              fileName: p.leftMedia?.name,
+              fileType: p.leftMedia?.type ?? (p.leftMedia?.mimeType?.startsWith("image") ? "image" : "audio"),
+            } : undefined,
+            rightMediaId: p.rightMediaId || p.rightMedia?.id,
+            orderIndex: p.orderIndex,
+          }));
+        }
       }
 
       const mediaIds = (fullRecord.media ?? []).map((m: any) => ({
@@ -800,19 +831,42 @@ export default function LearningCms() {
         orderIndex: m.orderIndex,
       }));
 
+      const resolveEditablePrompt = (rec: any) => {
+        if (rec.type === "error_correction" && rec.detail?.incorrectSentence) {
+          return rec.detail.incorrectSentence;
+        }
+        if (
+          (rec.type === "sentence_rewrite" || rec.type === "hint_rewrite") &&
+          rec.detail?.sourceSentence
+        ) {
+          const p = (rec.prompt ?? "").trim();
+          const s = String(rec.detail.sourceSentence).trim();
+          if (!p) return s;
+          if (s && p !== s && !p.includes(s)) return `${p}\n${s}`;
+        }
+        return rec.prompt;
+      };
+
       setQuestionModalOpen(true);
       questionForm.setFieldsValue({
         type: fullRecord.type,
-        prompt: fullRecord.type === "error_correction" && fullRecord.detail?.incorrectSentence
-          ? fullRecord.detail.incorrectSentence
-          : fullRecord.prompt,
+        prompt: resolveEditablePrompt(fullRecord),
         instruction: fullRecord.instruction,
         explanation: fullRecord.explanation,
         difficultyLevelId: fullRecord.difficultyLevelId,
         skillId: fullRecord.skillId,
         topicId: fullRecord.topicId,
         tagIds: (fullRecord.tags ?? []).map((t: any) => t.id),
-        options: fullRecord.options ?? [],
+        options: (fullRecord.options ?? []).map((o: any) => ({
+          ...o,
+          mediaId: o.mediaId || o.media?.id,
+          mediaVal: (o.mediaId || o.media) ? {
+            mediaId: o.mediaId || o.media?.id,
+            previewUrl: o.media?.url,
+            fileName: o.media?.name,
+            fileType: "image",
+          } : undefined,
+        })),
         mediaIds,
         ...detailFields,
       });
@@ -843,6 +897,21 @@ export default function LearningCms() {
         ) {
           detailFields.acceptedAnswers = (cloneData.detail as any).acceptedAnswers.join("\n");
         }
+        if (cloneData.type === "matching" && Array.isArray((cloneData.detail as any)?.pairs)) {
+          detailFields.pairs = (cloneData.detail as any).pairs.map((p: any) => ({
+            leftText: p.leftText ?? "",
+            rightText: p.rightText ?? "",
+            leftMediaId: p.leftMediaId || p.leftMedia?.id,
+            leftMediaVal: (p.leftMediaId || p.leftMedia) ? {
+              mediaId: p.leftMediaId || p.leftMedia?.id,
+              previewUrl: p.leftMedia?.url,
+              fileName: p.leftMedia?.name,
+              fileType: p.leftMedia?.type ?? (p.leftMedia?.mimeType?.startsWith("image") ? "image" : "audio"),
+            } : undefined,
+            rightMediaId: p.rightMediaId || p.rightMedia?.id,
+            orderIndex: p.orderIndex,
+          }));
+        }
       }
 
       const mediaIds = (cloneData.mediaIds ?? []).map((m: any) => ({
@@ -852,19 +921,40 @@ export default function LearningCms() {
       }));
 
       questionForm.resetFields();
+      const clonePrompt = (() => {
+        if (cloneData.type === "error_correction" && (cloneData.detail as any)?.incorrectSentence) {
+          return (cloneData.detail as any).incorrectSentence;
+        }
+        if (
+          (cloneData.type === "sentence_rewrite" || cloneData.type === "hint_rewrite") &&
+          (cloneData.detail as any)?.sourceSentence
+        ) {
+          const p = (cloneData.prompt ?? "").trim();
+          const s = String((cloneData.detail as any).sourceSentence).trim();
+          if (!p) return s;
+          if (s && p !== s && !p.includes(s)) return `${p}\n${s}`;
+        }
+        return cloneData.prompt;
+      })();
       questionForm.setFieldsValue({
         type: cloneData.type,
-        prompt:
-          cloneData.type === "error_correction" && cloneData.detail && (cloneData.detail as any).incorrectSentence
-            ? (cloneData.detail as any).incorrectSentence
-            : cloneData.prompt,
+        prompt: clonePrompt,
         instruction: cloneData.instruction,
         explanation: cloneData.explanation,
         difficultyLevelId: cloneData.difficultyLevelId,
         skillId: cloneData.skillId,
         topicId: cloneData.topicId,
         tagIds: cloneData.tagIds ?? [],
-        options: cloneData.options ?? [],
+        options: (cloneData.options ?? []).map((o: any) => ({
+          ...o,
+          mediaId: o.mediaId || o.media?.id,
+          mediaVal: (o.mediaId || o.media) ? {
+            mediaId: o.mediaId || o.media?.id,
+            previewUrl: o.media?.url,
+            fileName: o.media?.name,
+            fileType: "image",
+          } : undefined,
+        })),
         mediaIds,
         ...detailFields,
       });
@@ -909,14 +999,50 @@ export default function LearningCms() {
         questionForm.scrollToField(["options", 0, "isCorrect"], { behavior: "smooth", block: "center", focus: true });
         return;
       }
+      if (qType === "true_false") {
+        if (options.length !== 2) {
+          message.error({ content: "Câu hỏi Đúng / Sai phải có chính xác 2 đáp án!", key: "question-form-validation-error" });
+          return;
+        }
+        const correctCount = options.filter((o: any) => o.isCorrect).length;
+        if (correctCount !== 1) {
+          message.error({ content: "Câu hỏi Đúng / Sai phải có đúng 1 đáp án chính xác!", key: "question-form-validation-error" });
+          return;
+        }
+      }
+      if (qType === "audio_image_choice") {
+        const hasMissingImage = options.some((o: any) => !o.mediaId);
+        if (hasMissingImage) {
+          message.error({ content: "Tất cả các đáp án của câu hỏi Nghe & Chọn ảnh phải được gắn hình ảnh!", key: "question-form-validation-error" });
+          return;
+        }
+      }
+    }
+
+    if (qType === "matching") {
+      const pairs = values.pairs ?? [];
+      if (pairs.length < 2) {
+        message.error({ content: "Câu hỏi ghép đôi phải có ít nhất 2 cặp ghép!", key: "question-form-validation-error" });
+        return;
+      }
+      const invalidPair = pairs.some(
+        (p: any) => (!p.leftText?.trim() && !p.leftMediaId && !p.leftMediaVal) || !p.rightText?.trim()
+      );
+      if (invalidPair) {
+        message.error({
+          content: "Mỗi cặp ghép đôi phải có nội dung hoặc hình ảnh/âm thanh ở vế trái và đáp án ở vế phải!",
+          key: "question-form-validation-error",
+        });
+        return;
+      }
     }
 
     try {
       const payload: any = {
         type: qType,
-        prompt: values.prompt,
-        instruction: values.instruction ?? editingItem?.instruction,
-        explanation: values.explanation ?? editingItem?.explanation,
+        prompt: formatTextForBackend(values.prompt),
+        instruction: values.instruction !== undefined ? formatTextForBackend(values.instruction) : (editingItem?.instruction ? formatTextForBackend(editingItem.instruction) : undefined),
+        explanation: values.explanation !== undefined ? formatTextForBackend(values.explanation) : (editingItem?.explanation ? formatTextForBackend(editingItem.explanation) : undefined),
         difficultyLevelId: values.difficultyLevelId,
         skillId: values.skillId,
         topicId: values.topicId,
@@ -926,7 +1052,7 @@ export default function LearningCms() {
           .filter((m: any) => m?.mediaId)
           .map((m: any, idx: number) => ({
             mediaId: m.mediaId,
-            role: m.role || (qType === "image_choice" ? "prompt_image" : qType === "audio_choice" ? "prompt_audio" : "prompt_image"),
+            role: m.role || (qType === "image_choice" ? "prompt_image" : (qType === "audio_choice" || qType === "audio_image_choice") ? "prompt_audio" : "prompt_image"),
             orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
           })),
       };
@@ -937,7 +1063,7 @@ export default function LearningCms() {
           payload.mediaIds[0].role = "prompt_image";
         }
       }
-      if (qType === "audio_choice" && payload.mediaIds.length > 0) {
+      if ((qType === "audio_choice" || qType === "audio_image_choice") && payload.mediaIds.length > 0) {
         if (!payload.mediaIds.some((m: any) => m.role === "prompt_audio")) {
           payload.mediaIds[0].role = "prompt_audio";
         }
@@ -946,10 +1072,11 @@ export default function LearningCms() {
       if (CHOICE_TYPES.includes(qType)) {
         payload.options = (values.options ?? []).map((o: any, i: number) => ({
           label: String.fromCharCode(65 + i),
-          content: o.content,
+          content: formatTextForBackend(o.content ?? ""),
           isCorrect: !!o.isCorrect,
           orderIndex: i,
-          explanation: o.explanation,
+          explanation: o.explanation ? formatTextForBackend(o.explanation) : undefined,
+          ...(o.mediaId ? { mediaId: o.mediaId } : {}),
         }));
         payload.detail = {};
         if (qType === "reading_comprehension") payload.detail = { passageId: values.passageId };
@@ -958,16 +1085,26 @@ export default function LearningCms() {
         payload.detail = { correctTokens: (values.correctTokens ?? "").split(" ").filter(Boolean), caseSensitive: !!values.caseSensitive, allowPunctuationVariants: !!values.allowPunctuationVariants };
       } else if (qType === "sentence_rewrite") {
         payload.options = [];
-        payload.detail = { sourceSentence: values.sourceSentence, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").filter(Boolean), gradingMode: values.gradingMode ?? "normalized" };
+        payload.detail = { sourceSentence: formatTextForBackend(values.prompt), acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").map((s: string) => s.trim()).filter(Boolean), gradingMode: values.gradingMode ?? "normalized" };
       } else if (qType === "hint_rewrite") {
         payload.options = [];
-        payload.detail = { sourceSentence: values.sourceSentence, hintWord: values.hintWord, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").filter(Boolean), mustUseHint: !!values.mustUseHint, gradingMode: values.gradingMode ?? "normalized" };
+        payload.detail = { sourceSentence: formatTextForBackend(values.prompt), hintWord: values.hintWord ? String(values.hintWord).trim() : undefined, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").map((s: string) => s.trim()).filter(Boolean), mustUseHint: !!values.mustUseHint, gradingMode: values.gradingMode ?? "normalized" };
       } else if (qType === "error_correction") {
         payload.options = [];
-        payload.detail = { incorrectSentence: values.prompt, correctSentence: values.correctSentence, errorSpans: [] };
+        payload.detail = { incorrectSentence: formatTextForBackend(values.prompt), correctSentence: formatTextForBackend(values.correctSentence ?? ""), errorSpans: [] };
       } else if (qType === "matching") {
         payload.options = [];
-        payload.detail = { shuffleLeft: !!values.shuffleLeft, shuffleRight: !!values.shuffleRight, pairs: (values.pairs ?? []).map((p: any, i: number) => ({ leftText: p.leftText, rightText: p.rightText, orderIndex: i })) };
+        payload.detail = {
+          shuffleLeft: values.shuffleLeft !== false,
+          shuffleRight: values.shuffleRight !== false,
+          pairs: (values.pairs ?? []).map((p: any, i: number) => ({
+            leftText: formatTextForBackend(p.leftText ?? ""),
+            rightText: formatTextForBackend(p.rightText ?? ""),
+            leftMediaId: p.leftMediaId || p.leftMediaVal?.mediaId || undefined,
+            rightMediaId: p.rightMediaId || undefined,
+            orderIndex: i,
+          })),
+        };
       }
 
       if (editingItem) {
@@ -975,6 +1112,12 @@ export default function LearningCms() {
         await learningCmsService.questions.update(editingItem.id, {
           ...updatePayload,
           expectedUpdatedAt: editingItem.updatedAt,
+        });
+        invalidateQuestionDetailCache(editingItem.id);
+        setQuestionDetails((prev) => {
+          const next = { ...prev };
+          delete next[editingItem.id];
+          return next;
         });
         message.success("Cập nhật câu hỏi thành công");
       } else {
@@ -1009,20 +1152,53 @@ export default function LearningCms() {
 
   const handleExamCreate = () => {
     setEditingItem(null);
+    setEditingExamInitialCurriculumId(undefined);
     examForm.resetFields();
     setExamModalOpen(true);
   };
 
-  const handleExamEdit = (record: any) => {
+  const handleExamEdit = async (record: any) => {
     setEditingItem(record);
+
+    // 1. Kiểm tra nhanh trong danh sách curriculums đã tải
+    const currentCurriculum = curriculums.find((c: any) =>
+      (c.exams || []).some((ce: any) => ce.examId === record.id || ce.id === record.id || ce.exam?.id === record.id)
+    );
+    let currId = currentCurriculum?.id || undefined;
+    setEditingExamInitialCurriculumId(currId);
+
     examForm.setFieldsValue({
       code: record.code,
       title: record.title,
       examType: record.examType ?? "practice",
       timeLimitMinutes: record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) : undefined,
+      curriculumId: currId,
       description: record.description,
     });
     setExamModalOpen(true);
+
+    // 2. Nếu chưa tìm thấy (ví dụ đề thi được gắn khi còn ở trạng thái nháp), kiểm tra chi tiết các giáo trình
+    if (!currId && curriculums.length > 0) {
+      try {
+        const details = await Promise.all(
+          curriculums.map((c) =>
+            learningCmsService.curriculums.get(c.id).catch(() => null)
+          )
+        );
+        for (const detail of details) {
+          if (!detail) continue;
+          const examsInCurr = (detail as any).exams || [];
+          if (examsInCurr.some((ce: any) => ce.examId === record.id || ce.id === record.id || ce.exam?.id === record.id)) {
+            currId = detail.id;
+            setEditingExamInitialCurriculumId(currId);
+            examForm.setFieldValue("curriculumId", currId);
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi khi kiểm tra giáo trình của đề thi:", err);
+      }
+    }
   };
 
   const handleExamDelete = (record: any) => {
@@ -1044,9 +1220,13 @@ export default function LearningCms() {
   };
 
   const handleExamSubmit = async (values: any) => {
+    if (examSubmitting) return;
     try {
+      setExamSubmitting(true);
       const isExam = values.examType === "exam";
       const timeLimitSeconds = isExam && values.timeLimitMinutes ? values.timeLimitMinutes * 60 : undefined;
+      const { timeLimitMinutes, curriculumId, ...rest } = values;
+
       if (editingItem) {
         await learningCmsService.exams.update(editingItem.id, {
           title: values.title,
@@ -1054,22 +1234,92 @@ export default function LearningCms() {
           timeLimitSeconds,
           description: values.description,
         });
-        message.success("Cập nhật đề thi thành công");
+
+        const newCurriculumId = curriculumId || undefined;
+        if (newCurriculumId !== editingExamInitialCurriculumId) {
+          // 1. Nếu trước đó đã thuộc giáo trình cũ -> gỡ khỏi giáo trình cũ
+          if (editingExamInitialCurriculumId) {
+            try {
+              await learningCmsService.curriculums.removeExam(editingExamInitialCurriculumId, editingItem.id);
+            } catch (removeErr: any) {
+              console.error("Lỗi khi gỡ đề thi khỏi giáo trình cũ:", removeErr);
+            }
+          }
+
+          // 2. Nếu người dùng chọn giáo trình mới -> gắn vào giáo trình mới
+          if (newCurriculumId) {
+            try {
+              const currDetail = await learningCmsService.curriculums.get(newCurriculumId);
+              const currExams = (currDetail as any)?.exams ?? [];
+              const maxOrderIndex = currExams.reduce(
+                (max: number, item: any) => Math.max(max, Number(item.orderIndex) || 0),
+                -1
+              );
+              const nextOrderIndex = maxOrderIndex + 1;
+
+              await learningCmsService.curriculums.attachExam(newCurriculumId, {
+                examId: editingItem.id,
+                orderIndex: nextOrderIndex,
+                isRequired: true,
+              });
+              message.success("Cập nhật đề thi và gắn vào giáo trình thành công!");
+            } catch (attachErr: any) {
+              console.error("Lỗi khi gắn đề thi vào giáo trình mới:", attachErr);
+              Modal.warning({
+                title: "Đã cập nhật đề thi",
+                content: `Đề thi "${values.title || editingItem.title}" đã được lưu, nhưng chưa thể gắn vào giáo trình mới (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình lại.`,
+              });
+            }
+          } else {
+            message.success("Cập nhật đề thi và đã gỡ khỏi giáo trình cũ");
+          }
+        } else {
+          message.success("Cập nhật đề thi thành công");
+        }
       } else {
-        const { timeLimitMinutes, ...rest } = values;
-        await learningCmsService.exams.create({
+        const newExam = await learningCmsService.exams.create({
           ...rest,
           examType: values.examType ?? "practice",
           timeLimitSeconds,
           specializationId: selectedSpecializationId,
           status: "draft",
         });
-        message.success("Tạo đề thi thành công");
+
+        if (curriculumId) {
+          try {
+            // Lấy thông tin mới nhất của giáo trình để tính orderIndex tiếp theo không bị trùng lặp
+            const currDetail = await learningCmsService.curriculums.get(curriculumId);
+            const currExams = (currDetail as any)?.exams ?? [];
+            const maxOrderIndex = currExams.reduce(
+              (max: number, item: any) => Math.max(max, Number(item.orderIndex) || 0),
+              -1
+            );
+            const nextOrderIndex = maxOrderIndex + 1;
+
+            await learningCmsService.curriculums.attachExam(curriculumId, {
+              examId: newExam.id,
+              orderIndex: nextOrderIndex,
+              isRequired: true,
+            });
+
+            message.success("Tạo đề thi và gắn vào giáo trình thành công!");
+          } catch (attachErr: any) {
+            console.error("Lỗi khi tự động gắn đề thi vào giáo trình:", attachErr);
+            Modal.warning({
+              title: "Đã tạo đề thi thành công",
+              content: `Đề thi "${newExam.title}" đã được lưu vào hệ thống, nhưng chưa thể tự động gắn vào giáo trình (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình gắn đề này.`,
+            });
+          }
+        } else {
+          message.success("Tạo đề thi thành công");
+        }
       }
       loadAllData();
       setExamModalOpen(false);
     } catch (error: any) {
       message.error(extractErrorMsg(error));
+    } finally {
+      setExamSubmitting(false);
     }
   };
 
@@ -1339,6 +1589,7 @@ export default function LearningCms() {
       message.success("Sắp xếp lại thành công");
       const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
       setSelectedCurriculum(updated);
+      loadAllData();
     } catch (error: any) {
       message.error(extractErrorMsg(error, "Sắp xếp lại thất bại"));
     }
@@ -1403,6 +1654,9 @@ export default function LearningCms() {
           questions={questions}
           skills={skills}
           levels={levels}
+          topics={topics}
+          tags={tags}
+          questionDetails={questionDetails}
           onCreateClick={handleQuestionCreate}
           onEditClick={handleQuestionEdit}
           onDuplicateClick={handleQuestionDuplicate}
@@ -1443,6 +1697,7 @@ export default function LearningCms() {
       children: (
         <CurriculumsTab
           curriculums={curriculums}
+          exams={exams}
           onCreateClick={handleCurriculumCreate}
           onEditClick={handleCurriculumEdit}
           onDeleteClick={handleCurriculumDelete}
@@ -1581,6 +1836,7 @@ export default function LearningCms() {
               tags={tags}
               passages={passages}
               filteredMedia={getFilteredMedia()}
+              allMedia={media}
               availableRoles={getAvailableRoles()}
               onPreviewAsset={handlePreviewAsset}
               onUploadMedia={handleUploadQuestionMedia}
@@ -1592,6 +1848,8 @@ export default function LearningCms() {
               form={examForm}
               onFinish={handleExamSubmit}
               isEditing={!!editingItem}
+              curriculums={curriculums}
+              confirmLoading={examSubmitting}
             />
 
             <CurriculumFormModal

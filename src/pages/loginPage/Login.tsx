@@ -1,24 +1,34 @@
 import { useNavigate } from "react-router-dom";
 import { Form, Input, Button, App } from "antd";
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { PATHS } from "../../routes/paths";
 import loginImg from "../../assets/login/login.png";
 import logoImg from "../../assets/logo/logo.png";
 
 const Login = () => {
   const { message } = App.useApp();
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isLoggedIn, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Tự động điều hướng khi state user đã được commit trong AuthContext
+  useEffect(() => {
+    if (isLoggedIn && user) {
+      const targetPath = user.role === "student" ? PATHS.STUDENT.MY_EXAMS : PATHS.HOME;
+      navigate(targetPath, { replace: true });
+    }
+  }, [isLoggedIn, user, navigate]);
 
   const handleFinish = async (values: { username: string; password: string }) => {
     const { username, password } = values;
     setIsSubmitting(true);
     try {
-      await login(username, password);
+      const loggedInUser = await login(username, password);
       message.success("Đăng nhập thành công!");
-      navigate("/home");
+      const targetPath = loggedInUser?.role === "student" ? PATHS.STUDENT.MY_EXAMS : PATHS.HOME;
+      navigate(targetPath, { replace: true });
     } catch (error: any) {
       console.error("Login failed:", error);
       message.error(error?.message || "Tên đăng nhập hoặc mật khẩu không đúng.");

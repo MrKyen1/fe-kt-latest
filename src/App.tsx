@@ -20,9 +20,9 @@ const Profile = lazy(() => import("./pages/profilePage/Profile"));
 const UserProfile = lazy(() => import("./pages/profilePage/userProfile"));
 const AdminDashboard = lazy(() => import("./pages/profilePage/admin/AdminDashboard"));
 const LearningCms = lazy(() => import("./pages/profilePage/admin/LearningCms"));
-const AdminAboutUs = lazy(() => import("./pages/profilePage/admin/AdminAboutUs"));
 const AdminHomepageCms = lazy(() => import("./pages/profilePage/admin/AdminHomepageCms"));
 const TeacherAssignments = lazy(() => import("./pages/profilePage/teacher/TeacherAssignments"));
+const CenterManagement = lazy(() => import("./pages/profilePage/admin/centerManagement"));
 const StudentMyExams = lazy(() => import("./pages/profilePage/student/StudentMyExams"));
 const Leaderboard = lazy(() => import("./pages/profilePage/Leaderboard"));
 
@@ -153,6 +153,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="centers/*"
+                element={
+                  <ProtectedRoute permissions={["centers.read"]}>
+                    <CenterManagement />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="ranking/*" element={<Leaderboard />} />
             </Route>
 
@@ -165,7 +173,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Navigate to="/student/profile" replace />} />
+              <Route index element={<Navigate to="/student/my-exams" replace />} />
               <Route path="profile" element={<UserProfile />} />
               <Route path="my-exams" element={<StudentMyExams />} />
               <Route path="ranking/*" element={<Leaderboard />} />

@@ -11,6 +11,8 @@ interface Props {
   form: FormInstance;
   onFinish: (values: any) => void;
   isEditing: boolean;
+  curriculums?: Array<{ id: string; title: string; code?: string; status?: string }>;
+  confirmLoading?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -18,7 +20,15 @@ interface Props {
 /**
  * Create / Edit Exam modal.
  */
-export default function ExamFormModal({ open, onCancel, form, onFinish, isEditing }: Props) {
+export default function ExamFormModal({
+  open,
+  onCancel,
+  form,
+  onFinish,
+  isEditing,
+  curriculums = [],
+  confirmLoading = false,
+}: Props) {
   const examType = Form.useWatch("examType", form) ?? "practice";
   const isExam = examType === "exam";
 
@@ -33,6 +43,9 @@ export default function ExamFormModal({ open, onCancel, form, onFinish, isEditin
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
+      confirmLoading={confirmLoading}
+      okButtonProps={{ loading: confirmLoading, disabled: confirmLoading }}
+      cancelButtonProps={{ disabled: confirmLoading }}
       maskClosable={false}
       centered
       className="rounded-2xl"
@@ -89,6 +102,33 @@ export default function ExamFormModal({ open, onCancel, form, onFinish, isEditin
               min={1}
               placeholder="Ví dụ: 45"
               className="rounded-xl"
+            />
+          </Form.Item>
+        )}
+
+        {curriculums && curriculums.length > 0 && (
+          <Form.Item
+            name="curriculumId"
+            label={
+              <div className="flex items-center gap-1.5">
+                <span>Gắn vào Giáo trình</span>
+                <span className="text-xs text-slate-400 font-normal">(Tùy chọn)</span>
+              </div>
+            }
+
+          >
+            <Select
+              allowClear
+              placeholder="Chọn giáo trình để gắn đề (Không bắt buộc)..."
+              className="rounded-xl"
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              }
+              options={curriculums.map((c) => ({
+                value: c.id,
+                label: `${c.title}${c.code ? ` (${c.code})` : ""}`,
+              }))}
             />
           </Form.Item>
         )}

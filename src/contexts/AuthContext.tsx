@@ -41,7 +41,7 @@ export interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
   isInitializing: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   hasRole: (roles: string | string[]) => boolean;
   hasPermission: (permissions: string | string[], options?: PermissionCheckOptions) => boolean;
@@ -72,9 +72,13 @@ export const HARDCODED_ROLE_PERMISSIONS: Record<string, string[]> = {
     "specializations.read",
     "learning.read",
     "learning.write",
+    "learning.delete",
     "learning.assign",
     "learning.publish",
-    "learning.media.upload"
+    "learning.media.upload",
+    "users.read",
+    "users.write",
+    "users.delete"
   ],
   student: [
     "learning.read",
@@ -245,11 +249,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [fetchAndMergeDetails]);
 
-  const login = async (identifier: string, password: string) => {
+  const login = async (identifier: string, password: string): Promise<User> => {
     const session = await authService.login({ identifier, password });
     const mapped = mapStoredUser(session.user);
     setUser(mapped);
     await fetchAndMergeDetails(mapped);
+    return mapped;
   };
 
   const logout = async () => {

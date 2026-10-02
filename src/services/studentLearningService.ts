@@ -42,11 +42,13 @@ export const studentLearningService = {
      * Bắt đầu attempt cho 1 exam trong curriculum.
      * @param curriculumId - ID của curriculum
      * @param examId - ID của exam
+     * @param payload - Tùy chọn restart: true để làm lại toàn bộ đề (khi đã hoàn thành 100%)
      */
-    async startAttempt(curriculumId: string, examId: string) {
+    async startAttempt(curriculumId: string, examId: string, payload?: { restart?: boolean }) {
       return unwrapData(
         await apiClient.post<ApiEnvelope<Attempt>>(
           `/learning/student/curriculums/${curriculumId}/exams/${examId}/attempts`,
+          payload ?? {},
         ),
       );
     },
@@ -77,11 +79,13 @@ export const studentLearningService = {
      * Bắt đầu attempt cho 1 exam cụ thể trong assignment.
      * @param assignmentStudentId - ID của exam_assignment_students record
      * @param examId - ID của exam muốn làm
+     * @param payload - Tùy chọn restart: true để làm lại toàn bộ đề (khi đã hoàn thành 100%)
      */
-    async startAttempt(assignmentStudentId: string, examId: string) {
+    async startAttempt(assignmentStudentId: string, examId: string, payload?: { restart?: boolean }) {
       return unwrapData(
         await apiClient.post<ApiEnvelope<Attempt>>(
           `/learning/student/exam-assignments/${assignmentStudentId}/exams/${examId}/attempts`,
+          payload ?? {},
         ),
       );
     },

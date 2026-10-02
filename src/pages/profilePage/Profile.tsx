@@ -8,6 +8,7 @@ import {
   ProfileOutlined,
   TeamOutlined,
   TrophyOutlined,
+  BankOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "../../contexts/AuthContext";
@@ -15,6 +16,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import AdminDashboard from "./admin/AdminDashboard";
 import AdminHomepageCms from "./admin/AdminHomepageCms";
 import LearningCms from "./admin/LearningCms";
+import CenterManagement from "./admin/centerManagement";
 import TeacherAssignments from "./teacher/TeacherAssignments";
 import StudentMyExams from "./student/StudentMyExams";
 import Leaderboard from "./Leaderboard";
@@ -116,6 +118,11 @@ export default function Profile() {
       label: "Profile",
     },
     {
+      key: "centers",
+      icon: <BankOutlined />,
+      label: "Cơ sở đào tạo",
+    },
+    {
       key: "cms",
       icon: <BookOutlined />,
       label: "Learning CMS",
@@ -151,6 +158,8 @@ export default function Profile() {
     switch (menuKey) {
       case "profile":
         return <UserProfile />;
+      case "centers":
+        return <CenterManagement />;
       case "cms":
         return <LearningCms />;
       case "assignments":

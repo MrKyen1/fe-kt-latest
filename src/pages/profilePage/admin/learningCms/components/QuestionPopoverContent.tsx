@@ -1,7 +1,22 @@
-import { Popover, Tag } from "antd";
+import React, { useState } from "react";
+import { Popover, Spin, Tag } from "antd";
 import type { TooltipPlacement } from "antd/es/tooltip";
 import { Check } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../constants";
+import { learningCmsService } from "../../../../../services/learningCmsService";
+import { resolveMediaUrl } from "../../../../../services/apiClient";
+import { normalizeLineBreaks } from "../../../../../utils/textFormatters";
+
+// ── Shared In-Memory Detail Cache ────────────────────────────
+const questionDetailCache: Record<string, any> = {};
+
+export function invalidateQuestionDetailCache(questionId?: string) {
+  if (questionId) {
+    delete questionDetailCache[questionId];
+  } else {
+    Object.keys(questionDetailCache).forEach((k) => delete questionDetailCache[k]);
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -14,6 +29,21 @@ interface QuestionOption {
   label?: string;
   content: string;
   isCorrect: boolean;
+  media?: {
+    id?: string;
+    url?: string;
+    type?: string;
+  };
+}
+
+interface MatchingPair {
+  leftText?: string;
+  rightText?: string;
+  leftMedia?: {
+    id?: string;
+    url?: string;
+    type?: string;
+  };
 }
 
 interface QuestionDetail {
@@ -21,6 +51,9 @@ interface QuestionDetail {
   acceptedAnswers?: string | string[];
   correctSentence?: string;
   correctAnswer?: string | string[];
+  sourceSentence?: string;
+  hintWord?: string;
+  pairs?: MatchingPair[];
 }
 
 interface Question {
@@ -34,6 +67,8 @@ interface Question {
   topicId?: string;
   tagIds?: string[];
   options?: QuestionOption[];
+  media?: any[];
+  mediaIds?: any[];
   detail?: QuestionDetail;
 }
 
@@ -43,9 +78,57 @@ interface Props {
   levels: TaxonomyItem[];
   topics: TaxonomyItem[];
   tags:   TaxonomyItem[];
+  loadingDetail?: boolean;
 }
 
 // ── Helper ───────────────────────────────────────────────────
+
+const MEDIA_QUESTION_TYPES = new Set([
+  "image_choice",
+  "audio_choice",
+  "audio_image_choice",
+]);
+
+function extractPromptMedia(question: Question): Array<{ url: string; type: "image" | "audio" }> {
+  const rawList: any[] = [];
+  if (Array.isArray(question.media) && question.media.length > 0) {
+    rawList.push(...question.media);
+  } else if (Array.isArray(question.mediaIds) && question.mediaIds.length > 0) {
+    rawList.push(...question.mediaIds);
+  }
+
+  const results: Array<{ url: string; type: "image" | "audio" }> = [];
+  const seenUrls = new Set<string>();
+
+  for (const item of rawList) {
+    if (!item) continue;
+    const role = item.role;
+    if (role && (role === "explanation_audio" || role === "explanation_image")) {
+      continue;
+    }
+
+    const asset = item.media ?? item;
+    const url = asset?.url || asset?.previewUrl || asset?.path || (typeof asset === "string" ? asset : "");
+    if (!url || seenUrls.has(url)) continue;
+    seenUrls.add(url);
+
+    const rawType = String(asset?.type || asset?.fileType || asset?.mimeType || role || "").toLowerCase();
+    const lowerUrl = url.toLowerCase();
+    const isAudio =
+      rawType.includes("audio") ||
+      lowerUrl.endsWith(".mp3") ||
+      lowerUrl.endsWith(".wav") ||
+      lowerUrl.endsWith(".ogg") ||
+      lowerUrl.endsWith(".m4a");
+
+    results.push({
+      url,
+      type: isAudio ? "audio" : "image",
+    });
+  }
+
+  return results;
+}
 
 function getCorrectAnswerText(question: Question): string | null {
   const { type, detail } = question;
@@ -76,13 +159,27 @@ function getCorrectAnswerText(question: Question): string | null {
 
 /**
  * Displays a compact preview of a question's content, metadata,
- * and answer(s).  Used inside Ant Design <Popover> on hover.
+ * and answer(s). Used inside Ant Design <Popover> on hover.
  */
-export default function QuestionPopoverContent({ question, skills, levels, topics, tags }: Props) {
+export default function QuestionPopoverContent({
+  question,
+  skills,
+  levels,
+  topics,
+  tags,
+  loadingDetail = false,
+}: Props) {
   if (!question) return null;
 
   const skill = skills.find((s) => s.id === (question.skillId ?? (question as any).skill?.id));
-  const level = levels.find((l) => l.id === (question.difficultyLevelId ?? (question as any).levelId ?? (question as any).difficultyLevel?.id ?? (question as any).level?.id));
+  const level = levels.find(
+    (l) =>
+      l.id ===
+      (question.difficultyLevelId ??
+        (question as any).levelId ??
+        (question as any).difficultyLevel?.id ??
+        (question as any).level?.id)
+  );
   const topic = topics.find((t) => t.id === (question.topicId ?? (question as any).topic?.id));
 
   const qTagIds = [
@@ -96,11 +193,15 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
     .map((tid) => tags.find((t) => t.id === tid))
     .filter(Boolean) as TaxonomyItem[];
 
+  const promptMedia = extractPromptMedia(question);
   const correctAnswer = getCorrectAnswerText(question);
+  const matchingPairs =
+    question.type === "matching" && Array.isArray(question.detail?.pairs)
+      ? question.detail!.pairs!
+      : [];
 
   return (
     <div style={{ width: 340 }} className="text-xs font-sans">
-
       {/* ── Đề bài ─────────────────────────────────────── */}
       <div className="mb-2">
         <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
@@ -112,9 +213,52 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
           </div>
         )}
         <div
-          className="font-semibold text-slate-800 leading-snug"
-          dangerouslySetInnerHTML={{ __html: question.prompt ?? "(Không có đề bài)" }}
+          className="font-semibold text-slate-800 leading-snug whitespace-pre-line"
+          dangerouslySetInnerHTML={{ __html: normalizeLineBreaks(question.prompt ?? "(Không có đề bài)") }}
         />
+
+        {/* Câu bổ sung (nếu câu cũ có sourceSentence tách rời prompt) & Từ gợi ý */}
+        {question.detail?.sourceSentence &&
+          question.detail.sourceSentence.trim() !== (question.prompt ?? "").trim() &&
+          !(question.prompt ?? "").includes(question.detail.sourceSentence.trim()) && (
+            <div className="mt-1.5 px-2 py-1 rounded bg-slate-50 border border-slate-200 text-[11px] text-slate-700 font-semibold">
+              {question.detail.sourceSentence}
+            </div>
+          )}
+        {question.detail?.hintWord && (
+          <div className="mt-1 text-[11px] text-indigo-600 font-medium">
+            Từ gợi ý: <span className="font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{question.detail.hintWord}</span>
+          </div>
+        )}
+
+        {/* Media của đề bài (Hình ảnh / Audio) */}
+        {promptMedia.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {promptMedia.map((m, idx) =>
+              m.type === "audio" ? (
+                <div key={idx} className="bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={resolveMediaUrl(m.url)}
+                    className="w-full h-7"
+                  />
+                </div>
+              ) : (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-slate-200 bg-slate-50/70 p-1.5 flex justify-center"
+                >
+                  <img
+                    src={resolveMediaUrl(m.url)}
+                    alt="Hình ảnh đề bài"
+                    className="max-h-36 w-auto rounded object-contain bg-white"
+                  />
+                </div>
+              )
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Metadata tags ──────────────────────────────── */}
@@ -135,6 +279,13 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
         ))}
       </div>
 
+      {loadingDetail && (
+        <div className="py-3 flex items-center justify-center gap-2 text-slate-400 text-[11px]">
+          <Spin size="small" />
+          <span>Đang tải chi tiết...</span>
+        </div>
+      )}
+
       {/* ── Đáp án (MCQ) ───────────────────────────────── */}
       {question.options && question.options.length > 0 && (
         <div className="mb-2">
@@ -145,7 +296,7 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
             {question.options.map((opt, idx) => (
               <div
                 key={idx}
-                className={`flex items-start gap-1.5 px-2 py-1 rounded-md text-[11px] leading-snug ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] leading-snug ${
                   opt.isCorrect
                     ? "bg-emerald-50 border border-emerald-200 font-semibold text-emerald-700"
                     : "bg-slate-50 border border-slate-100 text-slate-600"
@@ -154,10 +305,81 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
                 <span className={`shrink-0 font-bold ${opt.isCorrect ? "text-emerald-600" : "text-slate-500"}`}>
                   {opt.label ?? String.fromCharCode(65 + idx)}.
                 </span>
-                <span className="flex-1">{opt.content}</span>
+                {opt.media?.url && (
+                  <img
+                    src={resolveMediaUrl(opt.media.url)}
+                    alt={opt.content || "Option"}
+                    className="w-9 h-9 rounded object-cover border border-slate-200 shrink-0 bg-white"
+                  />
+                )}
+                {(!opt.media?.url || (opt.content && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opt.content.trim()) && !/^[0-9a-f]{24}$/i.test(opt.content.trim()))) && (
+                  <span className="flex-1 whitespace-pre-line">{normalizeLineBreaks(opt.content)}</span>
+                )}
                 {opt.isCorrect && <Check size={12} className="shrink-0 text-emerald-600" />}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Cặp ghép đôi (Matching) ────────────────────── */}
+      {matchingPairs.length > 0 && (
+        <div className="mb-2">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+            Các cặp ghép đúng
+          </div>
+          <div className="space-y-1">
+            {matchingPairs.map((rawPair, idx) => {
+              const pair = rawPair as any;
+              const isUuid = (val?: string) => !val || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val).trim());
+              const showLeftText = pair.leftText && (!pair.leftMedia?.url || !isUuid(pair.leftText));
+              const showRightText = pair.rightText && (!pair.rightMedia?.url || !isUuid(pair.rightText));
+
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[11px] bg-emerald-50/70 border border-emerald-200 text-slate-700"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    {pair.leftMedia?.url && (
+                      pair.leftMedia.type === "audio" ? (
+                        <span className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-semibold shrink-0">
+                          Audio
+                        </span>
+                      ) : (
+                        <img
+                          src={resolveMediaUrl(pair.leftMedia.url)}
+                          alt={showLeftText ? pair.leftText : "Left"}
+                          className="w-7 h-7 rounded object-cover border border-slate-200 shrink-0 bg-white"
+                        />
+                      )
+                    )}
+                    {showLeftText && <span className="truncate font-medium whitespace-pre-line">{normalizeLineBreaks(pair.leftText)}</span>}
+                  </div>
+                  <span className="text-emerald-600 font-bold shrink-0">➔</span>
+                  <div className="flex items-center justify-end gap-1.5 min-w-0 flex-1 text-right">
+                    {pair.rightMedia?.url && (
+                      pair.rightMedia.type === "audio" ? (
+                        <span className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-semibold shrink-0">
+                          Audio
+                        </span>
+                      ) : (
+                        <img
+                          src={resolveMediaUrl(pair.rightMedia.url)}
+                          alt={showRightText ? pair.rightText : "Right"}
+                          className="w-7 h-7 rounded object-cover border border-slate-200 shrink-0 bg-white"
+                        />
+                      )
+                    )}
+                    {showRightText && (
+                      <span className="font-semibold text-emerald-800 truncate whitespace-pre-line">
+                        {normalizeLineBreaks(pair.rightText)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -170,7 +392,7 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
           </div>
           <div className="bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5 text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
             <Check size={12} className="shrink-0" />
-            <span>{correctAnswer}</span>
+            <span className="whitespace-pre-line">{normalizeLineBreaks(correctAnswer)}</span>
           </div>
         </div>
       )}
@@ -181,8 +403,8 @@ export default function QuestionPopoverContent({ question, skills, levels, topic
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
             Giải thích
           </div>
-          <div className="bg-indigo-50 border border-indigo-100 rounded-md px-2 py-1.5 text-[11px] text-indigo-700 leading-relaxed">
-            {question.explanation}
+          <div className="bg-indigo-50 border border-indigo-100 rounded-md px-2 py-1.5 text-[11px] text-indigo-700 leading-relaxed whitespace-pre-line">
+            {normalizeLineBreaks(question.explanation)}
           </div>
         </div>
       )}
@@ -217,17 +439,66 @@ export function QuestionPopover({
   overlayStyle = { maxWidth: 380 },
   children,
 }: QuestionPopoverProps) {
+  const [fetchedDetail, setFetchedDetail] = useState<any>(() =>
+    question?.id ? questionDetailCache[question.id] : undefined
+  );
+  const [loading, setLoading] = useState(false);
+
   if (!question) return <>{children}</>;
+
+  const cached = question.id ? questionDetailCache[question.id] : undefined;
+  const mergedQuestion = fetchedDetail
+    ? { ...question, ...fetchedDetail }
+    : cached
+      ? { ...question, ...cached }
+      : question;
+
+  const hasAnswerDetails =
+    (Array.isArray(mergedQuestion.options) && mergedQuestion.options.length > 0) ||
+    Boolean(mergedQuestion.detail && Object.keys(mergedQuestion.detail).length > 0);
+
+  const needsPromptMedia = MEDIA_QUESTION_TYPES.has(mergedQuestion.type);
+  const hasPromptMedia = extractPromptMedia(mergedQuestion).length > 0;
+  const hasOptionImages =
+    mergedQuestion.type !== "audio_image_choice" ||
+    (Array.isArray(mergedQuestion.options) &&
+      mergedQuestion.options.some((o: any) => Boolean(o?.media?.url)));
+
+  const hasFullDetails =
+    Boolean(fetchedDetail || cached) ||
+    (hasAnswerDetails && (!needsPromptMedia || hasPromptMedia) && hasOptionImages);
+
+  const handleOpenChange = async (open: boolean) => {
+    if (open && !hasFullDetails && question.id && !loading) {
+      if (questionDetailCache[question.id]) {
+        setFetchedDetail(questionDetailCache[question.id]);
+        return;
+      }
+      try {
+        setLoading(true);
+        const full = await learningCmsService.questions.get(question.id);
+        if (full) {
+          questionDetailCache[question.id] = full;
+          setFetchedDetail(full);
+        }
+      } catch {
+        // Ignore error and show basic info
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
 
   return (
     <Popover
       content={
         <QuestionPopoverContent
-          question={question}
+          question={mergedQuestion}
           skills={skills}
           levels={levels}
           topics={topics}
           tags={tags}
+          loadingDetail={loading}
         />
       }
       title={title}
@@ -235,9 +506,9 @@ export function QuestionPopover({
       placement={placement}
       mouseEnterDelay={mouseEnterDelay}
       overlayStyle={overlayStyle}
+      onOpenChange={handleOpenChange}
     >
       {children}
     </Popover>
   );
 }
-

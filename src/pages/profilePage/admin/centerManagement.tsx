@@ -26,8 +26,10 @@ import {
   Upload,
   Image,
   Segmented,
+  Pagination,
 } from "antd";
 import type { UploadFile } from "antd";
+import { SafeSelect } from "../../../components/SafeSelect";
 
 import {
   BookOutlined,
@@ -72,6 +74,10 @@ import dayjs from "dayjs";
 
 const { Title, Text, Paragraph } = Typography;
 
+const DEFAULT_STUDENT_PASSWORD = import.meta.env.VITE_DEFAULT_STUDENT_PASSWORD || "12345678";
+const DEFAULT_TEACHER_PASSWORD = import.meta.env.VITE_DEFAULT_TEACHER_PASSWORD || "Demo@123456";
+const CLASSES_PAGE_SIZE = 6;
+
 interface TeacherFormValues {
   code: string;
   fullName: string;
@@ -103,7 +109,7 @@ interface StudentFormValues {
   phone?: string;
   roleId: string;
   password?: string;
-  dateOfBirth?: dayjs.Dayjs;
+  birthYear?: number;
   startDate?: dayjs.Dayjs;
   endDate?: dayjs.Dayjs;
   address?: string;
@@ -115,6 +121,8 @@ interface StudentFormValues {
 
 export default function CenterManagement() {
   const { user } = useAuth();
+  const isTeacher = user?.role === "teacher";
+  const basePath = isTeacher ? "/teacher/centers" : "/admin/dashboard/centers";
 
   // ================= DATA STATE =================
   const [centers, setCenters] = useState<any[]>([]);
@@ -127,6 +135,38 @@ export default function CenterManagement() {
   const [curriculums, setCurriculums] = useState<any[]>([]);
   const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
 
+  // Teacher center scoping
+  const teacherCenterIds = useMemo(() => {
+    if (!isTeacher || !user) return [];
+    const fromProfile = [
+      user.centerId,
+      user.teacherProfile?.centerId,
+      ...(user.teacherProfile?.centerIds || []),
+    ].filter(Boolean);
+
+    const teacherClassIds = (user.teacherProfile?.classes || user.teacherProfile?.classIds || []).map((c: any) =>
+      typeof c === "string" ? c : c?.id
+    );
+
+    const fromClasses = classes
+      .filter((c) => teacherClassIds.includes(c.id))
+      .map((c) => c.centerId)
+      .filter(Boolean);
+
+    const fromTeachers = teachers
+      .filter((t) => t.id === user.id)
+      .flatMap((t) => [t.centerId, ...(t.centerIds || [])])
+      .filter(Boolean);
+
+    return Array.from(new Set([...fromProfile, ...fromClasses, ...fromTeachers]));
+  }, [isTeacher, user, classes, teachers]);
+
+  const visibleCenters = useMemo(() => {
+    if (!isTeacher) return centers;
+    if (teacherCenterIds.length === 0) return centers;
+    return centers.filter((c) => teacherCenterIds.includes(c.id));
+  }, [isTeacher, centers, teacherCenterIds]);
+
   // ================= UI STATE =================
   const location = useLocation();
   const navigate = useNavigate();
@@ -137,11 +177,14 @@ export default function CenterManagement() {
     const parts = location.pathname.split("/centers/")[1] || "";
     const segments = parts.split("/").filter(Boolean);
     const centerId = segments[0] || null;
-    const subTab = segments[1] || "teachers";
-    const validTabs = ["teachers", "students", "specializations", "admins"];
-    const activeSubTab = validTabs.includes(subTab) ? subTab : "teachers";
+    const defaultSubTab = isTeacher ? "students" : "teachers";
+    const subTab = segments[1] || defaultSubTab;
+    const validTabs = isTeacher
+      ? ["teachers", "students", "specializations"]
+      : ["teachers", "students", "specializations", "admins"];
+    const activeSubTab = validTabs.includes(subTab) ? subTab : defaultSubTab;
     return { centerId, activeSubTab };
-  }, [location.pathname]);
+  }, [location.pathname, isTeacher]);
 
   const selectedCenterId = centerSubPathInfo.centerId || selectedCenterIdState;
   const activeSubTab = centerSubPathInfo.activeSubTab;
@@ -149,13 +192,13 @@ export default function CenterManagement() {
   const setSelectedCenterId = (id: string | null) => {
     setSelectedCenterIdState(id);
     if (id) {
-      navigate(`/admin/dashboard/centers/${id}/${activeSubTab}`, {
+      navigate(`${basePath}/${id}/${activeSubTab}`, {
         replace: true,
         preventScrollReset: true,
         state: { preventScroll: true },
       });
     } else {
-      navigate(`/admin/dashboard`, {
+      navigate(isTeacher ? "/teacher/centers" : "/admin/dashboard", {
         replace: true,
         preventScrollReset: true,
         state: { preventScroll: true },
@@ -165,13 +208,21 @@ export default function CenterManagement() {
 
   const handleSubTabChange = (key: string) => {
     if (selectedCenterId) {
-      navigate(`/admin/dashboard/centers/${selectedCenterId}/${key}`, {
+      navigate(`${basePath}/${selectedCenterId}/${key}`, {
         replace: true,
         preventScrollReset: true,
         state: { preventScroll: true },
       });
     }
   };
+
+  useEffect(() => {
+    if (isTeacher && visibleCenters.length > 0) {
+      if (!selectedCenterId || !visibleCenters.some((c) => c.id === selectedCenterId)) {
+        setSelectedCenterId(visibleCenters[0].id);
+      }
+    }
+  }, [isTeacher, visibleCenters, selectedCenterId]);
 
   const [subImagesFileList, setSubImagesFileList] = useState<UploadFile[]>([]);
 
@@ -196,6 +247,8 @@ export default function CenterManagement() {
   // Dynamic filter state for modal inputs
   const [selectedModalCenterId, setSelectedModalCenterId] = useState<string | undefined>(undefined);
   const [selectedTeacherCenterIds, setSelectedTeacherCenterIds] = useState<string[]>([]);
+  const [classPage, setClassPage] = useState<number>(1);
+  const [showAllCenterImages, setShowAllCenterImages] = useState<boolean>(false);
 
   // ================= FORMS =================
   const [centerForm] = Form.useForm();
@@ -237,18 +290,18 @@ export default function CenterManagement() {
         curriculumsData,
         classCurriculumsData,
       ] = await Promise.all([
-        academicService.centers.list(),
-        academicService.classes.list(),
-        userService.list({ roleCode: "teacher", isActive: true }),
-        userService.list({ roleCode: "teacher", isActive: false }),
-        userService.list({ roleCode: "student", isActive: true }),
-        userService.list({ roleCode: "student", isActive: false }),
-        userService.list({ roleCode: "admin", isActive: true }),
-        userService.list({ roleCode: "admin", isActive: false }),
-        rbacService.roles.list(),
-        academicService.specializations.list(),
-        learningCmsService.curriculums.list({ status: "published", limit: 100 }),
-        teacherLearningService.classCurriculums.list({ limit: 100 }),
+        academicService.centers.list().catch(() => []),
+        academicService.classes.list().catch(() => []),
+        userService.list({ roleCode: "teacher", isActive: true }).catch(() => []),
+        userService.list({ roleCode: "teacher", isActive: false }).catch(() => []),
+        userService.list({ roleCode: "student", isActive: true }).catch(() => []),
+        userService.list({ roleCode: "student", isActive: false }).catch(() => []),
+        isTeacher ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: true }).catch(() => []),
+        isTeacher ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: false }).catch(() => []),
+        isTeacher ? Promise.resolve([]) : rbacService.roles.list().catch(() => []),
+        academicService.specializations.list().catch(() => []),
+        learningCmsService.curriculums.list({ status: "published", limit: 100 }).catch(() => null),
+        teacherLearningService.classCurriculums.list({ limit: 100 }).catch(() => null),
       ]);
 
       setCenters(centersData || []);
@@ -316,8 +369,24 @@ export default function CenterManagement() {
       setSpecializations(specializationsData || []);
 
       // Autoselect the first center on load if not selected already
-      if (centersData && centersData.length > 0 && !selectedCenterId) {
-        setSelectedCenterId(centersData[0].id);
+      const initialCenters = isTeacher
+        ? (centersData || []).filter((c: any) => {
+            const teacherClassIds = (user?.teacherProfile?.classes || user?.teacherProfile?.classIds || []).map((tc: any) =>
+              typeof tc === "string" ? tc : tc?.id
+            );
+            const classesInCenter = (classesData || []).filter((cls: any) => cls.centerId === c.id);
+            const teachesInCenter = classesInCenter.some((cls: any) => teacherClassIds.includes(cls.id));
+            return (
+              c.id === user?.centerId ||
+              c.id === user?.teacherProfile?.centerId ||
+              (user?.teacherProfile?.centerIds || []).includes(c.id) ||
+              teachesInCenter
+            );
+          })
+        : (centersData || []);
+
+      if (initialCenters.length > 0 && !selectedCenterId) {
+        setSelectedCenterId(initialCenters[0].id);
       }
     } catch (err) {
       message.error("Tải dữ liệu thất bại");
@@ -327,7 +396,12 @@ export default function CenterManagement() {
   };
 
   const getTeacherRoleId = () => roles.find((r) => r.code?.toLowerCase() === "teacher")?.id || "";
-  const getStudentRoleId = () => roles.find((r) => r.code?.toLowerCase() === "student")?.id || "";
+  const getStudentRoleId = () =>
+    roles.find((r) => r.code?.toLowerCase() === "student")?.id ||
+    students.find((s) => s.role?.code?.toLowerCase() === "student")?.roleId ||
+    students.find((s) => s.role?.code?.toLowerCase() === "student")?.role?.id ||
+    students.find((s) => s.roleId)?.roleId ||
+    "";
   const getAdminRoleId = () => roles.find((r) => r.code?.toLowerCase() === "admin")?.id || "";
 
   const isUserActive = (record: any) => {
@@ -834,7 +908,7 @@ export default function CenterManagement() {
         );
       } else {
         const createdUser = await userService.create({
-          password: values.password || "Teacher@123",
+          password: values.password || DEFAULT_TEACHER_PASSWORD,
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
@@ -924,7 +998,7 @@ export default function CenterManagement() {
       fullName: record.fullName,
       email: record.email,
       phone: record.phone,
-      dateOfBirth: record.dateOfBirth ? dayjs(record.dateOfBirth) : undefined,
+      birthYear: profile.birthYear ?? record.student?.birthYear ?? undefined,
       startDate: record.startDate ? dayjs(record.startDate) : undefined,
       endDate: record.endDate ? dayjs(record.endDate) : undefined,
       address: record.address,
@@ -958,7 +1032,6 @@ export default function CenterManagement() {
   const handleStudentSubmit = async (values: StudentFormValues) => {
     try {
       setLoading(true);
-      const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
       const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
       const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
@@ -967,6 +1040,7 @@ export default function CenterManagement() {
       const profileData = {
         classIds: values.classIds || [],
         parentFullName: values.parentFullName,
+        birthYear: values.birthYear,
       };
 
       const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
@@ -976,7 +1050,6 @@ export default function CenterManagement() {
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
-          dateOfBirth: formattedDob,
           endDate: formattedEndDate,
           address: cleanAddress,
           citizenId: citizenIdVal,
@@ -994,11 +1067,10 @@ export default function CenterManagement() {
         );
       } else {
         const createdUser = await userService.create({
-          password: values.password || "Student@123",
+          password: values.password || DEFAULT_STUDENT_PASSWORD,
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
-          dateOfBirth: formattedDob,
           startDate: formattedStartDate!,
           address: cleanAddress,
           citizenId: citizenIdVal,
@@ -1301,11 +1373,10 @@ export default function CenterManagement() {
                 >
                   <Tag
                     color={isCurrentCenter ? "purple" : "blue"}
-                    className={`border-none rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      isCurrentCenter
-                        ? "bg-purple-50 text-purple-600"
-                        : "bg-blue-50 text-blue-600"
-                    }`}
+                    className={`border-none rounded-full px-2.5 py-0.5 text-xs font-medium ${isCurrentCenter
+                      ? "bg-purple-50 text-purple-600"
+                      : "bg-blue-50 text-blue-600"
+                      }`}
                   >
                     {c.name}
                     {centers.length > 1 && centerObj && !isCurrentCenter && (
@@ -1452,7 +1523,7 @@ export default function CenterManagement() {
       fixed: "left" as const,
       render: (_: any, record: any) => (
         <div className="flex items-center gap-3">
-          <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs">
+          <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs shrink-0">
             {record.fullName?.charAt(0) || "S"}
           </Avatar>
           <div>
@@ -1463,9 +1534,20 @@ export default function CenterManagement() {
       ),
     },
     {
+      title: "Năm sinh",
+      width: 110,
+      render: (_: any, record: any) => {
+        const birthYear = record.studentProfile?.birthYear || record.student?.birthYear;
+        return birthYear ? (
+          <span className="text-slate-600 font-medium text-sm">{birthYear}</span>
+        ) : (
+          <span className="text-slate-400 text-xs">-</span>
+        );
+      },
+    },
+    {
       title: "Lớp học tham gia",
       width: 180,
-      fixed: "left" as const,
       render: (_: any, record: any) => {
         const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
         const sClasses = classes.filter((c) => classIds.includes(c.id));
@@ -1484,7 +1566,6 @@ export default function CenterManagement() {
     {
       title: "Thời gian học",
       width: 180,
-      fixed: "left" as const,
       render: (_: any, record: any) => {
         const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
         const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
@@ -1636,8 +1717,16 @@ export default function CenterManagement() {
     },
   ];
 
+  const renderedTeacherColumns = useMemo(() => {
+    return isTeacher ? teacherColumns.filter((col) => col.title !== "Thao tác") : teacherColumns;
+  }, [isTeacher, teacherColumns]);
+
+  const renderedSpecializationColumns = useMemo(() => {
+    return isTeacher ? specializationColumns.filter((col) => col.title !== "Thao tác") : specializationColumns;
+  }, [isTeacher, specializationColumns]);
+
   // ================= DYNAMIC DATA FILTERS =================
-  const filteredCenters = centers.filter((c) => {
+  const filteredCenters = visibleCenters.filter((c) => {
     const q = centerSearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -1651,6 +1740,22 @@ export default function CenterManagement() {
   const selectedCenter = centers.find((c) => c.id === selectedCenterId);
   const centerClasses = classes.filter((cls) => cls.centerId === selectedCenterId);
   const centerClassesIds = centerClasses.map((cls) => cls.id);
+  const paginatedCenterClasses = centerClasses.slice(
+    (classPage - 1) * CLASSES_PAGE_SIZE,
+    classPage * CLASSES_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setClassPage(1);
+    setShowAllCenterImages(false);
+  }, [selectedCenterId]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(centerClasses.length / CLASSES_PAGE_SIZE));
+    if (classPage > maxPage) {
+      setClassPage(maxPage);
+    }
+  }, [centerClasses.length, classPage]);
 
   const centerTeachers = teachers.filter((t) => {
     const tClasses = t.teacherProfile?.classes || [];
@@ -1663,6 +1768,13 @@ export default function CenterManagement() {
     );
   });
 
+  const visibleCenterTeachers = useMemo(() => {
+    if (isTeacher) {
+      return centerTeachers.filter((t) => t.id === user?.id);
+    }
+    return centerTeachers;
+  }, [isTeacher, centerTeachers, user?.id]);
+
   const centerStudents = students.filter((s) => {
     const sClasses = s.studentProfile?.classes || [];
     const sClassIds = s.studentProfile?.classIds || [];
@@ -1673,7 +1785,7 @@ export default function CenterManagement() {
     );
   });
 
-  const filteredTeachers = centerTeachers.filter((t) => {
+  const filteredTeachers = visibleCenterTeachers.filter((t) => {
     if (teacherStatusFilter === "active" && !isUserActive(t)) return false;
     if (teacherStatusFilter === "inactive" && isUserActive(t)) return false;
     const q = teacherSearch.trim().toLowerCase();
@@ -1870,10 +1982,12 @@ export default function CenterManagement() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
               <div>
                 <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
-                  Dashboard Quản Lý
+                  {isTeacher ? "Cơ sở đào tạo & Lớp học" : "Dashboard Quản Lý"}
                 </Title>
                 <Text className="text-slate-400 text-sm">
-                  Quản lý trung tâm, lớp học, giáo viên & học sinh đơn giản & hiện đại
+                  {isTeacher
+                    ? "Quản lý thông tin học sinh và theo dõi cơ sở đào tạo"
+                    : "Quản lý trung tâm, lớp học, giáo viên & học sinh đơn giản & hiện đại"}
                 </Text>
               </div>
             </div>
@@ -1886,17 +2000,19 @@ export default function CenterManagement() {
                 <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-[80px] z-10 transition-all">
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold text-slate-800 m-0">
-                      Trung tâm ({centers.length})
+                      Trung tâm ({visibleCenters.length})
                     </h3>
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<PlusOutlined />}
-                      onClick={handleCenterCreate}
-                      className="bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center font-medium"
-                    >
-                      Thêm mới
-                    </Button>
+                    {!isTeacher && (
+                      <Button
+                        type="primary"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={handleCenterCreate}
+                        className="bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center font-medium"
+                      >
+                        Thêm mới
+                      </Button>
+                    )}
                   </div>
 
                   <Input
@@ -2012,23 +2128,25 @@ export default function CenterManagement() {
                           </div>
                         </div>
 
-                        <Space>
-                          <Button
-                            icon={<EditOutlined />}
-                            onClick={(e) => handleCenterEdit(selectedCenter, e)}
-                            className="rounded-xl border-slate-200 hover:text-indigo-600 hover:border-indigo-600"
-                          >
-                            Chỉnh sửa
-                          </Button>
-                          <Button
-                            danger
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => handleCenterDelete(selectedCenter, e)}
-                            className="rounded-xl"
-                          >
-                            Xóa trung tâm
-                          </Button>
-                        </Space>
+                        {!isTeacher && (
+                          <Space>
+                            <Button
+                              icon={<EditOutlined />}
+                              onClick={(e) => handleCenterEdit(selectedCenter, e)}
+                              className="rounded-xl border-slate-200 hover:text-indigo-600 hover:border-indigo-600"
+                            >
+                              Chỉnh sửa
+                            </Button>
+                            <Button
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={(e) => handleCenterDelete(selectedCenter, e)}
+                              className="rounded-xl"
+                            >
+                              Xóa trung tâm
+                            </Button>
+                          </Space>
+                        )}
                       </div>
 
                       <Divider className="my-5 border-slate-100" />
@@ -2075,29 +2193,72 @@ export default function CenterManagement() {
                     {/* CENTER IMAGES GALLERY */}
                     {selectedCenter?.images && selectedCenter.images.length > 0 && (
                       <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-                        <div className="flex items-center gap-2 mb-4">
-                          <LucideImageIcon size={18} className="text-slate-500" />
-                          <h3 className="text-base font-bold text-slate-800 m-0">Ảnh chi tiết trung tâm ({selectedCenter.images.length})</h3>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <LucideImageIcon size={18} className="text-slate-500" />
+                            <h3 className="text-base font-bold text-slate-800 m-0">
+                              Ảnh chi tiết trung tâm ({selectedCenter.images.length})
+                            </h3>
+                          </div>
+                          {selectedCenter.images.length > 4 && showAllCenterImages && (
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => setShowAllCenterImages(false)}
+                              className="text-xs font-semibold text-indigo-600 p-0 h-auto"
+                            >
+                              Thu gọn
+                            </Button>
+                          )}
                         </div>
-                        <Image.PreviewGroup>
+                        <Image.PreviewGroup
+                          items={selectedCenter.images.map((img: any) => resolveMediaUrl(img.url))}
+                        >
                           <Row gutter={[16, 16]}>
-                            {selectedCenter.images.map((img: any) => (
-                              <Col xs={12} sm={8} md={6} key={img.id}>
-                                <div className="group aspect-[4/3] rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100">
-                                  <Image
-                                    src={resolveMediaUrl(img.url)}
-                                    alt="Center detail"
-                                    rootClassName="w-full h-full"
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                    preview={{
-                                      cover: (
-                                        <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">Xem ảnh</span>
-                                      ),
-                                    }}
-                                  />
-                                </div>
-                              </Col>
-                            ))}
+                            {(showAllCenterImages
+                              ? selectedCenter.images
+                              : selectedCenter.images.slice(0, 4)
+                            ).map((img: any, idx: number) => {
+                              const remainingCount = selectedCenter.images.length - 4;
+                              const isMoreTrigger = !showAllCenterImages && idx === 3 && remainingCount > 0;
+
+                              return (
+                                <Col xs={12} sm={8} md={6} key={img.id || idx}>
+                                  <div className="group relative aspect-[4/3] rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100">
+                                    <Image
+                                      src={resolveMediaUrl(img.url)}
+                                      alt="Center detail"
+                                      rootClassName="w-full h-full"
+                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                      preview={
+                                        isMoreTrigger
+                                          ? false
+                                          : {
+                                              cover: (
+                                                <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                                                  Xem ảnh
+                                                </span>
+                                              ),
+                                            }
+                                      }
+                                    />
+                                    {isMoreTrigger && (
+                                      <div
+                                        onClick={() => setShowAllCenterImages(true)}
+                                        className="absolute inset-0 bg-slate-900/60 hover:bg-slate-900/70 backdrop-blur-[2px] flex flex-col items-center justify-center cursor-pointer transition-all duration-200 z-10"
+                                      >
+                                        <span className="text-white text-2xl font-extrabold tracking-tight">
+                                          +{remainingCount}
+                                        </span>
+                                        <span className="text-white/90 text-xs font-medium mt-0.5">
+                                          Xem thêm
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </Col>
+                              );
+                            })}
                           </Row>
                         </Image.PreviewGroup>
                       </div>
@@ -2149,18 +2310,20 @@ export default function CenterManagement() {
                           <GraduationCap size={18} className="text-slate-500" />
                           <h3 className="text-base font-bold text-slate-800 m-0">Lớp học thuộc trung tâm</h3>
                         </div>
-                        <Button
-                          type="dashed"
-                          icon={<PlusOutlined />}
-                          onClick={handleClassCreate}
-                          className="hover:text-indigo-600 hover:border-indigo-600 rounded-xl font-semibold text-xs"
-                        >
-                          Tạo lớp học mới
-                        </Button>
+                        {!isTeacher && (
+                          <Button
+                            type="dashed"
+                            icon={<PlusOutlined />}
+                            onClick={handleClassCreate}
+                            className="hover:text-indigo-600 hover:border-indigo-600 rounded-xl font-semibold text-xs"
+                          >
+                            Tạo lớp học mới
+                          </Button>
+                        )}
                       </div>
 
                       <Row gutter={[16, 16]}>
-                        {centerClasses.map((cls) => {
+                        {paginatedCenterClasses.map((cls) => {
                           const classStudentsCount = students.filter((s) => {
                             const sClassIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
                             return sClassIds.includes(cls.id);
@@ -2172,23 +2335,29 @@ export default function CenterManagement() {
                             <Col xs={24} sm={12} md={8} key={cls.id}>
                               <div className="group border border-slate-100 rounded-2xl p-5 bg-slate-50/20 hover:bg-white hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 relative flex flex-col justify-between min-h-[120px]">
                                 <div>
-                                  <div className="flex items-start justify-between">
-                                    <div className="font-bold text-slate-800 text-sm truncate max-w-[130px]">{cls.name}</div>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-                                      <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
-                                        onClick={() => handleClassEdit(cls)}
-                                      />
-                                      <Button
-                                        type="text"
-                                        size="small"
-                                        danger
-                                        icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
-                                        onClick={() => handleClassDelete(cls)}
-                                      />
-                                    </div>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <Tooltip title={cls.name}>
+                                      <div className="font-bold text-slate-800 text-sm truncate flex-1 min-w-0 cursor-default">
+                                        {cls.name}
+                                      </div>
+                                    </Tooltip>
+                                    {!isTeacher && (
+                                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
+                                          onClick={() => handleClassEdit(cls)}
+                                        />
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          danger
+                                          icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
+                                          onClick={() => handleClassDelete(cls)}
+                                        />
+                                      </div>
+                                    )}
                                   </div>
                                   {cls.specializationId && (
                                     <div className="mt-1">
@@ -2204,16 +2373,20 @@ export default function CenterManagement() {
                                         const name = m.curriculum?.title || m.curriculum?.code;
                                         if (!name) return null;
                                         return (
-                                          <span key={m.id} className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                                            <LucideBookOpen size={10} />
-                                            {name}
-                                          </span>
+                                          <Tooltip key={m.id} title={name}>
+                                            <span className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 max-w-full truncate">
+                                              <LucideBookOpen size={10} className="shrink-0" />
+                                              <span className="truncate">{name}</span>
+                                            </span>
+                                          </Tooltip>
                                         );
                                       })}
                                     </div>
                                   )}
                                   {cls.description && (
-                                    <div className="text-slate-400 text-xs mt-1.5 line-clamp-2">{cls.description}</div>
+                                    <Tooltip title={cls.description}>
+                                      <div className="text-slate-400 text-xs mt-1.5 line-clamp-2 cursor-default">{cls.description}</div>
+                                    </Tooltip>
                                   )}
                                 </div>
                                 <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-3">
@@ -2235,6 +2408,19 @@ export default function CenterManagement() {
                           </Col>
                         )}
                       </Row>
+
+                      {centerClasses.length > CLASSES_PAGE_SIZE && (
+                        <div className="mt-5 flex justify-end">
+                          <Pagination
+                            current={classPage}
+                            pageSize={CLASSES_PAGE_SIZE}
+                            total={centerClasses.length}
+                            onChange={(page) => setClassPage(page)}
+                            showSizeChanger={false}
+                            size="small"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* GOOGLE MAP EMBED (If exists) */}
@@ -2271,7 +2457,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <TeamOutlined />
-                                Giáo viên ({centerTeachers.length})
+                                Giáo viên ({visibleCenterTeachers.length})
                               </span>
                             ),
                             children: (
@@ -2290,27 +2476,29 @@ export default function CenterManagement() {
                                       value={teacherStatusFilter}
                                       onChange={(val) => setTeacherStatusFilter(val as any)}
                                       options={[
-                                        { label: `Tất cả (${centerTeachers.length})`, value: "all" },
-                                        { label: `Đang hoạt động (${centerTeachers.filter(isUserActive).length})`, value: "active" },
-                                        { label: `Đã nghỉ (${centerTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
+                                        { label: `Tất cả (${visibleCenterTeachers.length})`, value: "all" },
+                                        { label: `Đang hoạt động (${visibleCenterTeachers.filter(isUserActive).length})`, value: "active" },
+                                        { label: `Đã nghỉ (${visibleCenterTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
                                       ]}
                                       className="bg-slate-100 p-0.5 rounded-xl text-xs"
                                     />
                                   </div>
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleTeacherCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                                  >
-                                    Tạo Giáo viên
-                                  </Button>
+                                  {!isTeacher && (
+                                    <Button
+                                      type="primary"
+                                      icon={<PlusOutlined />}
+                                      onClick={handleTeacherCreate}
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                    >
+                                      Tạo Giáo viên
+                                    </Button>
+                                  )}
                                 </div>
 
                                 <Table
                                   rowKey="id"
                                   dataSource={filteredTeachers}
-                                  columns={teacherColumns}
+                                  columns={renderedTeacherColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
                                   scroll={{ x: "max-content" }}
@@ -2384,20 +2572,22 @@ export default function CenterManagement() {
                               <div className="space-y-4 pt-4">
                                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
                                   <div className="text-slate-400 text-sm">Danh sách các Chuyên môn học thuật khả dụng</div>
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleSpecializationCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                                  >
-                                    Tạo Chuyên môn
-                                  </Button>
+                                  {!isTeacher && (
+                                    <Button
+                                      type="primary"
+                                      icon={<PlusOutlined />}
+                                      onClick={handleSpecializationCreate}
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                    >
+                                      Tạo Chuyên môn
+                                    </Button>
+                                  )}
                                 </div>
 
                                 <Table
                                   rowKey="id"
                                   dataSource={specializations}
-                                  columns={specializationColumns}
+                                  columns={renderedSpecializationColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy chuyên môn nào" }}
                                   className="border border-slate-100 rounded-2xl overflow-hidden"
@@ -2405,46 +2595,50 @@ export default function CenterManagement() {
                               </div>
                             ),
                           },
-                          {
-                            key: "admins",
-                            label: (
-                              <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                                <SafetyCertificateOutlined />
-                                Quản trị viên ({admins.length})
-                              </span>
-                            ),
-                            children: (
-                              <div className="space-y-4 pt-4">
-                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <Input
-                                    placeholder="Tìm kiếm quản trị viên theo tên, mã..."
-                                    prefix={<SearchOutlined className="text-slate-400" />}
-                                    value={adminSearch}
-                                    onChange={(e) => setAdminSearch(e.target.value)}
-                                    className="max-w-md rounded-xl border-slate-200"
-                                    allowClear
-                                  />
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleAdminCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                                  >
-                                    Tạo Quản trị viên
-                                  </Button>
-                                </div>
+                          ...(!isTeacher
+                            ? [
+                                {
+                                  key: "admins",
+                                  label: (
+                                    <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
+                                      <SafetyCertificateOutlined />
+                                      Quản trị viên ({admins.length})
+                                    </span>
+                                  ),
+                                  children: (
+                                    <div className="space-y-4 pt-4">
+                                      <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+                                        <Input
+                                          placeholder="Tìm kiếm quản trị viên theo tên, mã..."
+                                          prefix={<SearchOutlined className="text-slate-400" />}
+                                          value={adminSearch}
+                                          onChange={(e) => setAdminSearch(e.target.value)}
+                                          className="max-w-md rounded-xl border-slate-200"
+                                          allowClear
+                                        />
+                                        <Button
+                                          type="primary"
+                                          icon={<PlusOutlined />}
+                                          onClick={handleAdminCreate}
+                                          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                        >
+                                          Tạo Quản trị viên
+                                        </Button>
+                                      </div>
 
-                                <Table
-                                  rowKey="id"
-                                  dataSource={filteredAdmins}
-                                  columns={adminColumns}
-                                  pagination={{ pageSize: 5, showSizeChanger: false }}
-                                  locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
-                                  className="border border-slate-100 rounded-2xl overflow-hidden"
-                                />
-                              </div>
-                            ),
-                          },
+                                      <Table
+                                        rowKey="id"
+                                        dataSource={filteredAdmins}
+                                        columns={adminColumns}
+                                        pagination={{ pageSize: 5, showSizeChanger: false }}
+                                        locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
+                                        className="border border-slate-100 rounded-2xl overflow-hidden"
+                                      />
+                                    </div>
+                                  ),
+                                },
+                              ]
+                            : []),
                         ]}
                       />
                     </div>
@@ -2627,13 +2821,16 @@ export default function CenterManagement() {
                 </Form.Item>
 
                 <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
-                  <Select mode="multiple" placeholder="Chọn giáo trình gắn với lớp" allowClear className="rounded-xl">
-                    {curriculums.map((curr) => (
-                      <Select.Option key={curr.id} value={curr.id}>
-                        {curr.title || curr.code}
-                      </Select.Option>
-                    ))}
-                  </Select>
+                  <SafeSelect
+                    mode="multiple"
+                    placeholder="Chọn giáo trình gắn với lớp"
+                    allowClear
+                    className="rounded-xl"
+                    options={curriculums.map((curr) => ({
+                      label: curr.title || curr.code,
+                      value: curr.id,
+                    }))}
+                  />
                 </Form.Item>
 
                 <Form.Item name="description" label="Mô tả lớp học">
@@ -2670,6 +2867,7 @@ export default function CenterManagement() {
               <Form
                 form={teacherForm}
                 layout="vertical"
+                autoComplete="off"
                 onFinish={handleTeacherSubmit}
                 onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
                 scrollToFirstError={{ behavior: "smooth", block: "center" }}
@@ -2840,13 +3038,12 @@ export default function CenterManagement() {
                       rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 trung tâm!" }]}
                       tooltip="Chọn một hoặc nhiều trung tâm để lọc danh sách lớp phụ trách"
                     >
-                      <Select
+                      <SafeSelect
                         mode="multiple"
                         placeholder="Chọn các trung tâm liên kết"
                         className="rounded-xl"
                         showSearch
                         optionFilterProp="label"
-                        maxTagCount="responsive"
                         onChange={(nextCenterIds: string[]) => {
                           setSelectedTeacherCenterIds(nextCenterIds);
                           // Keep only classes that belong to one of the selected centers
@@ -2877,14 +3074,13 @@ export default function CenterManagement() {
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
                   tooltip="Giáo viên có thể dạy các lớp thuộc các trung tâm đã chọn"
                 >
-                  <Select
+                  <SafeSelect
                     mode="multiple"
                     placeholder="Chọn lớp học (chọn trung tâm liên kết trước để lọc)"
                     style={{ width: "100%" }}
                     className="rounded-xl"
                     showSearch
                     optionFilterProp="label"
-                    maxTagCount="responsive"
                     options={classes
                       .filter(
                         (c) =>
@@ -2906,8 +3102,10 @@ export default function CenterManagement() {
                   label="Chuyên môn"
                   rules={[{ required: true, message: "Chọn ít nhất 1 chuyên môn!" }]}
                 >
-                  <Select
+                  <SafeSelect
                     mode="multiple"
+                    showSearch
+                    optionFilterProp="label"
                     placeholder="Chọn chuyên môn"
                     style={{ width: "100%" }}
                     className="rounded-xl"
@@ -2970,14 +3168,13 @@ export default function CenterManagement() {
 
                 {!editingTeacher && (
                   <Form.Item
-                    name="password"
-                    label="Mật khẩu tài khoản"
-                    rules={[
-                      { required: true, message: "Nhập mật khẩu!" },
-                      { min: 8, message: "Mật khẩu phải tối thiểu từ 8 ký tự!" },
-                    ]}
+                    label="Mật khẩu tài khoản (Mặc định)"
                   >
-                    <Input.Password placeholder="Tối thiểu 8 ký tự" className="rounded-xl" />
+                    <Input
+                      value="********"
+                      disabled
+                      className="rounded-xl font-mono text-slate-500"
+                    />
                   </Form.Item>
                 )}
 
@@ -3125,6 +3322,7 @@ export default function CenterManagement() {
               <Form
                 form={studentForm}
                 layout="vertical"
+                autoComplete="off"
                 onFinish={handleStudentSubmit}
                 onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
                 scrollToFirstError={{ behavior: "smooth", block: "center" }}
@@ -3180,11 +3378,20 @@ export default function CenterManagement() {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
-                      name="dateOfBirth"
-                      label="Ngày sinh"
-                      rules={[{ required: true, message: "Vui lòng chọn ngày sinh!" }]}
+                      name="birthYear"
+                      label="Năm sinh"
+                      rules={[
+                        { required: true, message: "Vui lòng nhập năm sinh!" },
+                        { type: "number", min: 1900, max: dayjs().year(), message: `Năm sinh không hợp lệ (1900 - ${dayjs().year()})!` },
+                      ]}
                     >
-                      <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
+                      <InputNumber
+                        style={{ width: "100%" }}
+                        placeholder="Ví dụ: 2015"
+                        min={1900}
+                        max={dayjs().year()}
+                        className="rounded-xl"
+                      />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
@@ -3308,7 +3515,7 @@ export default function CenterManagement() {
                       // Clear class selection if center changes to prevent mismatch
                       studentForm.setFieldsValue({ classIds: [] });
                     }}
-                    options={centers.map(c => ({ label: c.name, value: c.id }))}
+                    options={visibleCenters.map(c => ({ label: c.name, value: c.id }))}
                   />
                 </Form.Item>
 
@@ -3317,8 +3524,10 @@ export default function CenterManagement() {
                   label="Lớp học tham gia"
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
                 >
-                  <Select
+                  <SafeSelect
                     mode="multiple"
+                    showSearch
+                    optionFilterProp="label"
                     placeholder="Chọn lớp học (chọn trung tâm trước để lọc)"
                     style={{ width: "100%" }}
                     className="rounded-xl"
@@ -3330,14 +3539,13 @@ export default function CenterManagement() {
 
                 {!editingStudent && (
                   <Form.Item
-                    name="password"
-                    label="Mật khẩu tài khoản"
-                    rules={[
-                      { required: true, message: "Nhập mật khẩu!" },
-                      { min: 8, message: "Mật khẩu phải tối thiểu từ 8 ký tự!" },
-                    ]}
+                    label="Mật khẩu tài khoản (Mặc định)"
                   >
-                    <Input.Password placeholder="Tối thiểu 8 ký tự" className="rounded-xl" />
+                    <Input
+                      value="********"
+                      disabled
+                      className="rounded-xl font-mono text-slate-500"
+                    />
                   </Form.Item>
                 )}
 

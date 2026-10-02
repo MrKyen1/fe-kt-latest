@@ -19,6 +19,7 @@ import { studentLearningService } from "../../services/studentLearningService";
 import { useAuth } from "../../contexts/AuthContext";
 import { Curriculum, Exam } from "../../types/backend";
 import { AppImage } from "../../components/AppImagePreview";
+import { formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
 
 const { Title, Text } = Typography;
 
@@ -243,7 +244,7 @@ export default function CurriculumExams() {
     };
   }, [curriculumId, isStudent]);
 
-  const handleStartExam = async (examId: string) => {
+  const handleStartExam = async (examId: string, restart = false) => {
     if (!isStudent) {
       message.info("Tài khoản giáo viên / quản trị viên chỉ có thể xem trước danh sách đề thi. Chỉ học sinh mới có quyền làm bài.");
       return;
@@ -253,9 +254,26 @@ export default function CurriculumExams() {
       const attempt = await studentLearningService.curriculums.startAttempt(
         curriculumId!,
         examId,
+        restart ? { restart: true } : undefined,
       );
       const attemptId = (attempt as any)?.id;
-      if (!attemptId) throw new Error("Backend không trả về attemptId.");
+      if (!attemptId) {
+        if ((attempt as any)?.mastered && !restart) {
+          const restartAttempt = await studentLearningService.curriculums.startAttempt(
+            curriculumId!,
+            examId,
+            { restart: true },
+          );
+          const rId = (restartAttempt as any)?.id;
+          if (rId) {
+            navigate(`/exam/${rId}`);
+            return;
+          }
+          message.info("Bạn đã hoàn thành xuất sắc 100% bài thi này!");
+          return;
+        }
+        throw new Error("Backend không trả về attemptId.");
+      }
       navigate(`/exam/${attemptId}`);
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
@@ -451,10 +469,12 @@ export default function CurriculumExams() {
                           <div className="bg-indigo-50 rounded-xl p-3 text-indigo-600 shrink-0 font-bold text-lg w-12 h-12 flex items-center justify-center">
                             {idx + 1}
                           </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-indigo-700 transition-colors">
-                              {exam?.title ?? exam?.code ?? `Bài thi ${idx + 1}`}
-                            </h3>
+                          <div className="min-w-0 flex-1">
+                            <Tooltip title={exam?.title ?? exam?.code ?? `Bài thi ${idx + 1}`} placement="topLeft">
+                              <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-indigo-700 transition-colors line-clamp-1">
+                                {exam?.title ?? exam?.code ?? `Bài thi ${idx + 1}`}
+                              </h3>
+                            </Tooltip>
                             <div className="flex flex-wrap items-center gap-4 text-slate-500 text-sm font-medium">
                               <div className="flex items-center gap-1.5">
                                 <Clock size={15} className="text-indigo-400" />
@@ -472,11 +492,21 @@ export default function CurriculumExams() {
                               {isStudent && attemptsCount > 0 && (
                                 <span className="text-slate-400 text-xs">{attemptsCount} lần đã làm</span>
                               )}
-                              {isStudent && (entry as any).bestPercentage != null && (
-                                <span className="text-xs font-semibold" style={{ color: percentColor((entry as any).bestPercentage) }}>
-                                  Tốt nhất: {(entry as any).bestScore !== null && (entry as any).bestScore !== undefined ? `${(entry as any).bestScore}` : ""} ({parseFloat((entry as any).bestPercentage).toFixed(1)}%)
-                                </span>
-                              )}
+                              {isStudent && (entry as any).bestPercentage != null && (() => {
+                                const scoreInfo = formatStudentExamScoreDisplay({
+                                  isExamType: (entry as any).exam?.examType === "exam" || (entry as any).isExamType,
+                                  score: (entry as any).bestScore,
+                                  maxScore: (entry as any).maxScore ?? qCount,
+                                  percentage: (entry as any).bestPercentage,
+                                });
+                                return (
+                                  <Tooltip title={scoreInfo.tooltip}>
+                                    <span className="text-xs font-semibold" style={{ color: percentColor((entry as any).bestPercentage) }}>
+                                      Tốt nhất: {scoreInfo.primaryText} ({parseFloat((entry as any).bestPercentage).toFixed(0)}%)
+                                    </span>
+                                  </Tooltip>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -507,37 +537,39 @@ export default function CurriculumExams() {
                               />
                             </Tooltip>
                           )}
-                          <Button
-                            type={isStudent && attemptsCount > 0 ? "default" : "primary"}
-                            size="large"
-                            icon={
-                              isStudent && attemptsCount > 0
-                                ? <RotateCcw size={18} />
-                                : <PlayCircle size={18} />
-                            }
-                            loading={isStarting}
-                            disabled={isStarting || (!canDoExam && isStudent)}
-                            className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 justify-center ${
-                              isStudent && attemptsCount > 0
-                              ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
-                              : canDoExam || !isStudent
-                              ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
-                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                            }`}
-                            onClick={() => {
-                              handleStartExam(exam?.id ?? entry.examId);
-                            }}
-                          >
-                            {isStudent
-                              ? canDoExam
-                                ? isMastered
-                                  ? "Luyện tập lại"
-                                  : isNeedsRetry
-                                  ? "Làm lại câu sai"
-                                  : "Làm bài ngay"
-                                : "Chưa được giao"
-                              : "Xem trước (chỉ HS)"}
-                          </Button>
+                          <Tooltip title={isStudent && canDoExam && isMastered ? "Làm lại toàn bộ đề" : undefined}>
+                            <Button
+                              type={isStudent && attemptsCount > 0 ? "default" : "primary"}
+                              size="large"
+                              icon={
+                                isStudent && attemptsCount > 0
+                                  ? <RotateCcw size={18} />
+                                  : <PlayCircle size={18} />
+                              }
+                              loading={isStarting}
+                              disabled={isStarting || (!canDoExam && isStudent)}
+                              className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 justify-center ${
+                                isStudent && attemptsCount > 0
+                                ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
+                                : canDoExam || !isStudent
+                                ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                              }`}
+                              onClick={() => {
+                                handleStartExam(exam?.id ?? entry.examId, isMastered);
+                              }}
+                            >
+                              {isStudent
+                                ? canDoExam
+                                  ? isMastered
+                                    ? "Ôn tập lại"
+                                    : isNeedsRetry
+                                    ? "Làm lại câu sai"
+                                    : "Làm bài ngay"
+                                  : "Chưa được giao"
+                                : "Xem trước (chỉ HS)"}
+                            </Button>
+                          </Tooltip>
                         </div>
                       </motion.div>
                     </Col>

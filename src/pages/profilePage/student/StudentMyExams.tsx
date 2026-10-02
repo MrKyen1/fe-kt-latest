@@ -33,6 +33,7 @@ import {
   ListChecks,
   Play,
   CheckCircle,
+  RotateCcw,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AppImage } from "../../../components/AppImagePreview";
@@ -59,6 +60,8 @@ import {
   getAssignedExamAction,
   FlattenedAssignedExam,
   formatScore,
+  formatPercentage,
+  formatStudentExamScoreDisplay,
 } from "../../../utils/studentExamUtils";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { resolveMediaUrl } from "../../../services/apiClient";
@@ -110,7 +113,21 @@ function AttemptHistoryModal({
   }, [open, assignmentStudentId, examId]);
 
   const columns = [
-    { title: "Lần", dataIndex: "attemptNumber", width: 60, render: (n: number) => <span className="font-bold text-indigo-600">#{n}</span> },
+    {
+      title: "Lần",
+      dataIndex: "attemptNumber",
+      width: 100,
+      render: (n: number, r: any) => (
+        <div className="flex items-center gap-1.5">
+          <span className="font-bold text-indigo-600">#{n}</span>
+          {r.isRedo && (
+            <Tag color="cyan" className="rounded-full border-none text-[10px] px-1.5 py-0 font-medium m-0">
+              Làm lại
+            </Tag>
+          )}
+        </div>
+      ),
+    },
     {
       title: "Trạng thái", dataIndex: "status",
       render: (status: string) => status === "submitted"
@@ -118,10 +135,26 @@ function AttemptHistoryModal({
         : <Tag color="processing" className="rounded-full border-none text-xs font-semibold">Đang làm</Tag>,
     },
     {
-      title: "Điểm",
-      render: (_: any, r: any) => r.status === "submitted"
-        ? <span className="font-bold" style={{ color: percentColor(r.percentage) }}>{r.score ?? "—"} / {r.maxScore ?? "—"}</span>
-        : <span className="text-slate-400">—</span>,
+      title: "Điểm số",
+      render: (_: any, r: any) => {
+        if (r.status !== "submitted") return <span className="text-slate-400">—</span>;
+        const scoreInfo = formatStudentExamScoreDisplay({
+          isExamType: true,
+          score: r.score,
+          maxScore: r.maxScore,
+          percentage: r.percentage,
+        });
+        return (
+          <Tooltip title={`Đúng ${formatScore(r.score)} / ${formatScore(r.maxScore)} câu (${parseFloat(r.percentage ?? "0").toFixed(0)}%)`}>
+            <span className="font-bold" style={{ color: percentColor(r.percentage) }}>
+              {scoreInfo.primaryText}
+              <span className="text-xs text-slate-400 font-normal ml-1.5">
+                ({formatScore(r.score)}/{formatScore(r.maxScore)} câu)
+              </span>
+            </span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "Phần trăm",
@@ -171,7 +204,7 @@ function AttemptHistoryModal({
       ) : attempts.length === 0 ? (
         <Empty description="Chưa có lần làm bài nào" />
       ) : (
-        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={false} size="small" className="rounded-xl overflow-hidden" />
+        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={false} size="small" scroll={{ x: 550 }} className="rounded-xl overflow-hidden" />
       )}
     </Modal>
   );
@@ -270,17 +303,28 @@ export default function StudentMyExams() {
     }
   };
 
-  const handleStartExam = async (assignmentStudentId: string, examId: string) => {
+  const handleStartExam = async (assignmentStudentId: string, examId: string, restart = false) => {
     const key = `${assignmentStudentId}:${examId}`;
     try {
       setStartingId(key);
       const res = await studentLearningService.examAssignments.startAttempt(
         assignmentStudentId,
-        examId
+        examId,
+        restart ? { restart: true } : undefined
       );
       const attemptId = res?.id;
       if (!attemptId) {
-        if ((res as any)?.mastered) {
+        if ((res as any)?.mastered && !restart) {
+          const restartRes = await studentLearningService.examAssignments.startAttempt(
+            assignmentStudentId,
+            examId,
+            { restart: true }
+          );
+          const rId = restartRes?.id;
+          if (rId) {
+            navigate(`/exam/${rId}`);
+            return;
+          }
           message.info("Bạn đã hoàn thành xuất sắc 100% bài thi này!");
           return;
         }
@@ -294,17 +338,28 @@ export default function StudentMyExams() {
     }
   };
 
-  const handleStartCurriculumExam = async (curriculumId: string, examId: string) => {
+  const handleStartCurriculumExam = async (curriculumId: string, examId: string, restart = false) => {
     const key = `${curriculumId}:${examId}`;
     try {
       setStartingId(key);
       const res = await studentLearningService.curriculums.startAttempt(
         curriculumId,
-        examId
+        examId,
+        restart ? { restart: true } : undefined
       );
       const attemptId = res?.id;
       if (!attemptId) {
-        if ((res as any)?.mastered) {
+        if ((res as any)?.mastered && !restart) {
+          const restartRes = await studentLearningService.curriculums.startAttempt(
+            curriculumId,
+            examId,
+            { restart: true }
+          );
+          const rId = restartRes?.id;
+          if (rId) {
+            navigate(`/exam/${rId}`);
+            return;
+          }
           message.info("Bạn đã hoàn thành xuất sắc 100% bài thi trong lộ trình!");
           return;
         }
@@ -449,177 +504,216 @@ export default function StudentMyExams() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden mt-5">
-            {/* Table Header */}
-            <div className="hidden md:grid md:grid-cols-12 gap-4 px-5 py-3 bg-slate-50/80 border-b border-slate-200/80 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <div className="col-span-4">Bài thi & Lớp học</div>
-              <div className="col-span-2 text-center">Thời lượng & Lượt làm</div>
-              <div className="col-span-2 text-center">Tiến độ</div>
-              <div className="col-span-2 text-center">Trạng thái</div>
-              <div className="col-span-2 text-right">Thao tác</div>
-            </div>
+            <div className="overflow-x-auto">
+              <div className="min-w-[980px]">
+                {/* Table Header */}
+                <div className="grid grid-cols-[minmax(240px,1fr)_130px_120px_140px_280px] gap-4 px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/80 text-xs font-bold text-slate-500 uppercase tracking-wider items-center">
+                  <div>Bài thi & Lớp học</div>
+                  <div className="text-center">Thời lượng & Lượt làm</div>
+                  <div className="text-center">Tiến độ</div>
+                  <div className="text-center">Trạng thái</div>
+                  <div className="text-right pr-2">Thao tác</div>
+                </div>
 
-            {/* Table Rows */}
-            <div className="divide-y divide-slate-100">
-              {paginatedAssignedExams.map((item: any) => {
-                const isStarting = startingId === `${item.assignmentStudentId}:${item.examId}`;
-                const statusInfo = getAssignedExamStatus(item);
-                const actionInfo = getAssignedExamAction(item);
+                {/* Table Rows */}
+                <div className="divide-y divide-slate-100">
+                  {paginatedAssignedExams.map((item: any) => {
+                    const isStarting = startingId === `${item.assignmentStudentId}:${item.examId}`;
+                    const statusInfo = getAssignedExamStatus(item);
+                    const actionInfo = getAssignedExamAction(item);
 
-                return (
-                  <div
-                    key={item.id}
-                    className="grid grid-cols-1 md:grid-cols-12 gap-4 px-5 py-3.5 items-center hover:bg-slate-50/70 transition-colors"
-                  >
-                    {/* Cột 1: Bài thi & Lớp học */}
-                    <div className="col-span-1 md:col-span-4 flex items-center gap-3.5 min-w-0">
+                    return (
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center text-base shrink-0 shadow-sm ${
-                          item.isCompleted
-                            ? "bg-emerald-500 text-white"
-                            : item.isExamType
-                            ? "bg-purple-100 text-purple-600 border border-purple-200"
-                            : "bg-blue-100 text-blue-600 border border-blue-200"
-                        }`}
+                        key={item.id}
+                        className="grid grid-cols-[minmax(240px,1fr)_130px_120px_140px_280px] gap-4 px-5 py-3.5 items-center hover:bg-slate-50/70 transition-colors"
                       >
-                        {item.isCompleted ? <CheckCircleOutlined /> : item.isExamType ? <FileTextOutlined /> : <BookOutlined />}
-                      </div>
+                        {/* Cột 1: Bài thi & Lớp học */}
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center text-base shrink-0 shadow-sm ${
+                              item.isCompleted
+                                ? "bg-emerald-500 text-white"
+                                : item.isExamType
+                                ? "bg-purple-100 text-purple-600 border border-purple-200"
+                                : "bg-blue-100 text-blue-600 border border-blue-200"
+                            }`}
+                          >
+                            {item.isCompleted ? <CheckCircleOutlined /> : item.isExamType ? <FileTextOutlined /> : <BookOutlined />}
+                          </div>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition cursor-pointer line-clamp-1"
-                            onClick={() => {
-                              if (actionInfo.actionType === "review") {
-                                if (item.lastAttemptId) {
-                                  navigate(`/exam/${item.lastAttemptId}`);
-                                } else {
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Tooltip title={item.examTitle} placement="topLeft">
+                                <span
+                                  className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition cursor-pointer truncate max-w-[280px] inline-block"
+                                  onClick={() => {
+                                    if (actionInfo.actionType === "review") {
+                                      if (item.lastAttemptId) {
+                                        navigate(`/exam/${item.lastAttemptId}`);
+                                      } else {
+                                        setHistoryAssignmentStudentId(item.assignmentStudentId);
+                                        setHistoryExamId(item.examId);
+                                        setHistoryTitle(item.examTitle);
+                                      }
+                                    } else {
+                                      handleStartExam(item.assignmentStudentId, item.examId);
+                                    }
+                                  }}
+                                >
+                                  {item.examTitle}
+                                </span>
+                              </Tooltip>
+                              <Tag color={item.isExamType ? "purple" : "blue"} className="rounded-full border-none text-[10px] font-bold px-2 py-0.5 m-0 shrink-0">
+                                {item.isExamType ? "Kiểm tra" : "Ôn tập"}
+                              </Tag>
+                              {item.className && (
+                                <Tooltip title={`Lớp: ${item.className}`} placement="topLeft">
+                                  <Tag color="cyan" className="rounded-full border-none text-[10px] font-semibold px-2 py-0.5 m-0 shrink-0 max-w-[140px] truncate">
+                                    Lớp: {item.className}
+                                  </Tag>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <Tooltip title={item.assignmentTitle} placement="topLeft">
+                              <div className="text-xs text-slate-400 font-medium truncate mt-0.5 max-w-[320px]">
+                                {item.assignmentTitle}
+                              </div>
+                            </Tooltip>
+                          </div>
+                        </div>
+
+                        {/* Cột 2: Thời lượng & Lượt làm */}
+                        <div className="flex flex-col items-center justify-center gap-1 text-xs text-slate-500 text-center">
+                          {item.timeLimitSeconds ? (
+                            <Tooltip title={`Thời lượng bài thi: ${Math.ceil(item.timeLimitSeconds / 60)} phút`}>
+                              <span className="flex items-center gap-1 text-slate-600 font-semibold whitespace-nowrap">
+                                <ClockCircleOutlined /> {Math.ceil(item.timeLimitSeconds / 60)} phút
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-slate-400 italic whitespace-nowrap">Không giới hạn</span>
+                          )}
+                          {item.attemptsCount > 0 ? (
+                            <Tooltip title={`Đã làm ${item.attemptsCount} lượt`}>
+                              <span className="text-slate-400 whitespace-nowrap">{item.attemptsCount} lần đã làm</span>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-slate-300 whitespace-nowrap">Chưa làm</span>
+                          )}
+                        </div>
+
+                        {/* Cột 3: Tiến độ */}
+                        <div className="flex flex-col items-center justify-center px-1">
+                          {item.attemptsCount > 0 ? (() => {
+                            const scoreInfo = formatStudentExamScoreDisplay({
+                              isExamType: item.isExamType,
+                              score: item.bestScore,
+                              maxScore: item.maxScore,
+                              percentage: item.bestPctVal,
+                            });
+
+                            return (
+                              <Tooltip title={scoreInfo.tooltip}>
+                                <div className="w-full max-w-[110px] flex flex-col items-center cursor-default">
+                                  <div className="flex justify-between items-center w-full text-xs font-bold mb-1">
+                                    <span className={item.isCompleted ? "text-emerald-600" : "text-slate-700"}>
+                                      {item.bestPctVal.toFixed(0)}%
+                                    </span>
+                                    <span className={`text-[11px] font-semibold ${item.isExamType ? "text-indigo-600" : "text-slate-500"}`}>
+                                      {scoreInfo.primaryText}
+                                    </span>
+                                  </div>
+                                  <Progress
+                                    percent={Math.round(item.bestPctVal)}
+                                    size="small"
+                                    showInfo={false}
+                                    strokeColor={item.isCompleted ? "#10b981" : item.bestPctVal >= 50 ? "#f59e0b" : "#ef4444"}
+                                    className="m-0 w-full"
+                                  />
+                                </div>
+                              </Tooltip>
+                            );
+                          })() : (
+                            <span className="text-slate-300 text-xs italic">—</span>
+                          )}
+                        </div>
+
+                        {/* Cột 4: Trạng thái */}
+                        <div className="flex justify-center items-center">
+                          <Tooltip title={`Trạng thái: ${statusInfo.label}`}>
+                            <Tag color={statusInfo.color} className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold m-0 whitespace-nowrap text-center">
+                              {statusInfo.label}
+                            </Tag>
+                          </Tooltip>
+                        </div>
+
+                        {/* Cột 5: Thao tác */}
+                        <div className="flex items-center justify-end gap-1.5 shrink-0">
+                          {(item.attemptsCount > 0 || item.totalAttemptsCount > 0) && (
+                            <Tooltip title="Xem lịch sử các lần làm">
+                              <Button
+                                size="small"
+                                icon={<HistoryOutlined />}
+                                onClick={() => {
                                   setHistoryAssignmentStudentId(item.assignmentStudentId);
                                   setHistoryExamId(item.examId);
                                   setHistoryTitle(item.examTitle);
-                                }
-                              } else {
-                                handleStartExam(item.assignmentStudentId, item.examId);
-                              }
-                            }}
-                          >
-                            {item.examTitle}
-                          </span>
-                          <Tag color={item.isExamType ? "purple" : "blue"} className="rounded-full border-none text-[10px] font-bold px-2 py-0.5 m-0">
-                            {item.isExamType ? "Kiểm tra" : "Ôn tập"}
-                          </Tag>
-                          {item.className && (
-                            <Tag color="cyan" className="rounded-full border-none text-[10px] font-semibold px-2 py-0.5 m-0">
-                              Lớp: {item.className}
-                            </Tag>
+                                }}
+                                className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 text-xs h-8 px-2.5 font-semibold shrink-0"
+                              >
+                                Lịch sử
+                              </Button>
+                            </Tooltip>
                           )}
-                        </div>
-                        <div className="text-xs text-slate-400 font-medium truncate mt-0.5">
-                          {item.assignmentTitle}
+
+                          {actionInfo.actionType === "review" && (
+                            <Tooltip title="Làm lại toàn bộ đề">
+                              <Button
+                                size="small"
+                                icon={<RotateCcw size={12} />}
+                                loading={isStarting}
+                                onClick={() => handleStartExam(item.assignmentStudentId, item.examId, true)}
+                                className="rounded-xl font-bold text-xs h-8 px-2.5 border-blue-200 text-blue-600 hover:bg-blue-50 shrink-0"
+                              >
+                                Ôn tập lại
+                              </Button>
+                            </Tooltip>
+                          )}
+
+                          <Tooltip title={actionInfo.actionType === "review" ? "Xem lại bài thi đã làm" : actionInfo.label}>
+                            <Button
+                              size="small"
+                              type={actionInfo.isPrimary ? "primary" : "default"}
+                              icon={actionInfo.actionType === "review" ? <HistoryOutlined /> : <PlayCircleOutlined />}
+                              loading={isStarting}
+                              onClick={() => {
+                                if (actionInfo.actionType === "review") {
+                                  if (item.lastAttemptId) {
+                                    navigate(`/exam/${item.lastAttemptId}`);
+                                  } else {
+                                    setHistoryAssignmentStudentId(item.assignmentStudentId);
+                                    setHistoryExamId(item.examId);
+                                    setHistoryTitle(item.examTitle);
+                                  }
+                                } else {
+                                  handleStartExam(item.assignmentStudentId, item.examId);
+                                }
+                              }}
+                              className={`rounded-xl font-bold text-xs h-8 px-3 transition shrink-0 ${
+                                actionInfo.actionType === "review"
+                                  ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                                  : "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20 text-white"
+                              }`}
+                            >
+                              {actionInfo.label}
+                            </Button>
+                          </Tooltip>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Cột 2: Thời lượng & Lượt làm */}
-                    <div className="col-span-1 md:col-span-2 flex md:flex-col md:items-center md:justify-center gap-1.5 text-xs text-slate-500">
-                      {item.timeLimitSeconds ? (
-                        <span className="flex items-center gap-1 text-slate-600 font-semibold">
-                          <ClockCircleOutlined /> {Math.ceil(item.timeLimitSeconds / 60)} phút
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 italic">Không giới hạn</span>
-                      )}
-                      {item.attemptsCount > 0 ? (
-                        <span className="text-slate-400">{item.attemptsCount} lần đã làm</span>
-                      ) : (
-                        <span className="text-slate-300">Chưa làm</span>
-                      )}
-                    </div>
-
-                    {/* Cột 3: Tiến độ */}
-                    <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center px-2">
-                      {item.attemptsCount > 0 ? (
-                        <div className="w-full max-w-[120px] flex flex-col items-center">
-                          <div className="flex justify-between w-full text-xs font-bold mb-1">
-                            <span className={item.isCompleted ? "text-emerald-600" : "text-slate-700"}>
-                              {item.bestPctVal.toFixed(0)}%
-                            </span>
-                            {item.bestScore && (
-                              <span className="text-[11px] font-normal text-slate-400">
-                                {formatScore(item.bestScore)} đ
-                              </span>
-                            )}
-                          </div>
-                          <Progress
-                            percent={Math.round(item.bestPctVal)}
-                            size="small"
-                            showInfo={false}
-                            strokeColor={item.isCompleted ? "#10b981" : item.bestPctVal >= 50 ? "#f59e0b" : "#ef4444"}
-                            className="m-0 w-full"
-                          />
-                        </div>
-                      ) : (
-                        <span className="text-slate-300 text-xs italic">—</span>
-                      )}
-                    </div>
-
-                    {/* Cột 4: Trạng thái */}
-                    <div className="col-span-1 md:col-span-2 flex md:justify-center items-center">
-                      <Tag color={statusInfo.color} className="rounded-full border-none text-xs px-2.5 py-0.5 font-bold">
-                        {statusInfo.label}
-                      </Tag>
-                    </div>
-
-                    {/* Cột 5: Thao tác */}
-                    <div className="col-span-1 md:col-span-2 flex items-center justify-end gap-1.5">
-                      {(item.attemptsCount > 0 || item.totalAttemptsCount > 0) && (
-                        <Tooltip title="Xem lịch sử các lần làm">
-                          <Button
-                            size="small"
-                            icon={<HistoryOutlined />}
-                            onClick={() => {
-                              setHistoryAssignmentStudentId(item.assignmentStudentId);
-                              setHistoryExamId(item.examId);
-                              setHistoryTitle(item.examTitle);
-                            }}
-                            className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 text-xs h-8 px-2.5 font-semibold"
-                          >
-                            Lịch sử
-                          </Button>
-                        </Tooltip>
-                      )}
-
-                      <Tooltip title={actionInfo.actionType === "review" ? "Xem lại bài thi đã làm" : undefined}>
-                        <Button
-                          size="small"
-                          type={actionInfo.isPrimary ? "primary" : "default"}
-                          icon={actionInfo.actionType === "review" ? <HistoryOutlined /> : <PlayCircleOutlined />}
-                          loading={isStarting}
-                          onClick={() => {
-                            if (actionInfo.actionType === "review") {
-                              if (item.lastAttemptId) {
-                                navigate(`/exam/${item.lastAttemptId}`);
-                              } else {
-                                setHistoryAssignmentStudentId(item.assignmentStudentId);
-                                setHistoryExamId(item.examId);
-                                setHistoryTitle(item.examTitle);
-                              }
-                            } else {
-                              handleStartExam(item.assignmentStudentId, item.examId);
-                            }
-                          }}
-                          className={`rounded-xl font-bold text-xs h-8 px-3 transition ${
-                            actionInfo.actionType === "review"
-                              ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
-                              : "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20 text-white"
-                          }`}
-                        >
-                          {actionInfo.label}
-                        </Button>
-                      </Tooltip>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Pagination Footer */}
@@ -962,9 +1056,11 @@ export default function StudentMyExams() {
                           {idx + 1}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-slate-800 text-base leading-snug truncate mb-1">
-                            {examTitle}
-                          </h4>
+                          <Tooltip title={examTitle} placement="topLeft">
+                            <h4 className="font-bold text-slate-800 text-base leading-snug truncate mb-1">
+                              {examTitle}
+                            </h4>
+                          </Tooltip>
                           <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                             <span className="flex items-center gap-1 font-medium">
                               <Clock size={13} className="text-slate-400" />
@@ -1014,6 +1110,19 @@ export default function StudentMyExams() {
                               </Tag>
                             ) : null}
                             {attemptsCount > 0 && (
+                              <Tooltip
+                                title={
+                                  isExamType
+                                    ? `Điểm: ${(bestPctVal / 10).toFixed(1)} / 10 đ (Đạt ${bestPctVal.toFixed(0)}%)`
+                                    : `Tiến độ: ${bestPctVal.toFixed(0)}%`
+                                }
+                              >
+                                <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                  {isExamType ? `${(bestPctVal / 10).toFixed(1)} đ` : `${bestPctVal.toFixed(0)}%`}
+                                </span>
+                              </Tooltip>
+                            )}
+                            {attemptsCount > 0 && (
                               <span className="text-slate-400 text-xs">
                                 ({attemptsCount} lần làm)
                               </span>
@@ -1038,6 +1147,19 @@ export default function StudentMyExams() {
                               }}
                               className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 h-9 px-3"
                             />
+                          </Tooltip>
+                        )}
+                        {isCompleted && (
+                          <Tooltip title="Làm lại toàn bộ đề">
+                            <Button
+                              size="middle"
+                              icon={<RotateCcw size={14} />}
+                              loading={isStarting}
+                              onClick={() => handleStartCurriculumExam(curriculumId, examId, true)}
+                              className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50 h-9 px-3"
+                            >
+                              Ôn tập lại
+                            </Button>
                           </Tooltip>
                         )}
                         <Button

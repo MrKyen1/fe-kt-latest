@@ -4,6 +4,8 @@ export type QuestionType =
   | "multiple_choice"
   | "audio_choice"
   | "image_choice"
+  | "true_false"
+  | "audio_image_choice"
   | "word_ordering"
   | "reading_comprehension"
   | "sentence_rewrite"

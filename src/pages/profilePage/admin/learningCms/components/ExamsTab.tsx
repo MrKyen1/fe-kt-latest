@@ -76,7 +76,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
 
       {/* Hàng 2: Nút Xuất bản bản mới (Highlight đỏ nổi bật, căn giữa hoàn hảo) */}
       {exam.hasUnpublishedChanges && (
-        <Can perform="learning.publish" role="admin">
+        <Can perform="learning.publish">
           <Tooltip title="Nhấn để lưu và phát hành phiên bản mới ngay lập tức">
             <Button
               type="primary"
@@ -202,7 +202,7 @@ function buildColumns(
           >
             Lịch sử phiên bản
           </Button>
-          <Can perform="learning.publish" role="admin">
+          <Can perform="learning.publish">
             <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
               <Button
                 type="text"

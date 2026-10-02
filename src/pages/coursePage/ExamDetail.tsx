@@ -6,6 +6,8 @@ import ExamContainer from "./ExamContainer";
 import { studentLearningService } from "../../services/studentLearningService";
 import { learningCmsService } from "../../services/learningCmsService";
 import { resolveMediaUrl } from "../../services/apiClient";
+import { normalizeLineBreaks } from "../../utils/textFormatters";
+import { shuffleTokensWithSeed } from "../../utils/shuffleTokens";
 import { ExamData, ExamMedia, ExamOption, ExamQuestion, QuestionType } from "../../types";
 import { examDataMap } from "../../data/mockData";
 
@@ -119,12 +121,26 @@ export function parseBackendAnswer(type: string, ansObj: any): any {
     case "multiple_choice":
     case "audio_choice":
     case "image_choice":
+    case "audio_image_choice":
+    case "true_false":
     case "reading_comprehension":
     case "multiple-choice":
     case "listening":
     case "true-false":
-      if (Array.isArray(ansObj)) return ansObj[0];
-      return ansObj.selectedOptionIds?.[0] || ansObj.value || ansObj.id || ansObj.text || ansObj;
+      if (Array.isArray(ansObj)) {
+        return ansObj.length > 1 ? ansObj : (ansObj[0] || "");
+      }
+      if (ansObj.selectedOptionIds && Array.isArray(ansObj.selectedOptionIds)) {
+        return ansObj.selectedOptionIds.length > 1
+          ? ansObj.selectedOptionIds
+          : (ansObj.selectedOptionIds[0] || "");
+      }
+      if (ansObj.correctOptionIds && Array.isArray(ansObj.correctOptionIds)) {
+        return ansObj.correctOptionIds.length > 1
+          ? ansObj.correctOptionIds
+          : (ansObj.correctOptionIds[0] || "");
+      }
+      return ansObj.selectedOptionId || ansObj.value || ansObj.id || ansObj.text || ansObj;
 
     case "word_ordering":
     case "word-ordering":
@@ -171,44 +187,74 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         })
         .filter(Boolean) as ExamMedia[];
 
-      const attemptContent = [snapshot.instruction, snapshot.prompt].filter(Boolean).join("\n\n");
+      const attemptContent = normalizeLineBreaks([snapshot.instruction, snapshot.prompt].filter(Boolean).join("\n\n"));
       const mockQuestion = findMockQuestion(attemptContent, answer.questionType);
 
-      const snapshotCorrectOpt = snapshot.options?.find(
+      const snapshotCorrectOpts = snapshot.options?.filter(
         (o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true")
-      );
-      const snapshotCorrectId = snapshotCorrectOpt ? (snapshotCorrectOpt.id || snapshotCorrectOpt.label || snapshotCorrectOpt.content) : undefined;
+      ) || [];
+      const snapshotCorrectIds = snapshotCorrectOpts.map((o: any) => o.id || o.label || o.content);
+      const snapshotCorrectVal = snapshotCorrectIds.length > 1
+        ? snapshotCorrectIds
+        : (snapshotCorrectIds[0] ?? undefined);
 
       const rawDetailCorrect = (detail as any).correctOptionId ||
-        (Array.isArray((detail as any).correctOptionIds) ? (detail as any).correctOptionIds[0] : undefined) ||
+        (detail as any).correctOptionIds ||
         (detail as any).correctAnswer ||
         (detail as any).correctTokens ||
-        (detail as any).acceptedAnswers?.[0];
+        (detail as any).acceptedAnswers;
 
       const backendCorrectAnswer =
         parseBackendAnswer(answer.questionType, answer.correctAnswer) ??
         parseBackendAnswer(answer.questionType, (snapshot as any).correctAnswer) ??
         parseBackendAnswer(answer.questionType, rawDetailCorrect) ??
-        snapshotCorrectId ??
+        snapshotCorrectVal ??
         mockQuestion?.correctAnswer;
 
+      const isUuidOrId = (val?: string, id?: string) => {
+        if (!val) return true;
+        const trimmed = String(val).trim();
+        if (id && (trimmed === id || trimmed === String(id).trim())) return true;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed) || /^[0-9a-f]{24}$/i.test(trimmed);
+      };
+
       let options =
-        answer.questionType === "word_ordering"
-          ? ((detail.correctTokens as string[] | undefined) || (detail.tokens as string[] | undefined) || [])
+        answer.questionType === "word_ordering" || answer.questionType === "word-ordering"
+          ? shuffleTokensWithSeed(
+              ((detail.tokens as string[] | undefined) || (detail.correctTokens as string[] | undefined) || []),
+              String((answer as any).id || answer.questionId || "word_ord")
+            )
           : snapshot.options?.map((option) => {
               const optionId = option.id || option.content;
+              const backendCorrArr = Array.isArray(backendCorrectAnswer)
+                ? backendCorrectAnswer.map(String)
+                : backendCorrectAnswer !== undefined
+                ? [String(backendCorrectAnswer)]
+                : [];
+
               const isOptCorrect =
                 (option as any).isCorrect === true ||
                 String((option as any).isCorrect) === "true" ||
                 (detail as any).correctOptionId === optionId ||
                 (Array.isArray((detail as any).correctOptionIds) && (detail as any).correctOptionIds.includes(optionId)) ||
-                (backendCorrectAnswer !== undefined && (String(backendCorrectAnswer) === String(optionId) || String(backendCorrectAnswer) === String(option.label)));
+                backendCorrArr.includes(String(optionId)) ||
+                (option.label && backendCorrArr.includes(String(option.label)));
+              const hasMedia = !!(option as any).media;
+              const rawContent = option.content ?? "";
+              const content = hasMedia && isUuidOrId(rawContent, option.id) ? "" : normalizeLineBreaks(rawContent);
               return {
                 id: option.id,
                 label: option.label,
-                content: option.content,
+                content,
                 orderIndex: option.orderIndex,
                 isCorrect: isOptCorrect,
+                mediaId: (option as any).mediaId,
+                media: (option as any).media
+                  ? {
+                      type: getMediaType((option as any).media.type),
+                      url: resolveMediaUrl((option as any).media.url),
+                    }
+                  : undefined,
               };
             });
 
@@ -217,24 +263,79 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
       }
 
       let leftItems: any = Array.isArray(detail.leftItems)
-        ? (detail.leftItems as Array<{ id?: string; text?: string }>).map((item) => ({
-            id: item.id || item.text || "",
-            text: item.text || item.id || "",
-          }))
+        ? (detail.leftItems as Array<{ id?: string; text?: string; media?: any }>).map((item) => {
+            const hasMedia = !!item.media;
+            const rawText = item.text ?? "";
+            const text = hasMedia && isUuidOrId(rawText, item.id) ? "" : (rawText || (hasMedia ? "" : item.id) || "");
+            return {
+              id: item.id || item.text || "",
+              text: normalizeLineBreaks(text),
+              media: item.media
+                ? {
+                    type: getMediaType(item.media.type),
+                    url: resolveMediaUrl(item.media.url),
+                  }
+                : undefined,
+            };
+          })
         : undefined;
 
       let rightItems: any = Array.isArray(detail.rightItems)
-        ? (detail.rightItems as Array<{ id?: string; text?: string }>).map((item) => ({
-            id: item.id || item.text || "",
-            text: item.text || item.id || "",
-          }))
+        ? (detail.rightItems as Array<{ id?: string; text?: string; media?: any }>).map((item) => {
+            const hasMedia = !!item.media;
+            const rawText = item.text ?? "";
+            const text = hasMedia && isUuidOrId(rawText, item.id) ? "" : (rawText || (hasMedia ? "" : item.id) || "");
+            return {
+              id: item.id || item.text || "",
+              text: normalizeLineBreaks(text),
+              media: item.media
+                ? {
+                    type: getMediaType(item.media.type),
+                    url: resolveMediaUrl(item.media.url),
+                  }
+                : undefined,
+            };
+          })
         : undefined;
 
+      if (!leftItems && Array.isArray((detail as any).pairs)) {
+        leftItems = (detail as any).pairs.map((p: any, idx: number) => {
+          const hasMedia = !!p.leftMedia;
+          const rawText = p.leftText ?? "";
+          const text = hasMedia && isUuidOrId(rawText, p.leftItemId || p.id) ? "" : rawText;
+          return {
+            id: p.leftItemId || p.id || `left_${idx}`,
+            text: normalizeLineBreaks(text),
+            media: p.leftMedia
+              ? {
+                  type: getMediaType(p.leftMedia.type),
+                  url: resolveMediaUrl(p.leftMedia.url),
+                }
+              : undefined,
+          };
+        });
+        rightItems = (detail as any).pairs.map((p: any, idx: number) => {
+          const hasMedia = !!p.rightMedia;
+          const rawText = p.rightText ?? "";
+          const text = hasMedia && isUuidOrId(rawText, p.rightItemId || p.id) ? "" : rawText;
+          return {
+            id: p.rightItemId || p.rightText || `right_${idx}`,
+            text: normalizeLineBreaks(text),
+            media: p.rightMedia
+              ? {
+                  type: getMediaType(p.rightMedia.type),
+                  url: resolveMediaUrl(p.rightMedia.url),
+                }
+              : undefined,
+          };
+        });
+      }
+
       if ((!leftItems || leftItems.length === 0) && mockQuestion?.leftItems) {
-        leftItems = (mockQuestion.leftItems as any[]).map((item: any) => ({ id: item?.id || item, text: item?.text || item }));
+        leftItems = (mockQuestion.leftItems as any[]).map((item: any) => ({ id: item?.id || item, text: normalizeLineBreaks(item?.text || item) }));
       }
       if ((!rightItems || rightItems.length === 0) && mockQuestion?.rightItems) {
-        rightItems = (mockQuestion.rightItems as any[]).map((item: any) => ({ id: item?.id || item, text: item?.text || item }));
+        rightItems = (mockQuestion.rightItems as any[]).map((item: any) => ({ id: item?.id || item, text: normalizeLineBreaks(item?.text || item) }));
       }
 
       const backendExplanation = answer.feedback?.explanation || answer.question?.feedback?.explanation || answer.question?.explanation;
@@ -250,7 +351,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         leftItems,
         rightItems,
         correctAnswer: backendCorrectAnswer,
-        explanation: backendExplanation || mockQuestion?.explanation || "",
+        explanation: normalizeLineBreaks(backendExplanation || mockQuestion?.explanation || ""),
         userAnswer: parseBackendAnswer(answer.questionType, answer.answer),
         isCorrect: answer.isCorrect,
         answeredAt: (answer as any).answeredAt,
@@ -271,15 +372,21 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     percentage: attempt.percentage,
     questions,
     examId: attempt.examId,
-    assignmentStudentId: attempt.assignmentStudentId,
+    assignmentStudentId:
+      attempt.assignmentStudentId ||
+      (attempt as any).assignmentId ||
+      (attempt as any).examAssignmentStudentId,
     curriculumAssignmentStudentId: attempt.curriculumAssignmentStudentId,
-    source: attempt.source,
+    source:
+      (attempt as any).source ||
+      (attempt.curriculumAssignmentStudentId ? "self_study" : "teacher_assigned"),
     curriculumId: (attempt as any).curriculumId,
     expiresAt: attempt.expiresAt,
     attemptNumber: attempt.attemptNumber ?? (attempt.attemptPhase === "initial" ? 1 : 2),
     attemptPhase: attempt.attemptPhase,
     taskStatus: attempt.taskStatus,
     mastered: attempt.mastered,
+    isRedo: (attempt as any).isRedo || (attempt as any).is_redo || false,
     requiresRemediation: attempt.requiresRemediation,
     remainingQuestionCount: attempt.remainingQuestionCount,
     firstAttemptResult: attempt.firstAttemptResult,
@@ -319,12 +426,20 @@ const ExamPage: React.FC = () => {
         }
 
         // If it's a curriculum exam (self_study), resolve curriculumId from the student's curriculum list
-        if (attempt && (attempt as any).source === "self_study" && (attempt as any).curriculumAssignmentStudentId) {
+        const isCurriculum =
+          (attempt as any).source === "self_study" ||
+          !!(attempt as any).curriculumAssignmentStudentId;
+        if (attempt && isCurriculum && !(attempt as any).curriculumId) {
           try {
             const currList = await studentLearningService.curriculums.list({ limit: 100 });
-            const matched = currList.data?.find((c: any) => c.enrollmentId === (attempt as any).curriculumAssignmentStudentId);
+            const list = Array.isArray(currList) ? currList : (currList as any)?.data ?? [];
+            const matched = list.find((c: any) =>
+              c.enrollmentId === (attempt as any).curriculumAssignmentStudentId ||
+              (c as any).id === (attempt as any).curriculumAssignmentStudentId ||
+              c.curriculumId === (attempt as any).curriculumAssignmentStudentId
+            );
             if (matched) {
-              (attempt as any).curriculumId = matched.curriculumId;
+              (attempt as any).curriculumId = matched.curriculumId || (matched as any).id;
             }
           } catch (cErr) {
             console.error("Failed to load curriculums to resolve curriculumId:", cErr);

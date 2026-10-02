@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Button, Space, Table, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
@@ -14,6 +15,12 @@ import { AppImage } from "../../../../../components/AppImagePreview";
 interface CurriculumExam {
   examId: string;
   isRequired: boolean;
+  orderIndex?: number;
+  exam?: {
+    id?: string;
+    title?: string;
+    examType?: string;
+  };
 }
 
 interface Level {
@@ -34,20 +41,22 @@ interface Curriculum {
 
 interface Props {
   curriculums: Curriculum[];
-  onCreateClick:    () => void;
-  onEditClick:      (record: Curriculum) => void;
-  onDeleteClick:    (record: Curriculum) => void;
-  onToggleStatus:   (record: Curriculum) => void;
-  onConfigExams:    (record: Curriculum) => void;
+  exams?: Array<{ id: string; examType?: string; title?: string }>;
+  onCreateClick: () => void;
+  onEditClick: (record: Curriculum) => void;
+  onDeleteClick: (record: Curriculum) => void;
+  onToggleStatus: (record: Curriculum) => void;
+  onConfigExams: (record: Curriculum) => void;
 }
 
 // ── Columns ──────────────────────────────────────────────────
 
 function buildColumns(
-  onEdit:        (c: Curriculum) => void,
-  onDelete:      (c: Curriculum) => void,
-  onToggle:      (c: Curriculum) => void,
+  onEdit: (c: Curriculum) => void,
+  onDelete: (c: Curriculum) => void,
+  onToggle: (c: Curriculum) => void,
   onConfigExams: (c: Curriculum) => void,
+  examsMap: Map<string, any>,
 ) {
   return [
     {
@@ -81,14 +90,55 @@ function buildColumns(
     },
     {
       title: "Đề thi",
+      align: "center" as const,
+      width: 120,
       render: (_: unknown, record: Curriculum) => {
-        const count    = record.exams?.length ?? 0;
-        const required = (record.exams ?? []).filter((e) => e.isRequired).length;
+        const examList = record.exams ?? [];
+        const count = examList.length;
+
+        const examCount = examList.filter((item) => {
+          const type = item.exam?.examType ?? examsMap.get(item.examId)?.examType ?? "practice";
+          return type === "exam";
+        }).length;
+
+        const practiceCount = examList.filter((item) => {
+          const type = item.exam?.examType ?? examsMap.get(item.examId)?.examType ?? "practice";
+          return type === "practice";
+        }).length;
+
+        if (count === 0) {
+          return (
+            <Tooltip title="Chưa có đề thi trong giáo trình">
+              <span className="text-slate-400 font-semibold text-base cursor-default">0</span>
+            </Tooltip>
+          );
+        }
+
         return (
-          <div className="text-center">
-            <div className="font-bold text-lg text-slate-700">{count}</div>
-            <div className="text-xs text-slate-400">{required} bắt buộc</div>
-          </div>
+          <Tooltip
+            title={
+              <div className="py-1 px-0.5 space-y-1 text-xs">
+                <div className="font-semibold text-slate-100 border-b border-slate-600 pb-1 flex items-center justify-between gap-3">
+                  <span>Tổng cộng:</span>
+                  <span className="font-bold">{count} đề</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-300">Đề thi:</span>
+                  <span className="font-bold text-amber-400">{examCount}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-slate-300">Đề ôn tập:</span>
+                  <span className="font-bold text-emerald-400">{practiceCount}</span>
+                </div>
+              </div>
+            }
+          >
+            <div className="inline-flex items-center justify-center cursor-pointer group">
+              <span className="font-bold text-sm text-slate-700 group-hover:text-purple-600 transition-colors">
+                {count}
+              </span>
+            </div>
+          </Tooltip>
         );
       },
     },
@@ -170,6 +220,7 @@ function buildColumns(
  */
 export default function CurriculumsTab({
   curriculums,
+  exams = [],
   onCreateClick,
   onEditClick,
   onDeleteClick,
@@ -177,12 +228,18 @@ export default function CurriculumsTab({
   onConfigExams,
 }: Props) {
   const publishedCount = curriculums.filter((c) => c.status === "published").length;
+  const examsMap = useMemo(() => new Map(exams.map((e) => [e.id, e])), [exams]);
 
-  const columns = buildColumns(
-    onEditClick,
-    onDeleteClick,
-    onToggleStatus,
-    onConfigExams,
+  const columns = useMemo(
+    () =>
+      buildColumns(
+        onEditClick,
+        onDeleteClick,
+        onToggleStatus,
+        onConfigExams,
+        examsMap,
+      ),
+    [onEditClick, onDeleteClick, onToggleStatus, onConfigExams, examsMap],
   );
 
   return (
