@@ -82,7 +82,7 @@ export default function UserProfile() {
       let finalAvatar = avatar;
 
       if (avatarFile) {
-        const media = await learningCmsService.mediaAssets.upload(avatarFile, "User avatar");
+        const media = await learningCmsService.mediaAssets.uploadAvatar(avatarFile);
         finalAvatar = media.url;
       }
 

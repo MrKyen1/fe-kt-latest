@@ -1,3 +1,4 @@
+import { useAuth } from "../../contexts/AuthContext";
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button, Result, Spin } from "antd";
@@ -9,7 +10,6 @@ import { resolveMediaUrl } from "../../services/apiClient";
 import { normalizeLineBreaks } from "../../utils/textFormatters";
 import { shuffleTokensWithSeed } from "../../utils/shuffleTokens";
 import { ExamData, ExamMedia, ExamOption, ExamQuestion, QuestionType } from "../../types";
-import { examDataMap } from "../../data/mockData";
 
 
 
@@ -77,40 +77,6 @@ function getMediaType(type?: string): ExamMedia["type"] {
   if (type === "video") return "video";
   if (type === "audio") return "audio";
   return "image";
-}
-
-function cleanString(str: string): string {
-  return str.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-}
-
-function findMockQuestion(prompt: string, type: string) {
-  const mockExam = examDataMap["exam_kata_01"];
-  if (!mockExam) return null;
-
-  const cleanedPrompt = cleanString(prompt);
-
-  // Try to find by content match
-  let found = mockExam.questions.find((q) => {
-    const qContent = cleanString(q.questionContent);
-    return (
-      qContent === cleanedPrompt ||
-      qContent.includes(cleanedPrompt) ||
-      cleanedPrompt.includes(qContent)
-    );
-  });
-
-  if (found) return found;
-
-  // Fallback: match by normalized type & prompt prefix
-  const normType = (t: string) => t.toLowerCase().replace(/_/g, "-");
-  found = mockExam.questions.find((q) => {
-    return (
-      normType(q.type) === normType(type) &&
-      cleanString(q.questionContent).slice(0, 15) === cleanedPrompt.slice(0, 15)
-    );
-  });
-
-  return found || null;
 }
 
 export function parseBackendAnswer(type: string, ansObj: any): any {
@@ -188,7 +154,6 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         .filter(Boolean) as ExamMedia[];
 
       const attemptContent = normalizeLineBreaks([snapshot.instruction, snapshot.prompt].filter(Boolean).join("\n\n"));
-      const mockQuestion = findMockQuestion(attemptContent, answer.questionType);
 
       const snapshotCorrectOpts = snapshot.options?.filter(
         (o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true")
@@ -208,8 +173,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         parseBackendAnswer(answer.questionType, answer.correctAnswer) ??
         parseBackendAnswer(answer.questionType, (snapshot as any).correctAnswer) ??
         parseBackendAnswer(answer.questionType, rawDetailCorrect) ??
-        snapshotCorrectVal ??
-        mockQuestion?.correctAnswer;
+        snapshotCorrectVal;
 
       const isUuidOrId = (val?: string, id?: string) => {
         if (!val) return true;
@@ -258,9 +222,6 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
               };
             });
 
-      if ((!options || options.length === 0) && mockQuestion?.options) {
-        options = mockQuestion.options as any;
-      }
 
       let leftItems: any = Array.isArray(detail.leftItems)
         ? (detail.leftItems as Array<{ id?: string; text?: string; media?: any }>).map((item) => {
@@ -331,12 +292,6 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         });
       }
 
-      if ((!leftItems || leftItems.length === 0) && mockQuestion?.leftItems) {
-        leftItems = (mockQuestion.leftItems as any[]).map((item: any) => ({ id: item?.id || item, text: normalizeLineBreaks(item?.text || item) }));
-      }
-      if ((!rightItems || rightItems.length === 0) && mockQuestion?.rightItems) {
-        rightItems = (mockQuestion.rightItems as any[]).map((item: any) => ({ id: item?.id || item, text: normalizeLineBreaks(item?.text || item) }));
-      }
 
       const backendExplanation = answer.feedback?.explanation || answer.question?.feedback?.explanation || answer.question?.explanation;
 
@@ -345,19 +300,19 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         type: answer.questionType,
         questionVersionId: answer.questionVersionId,
         questionContent: attemptContent,
-        passage: mockQuestion?.passage || detail.passage?.content || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
+        passage: detail.passage?.content || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
         media,
         options,
         leftItems,
         rightItems,
         correctAnswer: backendCorrectAnswer,
-        explanation: normalizeLineBreaks(backendExplanation || mockQuestion?.explanation || ""),
+        explanation: normalizeLineBreaks(backendExplanation || ""),
         userAnswer: parseBackendAnswer(answer.questionType, answer.answer),
         isCorrect: answer.isCorrect,
         answeredAt: (answer as any).answeredAt,
-        sourceSentence: detail.sourceSentence || mockQuestion?.sourceSentence,
-        incorrectSentence: detail.incorrectSentence || mockQuestion?.incorrectSentence,
-        hintWord: detail.hintWord || mockQuestion?.hintWord,
+        sourceSentence: detail.sourceSentence,
+        incorrectSentence: detail.incorrectSentence,
+        hintWord: detail.hintWord,
       } as any;
     });
 
@@ -394,6 +349,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
 }
 
 const ExamPage: React.FC = () => {
+  const { hasPermission } = useAuth();
   const { examId: attemptId } = useParams<{ examId: string }>();
   const [examData, setExamData] = useState<ExamData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -414,7 +370,7 @@ const ExamPage: React.FC = () => {
         const attempt = (await studentLearningService.attempts.get(attemptId)) as AttemptPayload;
 
         // Fetch exam detail to retrieve its actual title
-        if (attempt && attempt.examId) {
+        if (attempt && attempt.examId && hasPermission("learning.read")) {
           try {
             const examDetail = await learningCmsService.exams.get(attempt.examId);
             if (examDetail) {
@@ -446,36 +402,7 @@ const ExamPage: React.FC = () => {
           }
         }
 
-        // Fetch detailed question content for all questions to retrieve correct options, passages & explanations
-        if (attempt?.answers) {
-          await Promise.allSettled(
-            attempt.answers.map(async (answer) => {
-              if (answer.questionId) {
-                try {
-                  const fullQuestion = await learningCmsService.questions.get(answer.questionId);
-                  if (fullQuestion) {
-                    const qObj = ((answer as any).question || {}) as any;
-                    (answer as any).question = qObj;
-                    if (fullQuestion.options && fullQuestion.options.length > 0) {
-                      qObj.options = fullQuestion.options as any;
-                    }
-                    if (fullQuestion.explanation) {
-                      qObj.explanation = fullQuestion.explanation;
-                    }
-                    if (fullQuestion.detail) {
-                      qObj.detail = {
-                        ...qObj.detail,
-                        ...fullQuestion.detail,
-                      };
-                    }
-                  }
-                } catch (qErr) {
-                  console.error("Failed to fetch detailed question:", qErr);
-                }
-              }
-            })
-          );
-        }
+        // Attempt snapshots control content and when answers are revealed.
 
         if (active) {
           setExamData(mapAttemptToExamData(attempt));

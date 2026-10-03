@@ -30,6 +30,7 @@ import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS, QUESTION_TYPES } from "../.
 import { QuestionPopover } from "../QuestionPopoverContent";
 import QuestionRowItem from "../QuestionRowItem";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
+import { Can } from "../../../../../../components/Can";
 import { getErrorMessage } from "../../../../../../services/apiClient";
 import { RandomQuestionCriteria } from "../../../../../../types/learning";
 
@@ -430,6 +431,7 @@ export default function ManageQuestionsModal({
               <strong>Xuất bản phiên bản mới</strong>.
             </div>
           </div>
+          <Can perform="learning.publish">
           <Button
             type="primary"
             size="small"
@@ -440,6 +442,7 @@ export default function ManageQuestionsModal({
           >
             Xuất bản bản mới
           </Button>
+          </Can>
         </div>
       )}
 

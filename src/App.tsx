@@ -59,7 +59,7 @@ export default function App() {
             <Route
               path="courses"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permissions={["learning.read"]}>
                   <Courses />
                 </ProtectedRoute>
               }
@@ -67,7 +67,7 @@ export default function App() {
             <Route
               path="courses/published-curriculums"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permissions={["learning.read"]}>
                   <PublishedCurriculums />
                 </ProtectedRoute>
               }
@@ -75,7 +75,7 @@ export default function App() {
             <Route
               path="courses/published-curriculums/:curriculumId"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute permissions={["learning.read"]}>
                   <CurriculumExams />
                 </ProtectedRoute>
               }
@@ -83,7 +83,7 @@ export default function App() {
             <Route
               path="courses/:courseId"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute roles={["student"]} permissions={["learning.attempt"]}>
                   <ExamList />
                 </ProtectedRoute>
               }
@@ -120,6 +120,7 @@ export default function App() {
                 }
               />
               <Route path="ranking/*" element={<Leaderboard />} />
+              <Route path="leaderboard/*" element={<Navigate to="/admin/ranking" replace />} />
               <Route path="rbac/*" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="about/*" element={<AdminHomepageCms />} />
               <Route path="homepage-cms/*" element={<AdminHomepageCms />} />
@@ -162,6 +163,7 @@ export default function App() {
                 }
               />
               <Route path="ranking/*" element={<Leaderboard />} />
+              <Route path="leaderboard/*" element={<Navigate to="/teacher/ranking" replace />} />
             </Route>
 
             {/* Student Dedicated Nested Routes */}
@@ -175,7 +177,8 @@ export default function App() {
             >
               <Route index element={<Navigate to="/student/my-exams" replace />} />
               <Route path="profile" element={<UserProfile />} />
-              <Route path="my-exams" element={<StudentMyExams />} />
+              <Route path="leaderboard/*" element={<Navigate to="/student/ranking" replace />} />
+              <Route path="my-exams" element={<ProtectedRoute permissions={["learning.attempt"]}><StudentMyExams /></ProtectedRoute>} />
               <Route path="ranking/*" element={<Leaderboard />} />
             </Route>
           </Route>
@@ -184,7 +187,7 @@ export default function App() {
             <Route
               index
               element={
-                <ProtectedRoute>
+                <ProtectedRoute roles={["student"]} permissions={["learning.attempt"]}>
                   <ExamPage />
                 </ProtectedRoute>
               }

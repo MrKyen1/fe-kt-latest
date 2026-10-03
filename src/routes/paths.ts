@@ -28,7 +28,7 @@ export const PATHS = {
     ROOT: "/student",
     PROFILE: "/student/profile",
     MY_EXAMS: "/student/my-exams",
-    RANKING: "/student/leaderboard",
+    RANKING: "/student/ranking",
   },
 
   TEACHER: {
@@ -47,7 +47,7 @@ export const PATHS = {
       CENTER: (centerId: string, subTab?: string) =>
         subTab ? `/teacher/centers/${centerId}/${subTab}` : `/teacher/centers/${centerId}`,
     },
-    RANKING: "/teacher/leaderboard",
+    RANKING: "/teacher/ranking",
   },
 
   ADMIN: {
@@ -76,7 +76,7 @@ export const PATHS = {
       ROOT: "/admin/rbac",
       TAB: (tab: string) => `/admin/rbac/${tab}`,
     },
-    RANKING: "/admin/leaderboard",
+    RANKING: "/admin/ranking",
     ABOUT: "/admin/about",
     HOMEPAGE_CMS: "/admin/homepage-cms",
   },

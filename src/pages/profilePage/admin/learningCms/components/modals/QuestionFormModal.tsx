@@ -1,3 +1,4 @@
+import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState, useRef, useEffect } from "react";
 import {
   Button,
@@ -581,6 +582,8 @@ function MediaItemRow({
   currentType,
   onRegisterObjectUrl,
 }: MediaItemRowProps) {
+  const { hasPermission } = useAuth();
+  const canUpload = hasPermission("learning.media.upload");
   const initialRow = form.getFieldValue(["mediaIds", name]);
 
   const [itemState, setItemState] = useState<{
@@ -678,6 +681,7 @@ function MediaItemRow({
                     </div>
                   ),
                   value: "upload",
+                  disabled: !canUpload,
                 },
                 {
                   label: (
@@ -776,6 +780,7 @@ function MediaItemRow({
       {!hasItem && (
         mode === "upload" ? (
           <Upload.Dragger
+            disabled={!canUpload}
             showUploadList={false}
             accept={
               currentType === "audio_choice" || currentType === "audio_image_choice"

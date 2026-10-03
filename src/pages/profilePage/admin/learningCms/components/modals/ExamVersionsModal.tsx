@@ -1,3 +1,4 @@
+import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState } from "react";
 import { Button, Modal, Table, Tag, Spin, message, Pagination } from "antd";
 import { PlusOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
@@ -132,6 +133,7 @@ export default function ExamVersionsModal({
 }: Props) {
   const [versionDetails, setVersionDetails] = useState<Record<string, ExamVersionDetail>>({});
   const [loadingVersionIds, setLoadingVersionIds] = useState<Record<string, boolean>>({});
+  const { hasPermission } = useAuth();
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
 
   const handleExpand = async (expanded: boolean, record: ExamVersion) => {
@@ -312,6 +314,7 @@ export default function ExamVersionsModal({
               type="primary"
               size="small"
               icon={<PlusOutlined />}
+              disabled={!hasPermission("learning.publish")}
               onClick={handleUpgrade}
               className="font-semibold text-xs flex-shrink-0"
             >

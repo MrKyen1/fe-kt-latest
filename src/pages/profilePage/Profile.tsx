@@ -212,6 +212,7 @@ export default function Profile() {
         if (item.key === "cms") {
           return hasPermission("learning.read");
         }
+        if (item.key === "centers") return hasPermission("centers.read");
         if (item.key === "assignments") {
           return hasPermission("learning.assign");
         }
@@ -222,7 +223,7 @@ export default function Profile() {
           return hasRole("admin") || hasPermission("classes.manage");
         }
         if (item.key === "my-exams") {
-          return hasRole("student") || hasPermission("learning.attempt");
+          return hasPermission("learning.attempt");
         }
         return true;
       })

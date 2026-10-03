@@ -100,6 +100,12 @@ export function mapUserResponse(user: any): User {
 }
 
 export const userService = {
+  async provisioningRoles(): Promise<Array<{ id: string; code: string; name: string }>> {
+    return unwrapData(await apiClient.get<ApiEnvelope<Array<{ id: string; code: string; name: string }>>>("/users/provisioning-roles"));
+  },
+  async studentRole(): Promise<{ id: string; code: string; name: string }> {
+    return unwrapData(await apiClient.get<ApiEnvelope<{ id: string; code: string; name: string }>>("/users/student-role"));
+  },
   async create(payload: CreateUserRequest): Promise<User> {
     const data = unwrapData(await apiClient.post<ApiEnvelope<User>>("/users", payload));
     return mapUserResponse(data);
@@ -107,11 +113,6 @@ export const userService = {
 
   async list(params?: UserListQuery): Promise<User[]> {
     const queryParams: any = { limit: 100, ...params };
-    if (queryParams) {
-      if (queryParams.isActive === false || queryParams.isActive === "false") {
-        queryParams.isActive = "";
-      }
-    }
     // BE trả về paginated response { data: [...], meta: {...} }
     // unwrapList lấy cả data và meta, ta chỉ cần data array
     const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params: queryParams }));

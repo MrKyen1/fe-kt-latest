@@ -124,7 +124,8 @@ const extractErrorMsg = getErrorMessage;
 // ============================================================
 
 export default function LearningCms() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const [subjectsLoaded, setSubjectsLoaded] = useState(false);
 
   // ── Global loading ─────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -545,7 +546,7 @@ export default function LearningCms() {
         let specs: any[] = [];
         if (user?.role === "teacher" && user?.teacherProfile?.specializations?.length) {
           specs = user.teacherProfile.specializations;
-        } else {
+        } else if (hasPermission("specializations.read")) {
           try {
             specs = await academicService.specializations.list({ isActive: true });
           } catch (err: any) {
@@ -562,14 +563,16 @@ export default function LearningCms() {
         }
       } catch (error: any) {
         message.error(extractErrorMsg(error, "Tải danh sách môn học thất bại"));
+      } finally {
+        setSubjectsLoaded(true);
       }
     };
     fetchSpecs();
   }, [user]);
 
   useEffect(() => {
-    if (selectedSpecializationId) loadAllData();
-  }, [selectedSpecializationId]);
+    if (subjectsLoaded) loadAllData();
+  }, [selectedSpecializationId, subjectsLoaded]);
 
   // Debounce taxonomy search
   useEffect(() => {

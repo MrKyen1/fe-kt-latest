@@ -21,7 +21,7 @@ const { Title, Text } = Typography;
 
 export default function Courses() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const isStudent = user?.role === "student";
 
   const [isLoading, setIsLoading] = useState(true);
@@ -74,10 +74,10 @@ export default function Courses() {
 
         const promises: Promise<any>[] = [
           learningCmsService.curriculums.list({ status: "published", limit: 100 }),
-          academicService.centers.list().catch(() => []),
+          hasPermission("centers.read") ? academicService.centers.list().catch(() => []) : Promise.resolve([]),
         ];
 
-        if (isStudent) {
+        if (isStudent && hasPermission("learning.attempt")) {
           promises.push(studentLearningService.curriculums.list({ limit: 100 }).catch(() => []));
         }
 
