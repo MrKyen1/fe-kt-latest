@@ -35,6 +35,13 @@ interface Props {
   topics?:   TaxItem[];
   tags?:     TaxItem[];
   questionDetails?: Record<string, any>;
+  loading?: boolean;
+  pagination: {
+    current: number;
+    pageSize: number;
+    total: number;
+    onChange: (page: number, pageSize: number) => void;
+  };
   onCreateClick:        () => void;
   onEditClick:          (record: Question) => void;
   onDuplicateClick:     (record: Question) => void;
@@ -174,6 +181,8 @@ export default function QuestionsTab({
   topics = [],
   tags = [],
   questionDetails = {},
+  loading = false,
+  pagination,
   onCreateClick,
   onEditClick,
   onDuplicateClick,
@@ -197,7 +206,7 @@ export default function QuestionsTab({
       {/* Header */}
       <div className="flex justify-between items-center">
         <span className="text-slate-500">
-          Ngân hàng câu hỏi — Tổng cộng <strong>{questions.length}</strong> câu hỏi
+          Ngân hàng câu hỏi — Tổng cộng <strong>{pagination.total}</strong> câu hỏi
         </span>
         <Can perform="learning.write">
           <Button
@@ -213,9 +222,18 @@ export default function QuestionsTab({
 
       <Table
         rowKey="id"
+        loading={loading}
         dataSource={questions}
         columns={columns}
-        pagination={{ pageSize: PAGE_SIZE_QUESTIONS }}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: pagination.onChange,
+          showSizeChanger: true,
+          pageSizeOptions: ["10", "20", "50", "100"],
+          showTotal: (total) => `Tổng cộng ${total} câu hỏi`,
+        }}
         scroll={{ x: 800 }}
       />
     </div>

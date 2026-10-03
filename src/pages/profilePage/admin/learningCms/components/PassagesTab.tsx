@@ -19,6 +19,13 @@ interface Passage {
 
 interface Props {
   passages: Passage[];
+  loading?: boolean;
+  pagination: {
+    current: number;
+    pageSize: number;
+    total: number;
+    onChange: (page: number, pageSize: number) => void;
+  };
   onCreateClick: () => void;
   onEditClick:   (record: Passage) => void;
   onDeleteClick: (record: Passage) => void;
@@ -98,7 +105,14 @@ function buildColumns(
  * Reading passages management tab — list table with create,
  * edit, and delete actions.
  */
-export default function PassagesTab({ passages, onCreateClick, onEditClick, onDeleteClick }: Props) {
+export default function PassagesTab({
+  passages,
+  loading = false,
+  pagination,
+  onCreateClick,
+  onEditClick,
+  onDeleteClick,
+}: Props) {
   const columns = buildColumns(onEditClick, onDeleteClick);
 
   return (
@@ -106,7 +120,7 @@ export default function PassagesTab({ passages, onCreateClick, onEditClick, onDe
       {/* Header */}
       <div className="flex justify-between items-center">
         <span className="text-slate-500">
-          Danh sách bài đọc cho phần Đọc hiểu ({passages.length} bài)
+          Danh sách bài đọc cho phần Đọc hiểu ({pagination.total} bài)
         </span>
         <Can perform="learning.write">
           <Button
@@ -122,9 +136,18 @@ export default function PassagesTab({ passages, onCreateClick, onEditClick, onDe
 
       <Table
         rowKey="id"
+        loading={loading}
         dataSource={passages}
         columns={columns}
-        pagination={{ pageSize: PAGE_SIZE_PASSAGES }}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: pagination.onChange,
+          showSizeChanger: true,
+          pageSizeOptions: ["10", "20", "50", "100"],
+          showTotal: (total) => `Tổng cộng ${total} bài đọc`,
+        }}
       />
     </div>
   );

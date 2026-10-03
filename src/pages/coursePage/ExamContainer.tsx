@@ -183,6 +183,46 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
       });
     }
 
+    case "audio_fill_blanks":
+    case "audio-fill-blanks": {
+      if (!answer || typeof answer !== "object") return false;
+      const userMap = Array.isArray((answer as any).blanks)
+        ? (answer as any).blanks.reduce((acc: any, b: any) => ({ ...acc, [b.id]: b.value }), {})
+        : (answer as Record<string, string>);
+
+      const blanksList: any[] = question.detail?.blanks || question.blanks || [];
+      if (blanksList.length === 0) return true;
+
+      return blanksList.every((b: any, bIdx: number) => {
+        const userVal = normalizeText(userMap[b.id] ?? userMap[`blank${bIdx + 1}`] ?? "");
+        if (!userVal) return false;
+        const accepted: string[] = Array.isArray(b.acceptedAnswers)
+          ? b.acceptedAnswers.map(String)
+          : b.acceptedAnswers
+            ? [String(b.acceptedAnswers)]
+            : [];
+        if (accepted.length === 0) {
+          if (typeof correct === "object" && correct !== null) {
+            const rawCorr =
+              (correct as any)[b.id] ||
+              (correct as any)[`blank${bIdx + 1}`] ||
+              (correct as any)?.blanks?.find((x: any) => x.id === b.id)?.value ||
+              (correct as any)?.blanks?.find((x: any) => x.id === b.id)?.acceptedAnswers ||
+              Object.values(correct)[bIdx];
+
+            if (Array.isArray(rawCorr)) {
+              return rawCorr.some((ans: string) => normalizeText(ans) === userVal);
+            }
+            if (rawCorr) {
+              return userVal === normalizeText(String(rawCorr));
+            }
+          }
+          return false;
+        }
+        return accepted.some((ans: string) => normalizeText(ans) === userVal);
+      });
+    }
+
     default:
       return false;
   }
@@ -691,6 +731,25 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         const payload = {
           pairs: pairs,
           matches: pairs,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      case "audio_fill_blanks":
+      case "audio-fill-blanks": {
+        let blanksList: Array<{ id: string; value: string }> = [];
+        if (answer && typeof answer === "object") {
+          if (Array.isArray((answer as any).blanks)) {
+            blanksList = (answer as any).blanks;
+          } else {
+            blanksList = Object.entries(answer as Record<string, string>).map(([id, value]) => ({
+              id,
+              value: String(value ?? "").trim(),
+            }));
+          }
+        }
+        const payload = {
+          blanks: blanksList,
         };
         console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
         return payload;

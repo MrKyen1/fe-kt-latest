@@ -31,6 +31,13 @@ interface Exam {
 
 interface Props {
   exams: Exam[];
+  loading?: boolean;
+  pagination: {
+    current: number;
+    pageSize: number;
+    total: number;
+    onChange: (page: number, pageSize: number) => void;
+  };
   onCreateClick: () => void;
   onEditClick: (record: Exam) => void;
   onDeleteClick: (record: Exam) => void;
@@ -247,6 +254,8 @@ function buildColumns(
  */
 export default function ExamsTab({
   exams,
+  loading = false,
+  pagination,
   onCreateClick,
   onEditClick,
   onDeleteClick,
@@ -272,7 +281,7 @@ export default function ExamsTab({
       <div className="flex justify-between items-center">
         <span className="text-slate-500">
           Quản lý đề thi —{" "}
-          <strong>{publishedCount}/{exams.length}</strong> đang phát hành
+          <strong>{publishedCount}/{exams.length}</strong> đang phát hành trên trang này (Tổng cộng <strong>{pagination.total}</strong> đề thi)
         </span>
         <Can perform="learning.write">
           <Button
@@ -286,7 +295,21 @@ export default function ExamsTab({
         </Can>
       </div>
 
-      <Table rowKey="id" dataSource={exams} columns={columns} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={exams}
+        columns={columns}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: pagination.onChange,
+          showSizeChanger: true,
+          pageSizeOptions: ["10", "20", "50", "100"],
+          showTotal: (total) => `Tổng cộng ${total} đề thi`,
+        }}
+      />
     </div>
   );
 }

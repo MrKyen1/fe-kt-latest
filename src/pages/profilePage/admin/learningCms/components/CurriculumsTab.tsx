@@ -42,6 +42,13 @@ interface Curriculum {
 interface Props {
   curriculums: Curriculum[];
   exams?: Array<{ id: string; examType?: string; title?: string }>;
+  loading?: boolean;
+  pagination: {
+    current: number;
+    pageSize: number;
+    total: number;
+    onChange: (page: number, pageSize: number) => void;
+  };
   onCreateClick: () => void;
   onEditClick: (record: Curriculum) => void;
   onDeleteClick: (record: Curriculum) => void;
@@ -221,6 +228,8 @@ function buildColumns(
 export default function CurriculumsTab({
   curriculums,
   exams = [],
+  loading = false,
+  pagination,
   onCreateClick,
   onEditClick,
   onDeleteClick,
@@ -248,7 +257,7 @@ export default function CurriculumsTab({
       <div className="flex justify-between items-center">
         <span className="text-slate-500">
           Giáo trình đào tạo —{" "}
-          <strong>{publishedCount}/{curriculums.length}</strong> đang phát hành
+          <strong>{publishedCount}/{curriculums.length}</strong> đang phát hành trên trang này (Tổng cộng <strong>{pagination.total}</strong> giáo trình)
         </span>
         <Can perform="learning.write">
           <Button
@@ -262,7 +271,21 @@ export default function CurriculumsTab({
         </Can>
       </div>
 
-      <Table rowKey="id" dataSource={curriculums} columns={columns} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={curriculums}
+        columns={columns}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: pagination.onChange,
+          showSizeChanger: true,
+          pageSizeOptions: ["10", "20", "50", "100"],
+          showTotal: (total) => `Tổng cộng ${total} giáo trình`,
+        }}
+      />
     </div>
   );
 }

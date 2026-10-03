@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Button,
   Checkbox,
@@ -40,6 +40,9 @@ import {
   Volume2,
   Video,
   ArrowLeftRight,
+  Scissors,
+  Eye,
+  Sparkles,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────
@@ -331,6 +334,285 @@ function ErrorCorrectionFields() {
   );
 }
 
+function AudioFillBlanksFields({ form }: { form: FormInstance }) {
+  const textareaRef = useRef<any>(null);
+  const [passageText, setPassageText] = useState<string>(() => form.getFieldValue("passageText") || "");
+
+  // Sync state if form value initialized/changed externally (e.g. edit mode)
+  useEffect(() => {
+    const val = form.getFieldValue("passageText") || "";
+    setPassageText(val);
+  }, [form]);
+
+  const syncBlanksFromText = (text: string, overrideAnswer?: { id: string; answer: string }) => {
+    setPassageText(text);
+    const matches = Array.from(text.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g));
+    const tokenIds: string[] = [];
+    matches.forEach((m) => {
+      const id = m[1];
+      if (id && !tokenIds.includes(id)) {
+        tokenIds.push(id);
+      }
+    });
+
+    const currentBlanks: Array<{ id: string; acceptedAnswers: string }> =
+      form.getFieldValue("blanks") || [];
+
+    const existingMap = new Map<string, string>();
+    currentBlanks.forEach((b) => {
+      if (b && b.id) {
+        existingMap.set(
+          b.id,
+          typeof b.acceptedAnswers === "string"
+            ? b.acceptedAnswers
+            : Array.isArray(b.acceptedAnswers)
+              ? (b.acceptedAnswers as string[]).join(", ")
+              : ""
+        );
+      }
+    });
+
+    if (overrideAnswer) {
+      existingMap.set(overrideAnswer.id, overrideAnswer.answer);
+    }
+
+    const newBlanks = tokenIds.map((id) => ({
+      id,
+      acceptedAnswers: existingMap.get(id) || "",
+    }));
+
+    form.setFieldsValue({ blanks: newBlanks });
+  };
+
+  const getNextBlankId = (text: string): string => {
+    const matches = Array.from(text.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g));
+    const existingIds = new Set(matches.map((m) => m[1]));
+    let idx = 1;
+    while (existingIds.has(`blank${idx}`)) {
+      idx++;
+    }
+    return `blank${idx}`;
+  };
+
+  const handleInsertBlank = () => {
+    const textareaEl = textareaRef.current?.resizableTextArea?.textArea as HTMLTextAreaElement | null;
+    const currentPassage = form.getFieldValue("passageText") || "";
+    const blankId = getNextBlankId(currentPassage);
+    const token = `{{${blankId}}}`;
+
+    if (textareaEl && textareaEl.selectionStart !== undefined && textareaEl.selectionEnd !== undefined) {
+      const start = textareaEl.selectionStart;
+      const end = textareaEl.selectionEnd;
+      const newText = currentPassage.substring(0, start) + token + currentPassage.substring(end);
+      form.setFieldsValue({ passageText: newText });
+      syncBlanksFromText(newText);
+      setTimeout(() => {
+        textareaEl.focus();
+        textareaEl.setSelectionRange(start + token.length, start + token.length);
+      }, 0);
+    } else {
+      const newText = currentPassage ? `${currentPassage} ${token}` : token;
+      form.setFieldsValue({ passageText: newText });
+      syncBlanksFromText(newText);
+    }
+  };
+
+  const handleConvertSelectionToBlank = () => {
+    const textareaEl = textareaRef.current?.resizableTextArea?.textArea as HTMLTextAreaElement | null;
+    const currentPassage = form.getFieldValue("passageText") || "";
+
+    if (!textareaEl || textareaEl.selectionStart === undefined || textareaEl.selectionEnd === undefined) {
+      message.info("Vui lòng bôi đen một từ hoặc cụm từ trong đoạn văn để chuyển thành ô trống!");
+      return;
+    }
+
+    const start = textareaEl.selectionStart;
+    const end = textareaEl.selectionEnd;
+    const selectedText = currentPassage.substring(start, end).trim();
+
+    if (!selectedText) {
+      message.info("Vui lòng bôi đen một từ hoặc cụm từ trong đoạn văn để chuyển thành ô trống!");
+      return;
+    }
+
+    const blankId = getNextBlankId(currentPassage);
+    const token = `{{${blankId}}}`;
+    const newText = currentPassage.substring(0, start) + token + currentPassage.substring(end);
+    form.setFieldsValue({ passageText: newText });
+    syncBlanksFromText(newText, { id: blankId, answer: selectedText });
+
+    message.success(`Đã chuyển "${selectedText}" thành ô trống {{${blankId}}} với đáp án là "${selectedText}"!`);
+    setTimeout(() => {
+      textareaEl.focus();
+      textareaEl.setSelectionRange(start + token.length, start + token.length);
+    }, 0);
+  };
+
+  // Split passage text for live visual preview
+  const previewParts = useMemo(() => {
+    if (!passageText) return [];
+    return passageText.split(/(\{\{[a-zA-Z0-9_]+\}\})/g);
+  }, [passageText]);
+
+  return (
+    <div className="bg-slate-50 p-4 rounded-xl space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+          <Settings size={15} className="text-slate-500" /> Cấu hình bài nghe & điền từ vào đoạn văn
+        </span>
+        <Space size="small">
+          <Button
+            size="small"
+            type="dashed"
+            icon={<Scissors size={13} className="text-amber-600 inline mr-1" />}
+            onClick={handleConvertSelectionToBlank}
+            className="text-xs text-amber-700 border-amber-300 hover:border-amber-400 bg-amber-50/50 font-medium"
+          >
+            Chuyển từ đang bôi đen thành ô trống
+          </Button>
+          <Button
+            size="small"
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={handleInsertBlank}
+            className="text-xs text-indigo-600 border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 font-medium"
+          >
+            + Chèn ô trống {"{{blank...}}"}
+          </Button>
+        </Space>
+      </div>
+
+      <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
+        <Sparkles size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+        <div>
+          <strong>Cách soạn nhanh:</strong> Bạn có thể dán toàn bộ đoạn script tiếng Anh vào ô dưới, sau đó <strong>bôi đen từ cần ẩn</strong> và nhấn nút <strong>"Chuyển từ đang bôi đen thành ô trống"</strong>. Hệ thống sẽ tự động gán từ đó làm đáp án đúng!
+        </div>
+      </div>
+
+      <Form.Item
+        name="passageText"
+        label="Đoạn văn bản bài nghe (Chứa các ô trống)"
+        rules={[{ required: true, message: "Vui lòng nhập đoạn văn có chứa ô trống!" }]}
+      >
+        <Input.TextArea
+          ref={textareaRef}
+          rows={5}
+          placeholder={"Ví dụ: I have studied English for {{blank1}} years. My favorite subject is {{blank2}} because it is very useful."}
+          className="rounded-xl font-mono text-sm leading-relaxed"
+          onChange={(e) => syncBlanksFromText(e.target.value)}
+        />
+      </Form.Item>
+
+      {/* Visual Live Preview */}
+      {previewParts.length > 0 && (
+        <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <Eye size={13} className="text-indigo-500" /> Xem trước hiển thị của học sinh:
+          </div>
+          <div className="text-sm text-slate-800 leading-loose">
+            {previewParts.map((part, pIdx) => {
+              const match = part.match(/^\{\{([a-zA-Z0-9_]+)\}\}$/);
+              if (!match) return <span key={pIdx}>{part}</span>;
+              const bId = match[1];
+              return (
+                <span
+                  key={pIdx}
+                  className="inline-flex items-center gap-1 mx-1 px-2.5 py-0.5 rounded-lg border-2 border-dashed border-indigo-300 bg-indigo-50/80 text-indigo-700 font-semibold font-mono text-xs"
+                >
+                  <span className="w-4 h-4 rounded-full bg-indigo-200 text-indigo-800 text-[10px] flex items-center justify-center font-bold">
+                    {pIdx + 1}
+                  </span>
+                  <span>{bId}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <Row gutter={16}>
+        <Col span={12}>
+          <Form.Item
+            name="gradingMode"
+            label="Chế độ chấm điểm"
+            initialValue="normalized"
+          >
+            <Select className="rounded-xl">
+              <Select.Option value="normalized">Normalized (Bỏ qua hoa thường & dấu cách thừa)</Select.Option>
+              <Select.Option value="exact">Exact (Chính xác tuyệt đối)</Select.Option>
+            </Select>
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Divider className="my-2" />
+
+      <div>
+        <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
+          Danh sách ô trống & Đáp án chấp nhận
+        </div>
+        <Form.List name="blanks">
+          {(fields, { remove }) => (
+            <div className="space-y-2.5">
+              {fields.length === 0 && (
+                <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
+                  Chưa phát hiện ô trống nào trong đoạn văn. Bôi đen từ hoặc bấm nút <strong>Chèn ô trống</strong> phía trên.
+                </div>
+              )}
+              {fields.map(({ key, name, ...restField }, idx) => (
+                <div
+                  key={key}
+                  className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-xs"
+                >
+                  <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0">
+                    {idx + 1}
+                  </div>
+                  <div className="w-32 shrink-0">
+                    <Form.Item
+                      {...restField}
+                      name={[name, "id"]}
+                      className="mb-0"
+                      rules={[{ required: true, message: "Mã trống!" }]}
+                    >
+                      <Input
+                        prefix={<span className="text-indigo-400 font-mono text-xs">{"{{"}</span>}
+                        suffix={<span className="text-indigo-400 font-mono text-xs">{"}}"}</span>}
+                        placeholder="blank1"
+                        className="rounded-lg font-mono font-bold text-center text-indigo-700 bg-indigo-50/50 text-xs"
+                      />
+                    </Form.Item>
+                  </div>
+                  <div className="flex-1">
+                    <Form.Item
+                      {...restField}
+                      name={[name, "acceptedAnswers"]}
+                      className="mb-0"
+                      rules={[{ required: true, message: "Vui lòng nhập ít nhất một đáp án đúng!" }]}
+                    >
+                      <Input
+                        placeholder="Nhập các đáp án đúng, cách nhau bởi dấu phẩy (VD: school, the school)"
+                        className="rounded-lg text-xs"
+                      />
+                    </Form.Item>
+                  </div>
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => remove(name)}
+                    className="shrink-0"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </Form.List>
+      </div>
+    </div>
+  );
+}
+
 function MatchingPairRow({
   name,
   restField,
@@ -541,6 +823,7 @@ function QuestionDetailFields({
   if (type === "sentence_rewrite") return <SentenceRewriteFields />;
   if (type === "hint_rewrite") return <HintRewriteFields />;
   if (type === "error_correction") return <ErrorCorrectionFields />;
+  if (type === "audio_fill_blanks") return <AudioFillBlanksFields form={form} />;
   if (type === "matching") return <MatchingFields allMedia={allMedia} form={form} />;
   return null;
 }
@@ -815,7 +1098,7 @@ function MediaItemRow({
                   ? availableRoles[0].value
                   : currentType === "image_choice" || fileType === "image"
                     ? "prompt_image"
-                    : currentType === "audio_choice" || currentType === "audio_image_choice" || fileType === "audio"
+                    : currentType === "audio_choice" || currentType === "audio_image_choice" || currentType === "audio_fill_blanks" || fileType === "audio"
                       ? "prompt_audio"
                       : "prompt_image";
 
@@ -848,7 +1131,7 @@ function MediaItemRow({
                 Nhấp hoặc kéo thả tệp từ máy tính vào đây
               </p>
               <p className="text-[11px] text-slate-400 m-0">
-                {currentType === "audio_choice"
+                {currentType === "audio_choice" || currentType === "audio_fill_blanks"
                   ? "Hỗ trợ MP3, WAV, M4A, OGG (Tối đa 20MB) • Xem trước ngay"
                   : currentType === "image_choice"
                     ? "Hỗ trợ PNG, JPG, JPEG, WEBP, SVG (Tối đa 20MB) • Xem trước ngay"
@@ -882,7 +1165,7 @@ function MediaItemRow({
                     ? availableRoles[0].value
                     : currentType === "image_choice" || isImageFile
                       ? "prompt_image"
-                      : currentType === "audio_choice" || currentType === "audio_image_choice" || chosen.type === "audio"
+                      : currentType === "audio_choice" || currentType === "audio_image_choice" || currentType === "audio_fill_blanks" || chosen.type === "audio"
                         ? "prompt_audio"
                         : "prompt_image";
                 form.setFieldValue(["mediaIds", name, "role"], defaultRole);
@@ -1207,7 +1490,7 @@ export default function QuestionFormModal({
           rowStore.role ||
           (currentType === "image_choice"
             ? "prompt_image"
-            : currentType === "audio_choice" || currentType === "audio_image_choice"
+            : currentType === "audio_choice" || currentType === "audio_image_choice" || currentType === "audio_fill_blanks"
               ? "prompt_audio"
               : "prompt_image");
 
@@ -1249,7 +1532,7 @@ export default function QuestionFormModal({
             throw new Error("Câu hỏi lựa chọn hình ảnh cần ít nhất một hình ảnh đề bài!");
           }
         }
-      } else if (currentType === "audio_choice" || currentType === "audio_image_choice") {
+      } else if (currentType === "audio_choice" || currentType === "audio_image_choice" || currentType === "audio_fill_blanks") {
         const hasPromptAud = processedMediaIds.some((m) => m.role === "prompt_audio");
         if (!hasPromptAud) {
           if (processedMediaIds.length > 0) {
@@ -1419,6 +1702,14 @@ export default function QuestionFormModal({
                         ]
                       });
                     }
+                  } else if (val === "audio_fill_blanks") {
+                    form.setFieldsValue({
+                      passageText: "",
+                      blanks: [
+                        { id: "blank1", acceptedAnswers: "" }
+                      ],
+                      gradingMode: "normalized",
+                    });
                   }
                 }}
               >

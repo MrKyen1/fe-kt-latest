@@ -27,6 +27,12 @@ interface Props {
   columns: ColumnsType<TaxItem>;
   dataSource: TaxItem[];
   loading: boolean;
+  pagination: {
+    current: number;
+    pageSize: number;
+    total: number;
+    onChange: (page: number, pageSize: number) => void;
+  };
 
   onCreateClick: () => void;
 }
@@ -91,6 +97,7 @@ export default function TaxonomyTab({
   columns,
   dataSource,
   loading,
+  pagination,
   onCreateClick,
 }: Props) {
   return (
@@ -133,7 +140,15 @@ export default function TaxonomyTab({
         loading={loading}
         dataSource={dataSource}
         columns={columns}
-        pagination={{ pageSize: PAGE_SIZE_DEFAULT, showSizeChanger: false }}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: pagination.onChange,
+          showSizeChanger: true,
+          pageSizeOptions: ["10", "20", "50", "100"],
+          showTotal: (total) => `Tổng cộng ${total} mục`,
+        }}
         locale={{ emptyText: "Không tìm thấy danh mục nào" }}
         className="border border-slate-100 rounded-2xl overflow-hidden"
       />

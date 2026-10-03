@@ -14,6 +14,7 @@ export interface QuestionTypeOption {
 export const QUESTION_TYPES: QuestionTypeOption[] = [
   { value: "multiple_choice",       label: "Trắc nghiệm (Multiple Choice)" },
   { value: "audio_choice",          label: "Nghe & Chọn (Audio Choice)" },
+  { value: "audio_fill_blanks",     label: "Nghe & Điền từ (Audio Fill in Blanks)" },
   { value: "image_choice",          label: "Ảnh & Chọn (Image Choice)" },
   { value: "audio_image_choice",    label: "Nghe & Chọn ảnh (Audio Image Choice)" },
   { value: "true_false",            label: "Đúng / Sai (True / False)" },
@@ -28,6 +29,7 @@ export const QUESTION_TYPES: QuestionTypeOption[] = [
 export const QUESTION_TYPE_LABELS: Record<string, string> = {
   multiple_choice:       "Trắc nghiệm",
   audio_choice:          "Nghe & Chọn",
+  audio_fill_blanks:     "Nghe & Điền từ",
   image_choice:          "Ảnh & Chọn",
   audio_image_choice:    "Nghe & Chọn ảnh",
   true_false:            "Đúng / Sai",
@@ -42,6 +44,7 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
 export const QUESTION_TYPE_COLORS: Record<string, string> = {
   multiple_choice:       "blue",
   audio_choice:          "cyan",
+  audio_fill_blanks:     "teal",
   image_choice:          "geekblue",
   audio_image_choice:    "purple",
   true_false:            "volcano",
@@ -67,9 +70,14 @@ export const CHOICE_TYPES: string[] = [
 ];
 
 // ── Pagination defaults ──────────────────────────────────────
-export const PAGE_SIZE_DEFAULT   = 15;
-export const PAGE_SIZE_QUESTIONS = 10;
-export const PAGE_SIZE_PASSAGES  = 8;
+export const PAGE_SIZE_DEFAULT     = 20;
+export const PAGE_SIZE_QUESTIONS   = 20;
+export const PAGE_SIZE_PASSAGES    = 20;
+export const PAGE_SIZE_EXAMS       = 20;
+export const PAGE_SIZE_CURRICULUMS = 20;
+export const PAGE_SIZE_MEDIA       = 20;
+export const PAGE_SIZE_TAXONOMY    = 20;
+export const PAGE_SIZE_OPTIONS     = ["10", "20", "50", "100"];
 
 // ── API list limit (prevents unbounded queries) ──────────────
 export const LIST_LIMIT = 100;

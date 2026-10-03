@@ -1,6 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import { Input, Modal, Form, Select, Checkbox, Button, message, Space } from "antd";
-import { Check, RotateCcw, AlertTriangle } from "lucide-react";
+import { Check, RotateCcw, AlertTriangle, X } from "lucide-react";
 import { ExamOption, ExamQuestion } from "../../types";
 import { MatchingQuestion } from "./MatchingQuestion";
 import { tokenStorage } from "../../services/tokenStorage";
@@ -141,8 +141,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     const corrTokens: string[] = Array.isArray(question.correctAnswer)
       ? question.correctAnswer.map(String)
       : typeof question.correctAnswer === "string"
-      ? question.correctAnswer.split(" ").filter(Boolean)
-      : [];
+        ? question.correctAnswer.split(" ").filter(Boolean)
+        : [];
 
     const isIdentical =
       corrTokens.length === rawOpts.length &&
@@ -204,6 +204,92 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const audioMedia = mediaItems.filter((m) => m.type === "audio");
 
   const hasSplitLayout = Boolean(question.passage) || imageMedia.length > 0;
+
+  const isAudioFillBlanks = question.type === "audio_fill_blanks" || (question as any).type === "audio-fill-blanks";
+  const audioBlanksList: any[] = useMemo(() => {
+    return question.detail?.blanks || (question as any).blanks || [];
+  }, [question]);
+
+  const userBlanksMap: Record<string, string> = useMemo(() => {
+    if (!currentAnswer) return {};
+    if (typeof currentAnswer === "object" && !Array.isArray(currentAnswer)) {
+      if (Array.isArray((currentAnswer as any).blanks)) {
+        const res: Record<string, string> = {};
+        (currentAnswer as any).blanks.forEach((b: any, idx: number) => {
+          const id = b?.id || `blank${idx + 1}`;
+          res[id] = b.value ?? "";
+        });
+        return res;
+      }
+      return currentAnswer as Record<string, string>;
+    }
+    if (Array.isArray(currentAnswer)) {
+      const res: Record<string, string> = {};
+      currentAnswer.forEach((val: any, idx: number) => {
+        res[`blank${idx + 1}`] = typeof val === "string" ? val : (val?.value || "");
+      });
+      return res;
+    }
+    return {};
+  }, [currentAnswer]);
+
+  const getAcceptedList = useCallback(
+    (blankId: string, bIndex: number): string[] => {
+      // 1. From audioBlanksList
+      const bInfo = audioBlanksList.find((b: any) => b.id === blankId) || audioBlanksList[bIndex];
+      if (bInfo) {
+        if (Array.isArray(bInfo.acceptedAnswers) && bInfo.acceptedAnswers.length > 0) {
+          return bInfo.acceptedAnswers.filter(Boolean).map(String);
+        }
+        if (typeof bInfo.acceptedAnswers === "string" && bInfo.acceptedAnswers.trim()) {
+          return bInfo.acceptedAnswers
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+        }
+        if (bInfo.value) {
+          return [String(bInfo.value).trim()];
+        }
+      }
+      // 2. From question.correctAnswer
+      if (question.correctAnswer && typeof question.correctAnswer === "object") {
+        const rawCorr =
+          (question.correctAnswer as any)[blankId] ||
+          (question.correctAnswer as any)[`blank${bIndex + 1}`] ||
+          (question.correctAnswer as any)?.blanks?.find((b: any) => b.id === blankId)?.value ||
+          (question.correctAnswer as any)?.blanks?.find((b: any) => b.id === blankId)?.acceptedAnswers ||
+          Object.values(question.correctAnswer)[bIndex];
+
+        if (Array.isArray(rawCorr) && rawCorr.length > 0) {
+          return rawCorr.filter(Boolean).map(String);
+        }
+        if (typeof rawCorr === "string" && rawCorr.trim()) {
+          return [rawCorr.trim()];
+        }
+      }
+      // 3. From question.detail?.blanks
+      const dBlank = (question.detail?.blanks || [])[bIndex];
+      if (dBlank) {
+        if (Array.isArray(dBlank.acceptedAnswers) && dBlank.acceptedAnswers.length > 0) {
+          return dBlank.acceptedAnswers.filter(Boolean).map(String);
+        }
+        if (dBlank.acceptedAnswers) {
+          return [String(dBlank.acceptedAnswers).trim()];
+        }
+      }
+      return [];
+    },
+    [audioBlanksList, question.correctAnswer, question.detail]
+  );
+
+  const handleBlankChange = (blankId: string, value: string) => {
+    if (showFeedback) return;
+    const updated = {
+      ...userBlanksMap,
+      [blankId]: value,
+    };
+    onAnswerChange(updated);
+  };
 
   // =========================
   // Helpers
@@ -427,6 +513,100 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       }
     }
 
+    // Audio fill blanks
+    if (question.type === "audio_fill_blanks" || (question as any).type === "audio-fill-blanks") {
+      const answersMap: Record<string, string> = {};
+
+      const extractAnswerString = (raw: any): string => {
+        if (!raw) return "";
+        if (Array.isArray(raw)) return raw.filter(Boolean).map(String).join(" / ");
+        if (typeof raw === "object") {
+          if (Array.isArray(raw.acceptedAnswers)) return raw.acceptedAnswers.filter(Boolean).map(String).join(" / ");
+          if (raw.acceptedAnswers) return String(raw.acceptedAnswers);
+          if (raw.value) return String(raw.value);
+          return "";
+        }
+        return String(raw).trim();
+      };
+
+      // 1. From targetAnswer
+      if (targetAnswer && typeof targetAnswer === "object") {
+        if (Array.isArray((targetAnswer as any).blanks)) {
+          (targetAnswer as any).blanks.forEach((b: any, idx: number) => {
+            const key = b?.id || `blank${idx + 1}`;
+            const val = extractAnswerString(b.acceptedAnswers || b.value || b);
+            if (val) answersMap[key] = val;
+          });
+        } else if (Array.isArray(targetAnswer)) {
+          targetAnswer.forEach((b: any, idx: number) => {
+            const key = b?.id || `blank${idx + 1}`;
+            const val = extractAnswerString(b);
+            if (val) answersMap[key] = val;
+          });
+        } else {
+          Object.entries(targetAnswer).forEach(([k, v]) => {
+            const val = extractAnswerString(v);
+            if (val) answersMap[k] = val;
+          });
+        }
+      }
+
+      // 2. From question.correctAnswer
+      if (question.correctAnswer && typeof question.correctAnswer === "object") {
+        if (Array.isArray((question.correctAnswer as any).blanks)) {
+          (question.correctAnswer as any).blanks.forEach((b: any, idx: number) => {
+            const key = b?.id || `blank${idx + 1}`;
+            if (!answersMap[key]) {
+              const val = extractAnswerString(b.acceptedAnswers || b.value || b);
+              if (val) answersMap[key] = val;
+            }
+          });
+        } else {
+          Object.entries(question.correctAnswer).forEach(([k, v]) => {
+            if (!answersMap[k]) {
+              const val = extractAnswerString(v);
+              if (val) answersMap[k] = val;
+            }
+          });
+        }
+      }
+
+      // 3. From audioBlanksList
+      audioBlanksList.forEach((b: any, idx: number) => {
+        const key = b?.id || `blank${idx + 1}`;
+        if (!answersMap[key]) {
+          const val = extractAnswerString(b.acceptedAnswers || b.value);
+          if (val) answersMap[key] = val;
+        }
+      });
+
+      // Format answers in ordered list
+      if (audioBlanksList.length > 0) {
+        const items = audioBlanksList
+          .map((b: any, idx: number) => {
+            const key = b?.id || `blank${idx + 1}`;
+            const val = answersMap[key] || answersMap[`blank${idx + 1}`] || Object.values(answersMap)[idx];
+            return val ? `(${idx + 1}) ${val}` : "";
+          })
+          .filter(Boolean);
+
+        if (items.length > 0) {
+          return items.join("  |  ");
+        }
+      }
+
+      // Fallback: from answersMap entries
+      const entries = Object.entries(answersMap).filter(([_, v]) => Boolean(v));
+      if (entries.length > 0) {
+        return entries.map(([_, v], idx) => `(${idx + 1}) ${v}`).join("  |  ");
+      }
+
+      if (typeof targetAnswer === "string" && targetAnswer.trim()) {
+        return targetAnswer;
+      }
+      return "";
+    }
+
     // 3. Matching questions (or object with pairs / matches)
     const isMatching = question.type === "matching" || (question as any).type === "matching_pair";
     if (isMatching || (typeof targetAnswer === "object" && targetAnswer !== null)) {
@@ -481,7 +661,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     }
 
     if (typeof currentAnswer === "object" && currentAnswer !== null) {
-      return Object.keys(currentAnswer).length === 0;
+      if (Array.isArray((currentAnswer as any).blanks)) {
+        return (currentAnswer as any).blanks.every((b: any) => !b.value?.trim());
+      }
+      return Object.values(currentAnswer).every((val) => typeof val === "string" ? !val.trim() : !val);
     }
 
     return true;
@@ -574,8 +757,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         const selectedAnswers: string[] = Array.isArray(currentAnswer)
           ? currentAnswer.map(String)
           : currentAnswer !== undefined && currentAnswer !== null && currentAnswer !== ""
-          ? [String(currentAnswer)]
-          : [];
+            ? [String(currentAnswer)]
+            : [];
 
         const handleOptionToggle = (optVal: string) => {
           if (isMulti) {
@@ -633,11 +816,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                         checked={isSelected}
                         disabled={showFeedback}
                         onChange={() => handleOptionToggle(optionValue)}
-                        className={`w-4 h-4 rounded-full cursor-pointer transition-all ${
-                          isSelected
-                            ? "border-emerald-500 bg-emerald-500 ring-2 ring-emerald-200"
-                            : "border border-slate-300 bg-white hover:border-emerald-400"
-                        }`}
+                        className={`w-4 h-4 rounded-full cursor-pointer transition-all ${isSelected
+                          ? "border-emerald-500 bg-emerald-500 ring-2 ring-emerald-200"
+                          : "border border-slate-300 bg-white hover:border-emerald-400"
+                          }`}
                         style={{ appearance: "none", WebkitAppearance: "none" }}
                       />
                       {isSelected && (
@@ -683,13 +865,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               value={(currentAnswer as string) || ""}
               disabled={showFeedback}
               onChange={(e) => onAnswerChange(e.target.value)}
-              className={`rounded-xl text-[16px] py-4 px-5 shadow-sm leading-relaxed ${
-                showFeedback
-                  ? isCorrect
-                    ? "border-2 border-emerald-400 bg-emerald-50 text-emerald-700 font-bold"
-                    : "border-2 border-rose-400 bg-rose-50 text-rose-700 font-bold"
-                  : "border-slate-200 hover:border-emerald-400"
-              }`}
+              className={`rounded-xl text-[16px] py-4 px-5 shadow-sm leading-relaxed ${showFeedback
+                ? isCorrect
+                  ? "border-2 border-emerald-400 bg-emerald-50 text-emerald-700 font-bold"
+                  : "border-2 border-rose-400 bg-rose-50 text-rose-700 font-bold"
+                : "border-slate-200 hover:border-emerald-400"
+                }`}
             />
           </div>
         );
@@ -700,13 +881,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           <div className="space-y-4 mb-6">
             {/* Selected */}
             <div
-              className={`min-h-[60px] p-4 rounded-xl border flex flex-wrap gap-2 items-start ${
-                showFeedback
-                  ? isCorrect
-                    ? "border-emerald-400 bg-emerald-50"
-                    : "border-rose-400 bg-rose-50"
-                  : "border-slate-200 bg-slate-50"
-              }`}
+              className={`min-h-[60px] p-4 rounded-xl border flex flex-wrap gap-2 items-start ${showFeedback
+                ? isCorrect
+                  ? "border-emerald-400 bg-emerald-50"
+                  : "border-rose-400 bg-rose-50"
+                : "border-slate-200 bg-slate-50"
+                }`}
             >
               {orderedWords.length === 0 && (
                 <span className="text-slate-400 italic text-sm">
@@ -741,10 +921,9 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     onClick={() => addWord(word, index)}
                     className={`
                       px-3 py-1.5 text-sm font-medium rounded-md transition-all
-                      ${
-                        isSelected
-                          ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-                          : "bg-white text-slate-700 border border-slate-200 hover:border-emerald-400 hover:text-emerald-600 shadow-sm hover:shadow"
+                      ${isSelected
+                        ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                        : "bg-white text-slate-700 border border-slate-200 hover:border-emerald-400 hover:text-emerald-600 shadow-sm hover:shadow"
                       }
                     `}
                   >
@@ -759,8 +938,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       case "matching":
         const matchingValue =
           currentAnswer &&
-          typeof currentAnswer === "object" &&
-          !Array.isArray(currentAnswer)
+            typeof currentAnswer === "object" &&
+            !Array.isArray(currentAnswer)
             ? currentAnswer
             : {};
 
@@ -773,6 +952,115 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             correctAnswer={question.correctAnswer as Record<string, string> | undefined}
           />
         );
+
+      case "audio_fill_blanks": {
+        const passageText =
+          question.detail?.passageText ||
+          (question as any).passageText ||
+          question.passage ||
+          "";
+
+        const parts = passageText.split(/(\{\{[a-zA-Z0-9_]+\}\})/g);
+
+        return (
+          <div className="space-y-4 mb-6">
+            <div className="bg-slate-50/70 border border-slate-200/90 p-6 md:p-8 rounded-2xl leading-[2.6] md:leading-[2.8] text-[16px] md:text-[17px] text-slate-800 shadow-xs">
+              {parts.map((part: string, idx: number) => {
+                const match = part.match(/^\{\{([a-zA-Z0-9_]+)\}\}$/);
+                if (!match) {
+                  return (
+                    <span key={idx} className="whitespace-pre-wrap select-text">
+                      {part}
+                    </span>
+                  );
+                }
+                const blankId = match[1];
+                const blankIndex = audioBlanksList.findIndex((b: any) => b.id === blankId);
+                const displayIndex = blankIndex >= 0 ? blankIndex + 1 : idx;
+                const userVal = userBlanksMap[blankId] ?? userBlanksMap[`blank${displayIndex}`] ?? "";
+
+                let blankStatus: "default" | "correct" | "wrong" = "default";
+                const acceptedList = getAcceptedList(blankId, blankIndex >= 0 ? blankIndex : 0);
+
+                if (showFeedback) {
+                  if (acceptedList.length > 0) {
+                    const normUser = userVal.trim().toLowerCase();
+                    const isBlankCorrect = acceptedList.some(
+                      (ans) => ans.trim().toLowerCase() === normUser
+                    );
+                    blankStatus = isBlankCorrect ? "correct" : "wrong";
+                  } else {
+                    blankStatus = isCorrect ? "correct" : "wrong";
+                  }
+                }
+
+                // Check if next part starts with punctuation to adjust right margin
+                const nextPart = parts[idx + 1] || "";
+                const hasNextPunctuation = /^[.,!?:;)\]]/.test(nextPart.trim());
+
+                return (
+                  <span
+                    key={idx}
+                    className={`inline-flex items-center align-middle ${hasNextPunctuation ? "ml-1 mr-0.5" : "mx-1"
+                      } my-1`}
+                  >
+                    {/* Badge số thứ tự ô trống */}
+                    <span
+                      className={`inline-flex items-center justify-center text-[11px] font-bold px-1.5 py-0.5 rounded-md mr-1 shrink-0 select-none transition-colors ${blankStatus === "correct"
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                        : blankStatus === "wrong"
+                          ? "bg-rose-100 text-rose-800 border border-rose-300"
+                          : "bg-slate-100 text-slate-600 border border-slate-200"
+                        }`}
+                    >
+                      {displayIndex}
+                    </span>
+
+                    {/* Khung nhập tự động giãn theo độ dài ký tự */}
+                    <span className="inline-grid items-center align-middle relative">
+                      {/* Ghost span để đo chiều dài văn bản và tự động đẩy rộng input */}
+                      <span
+                        aria-hidden="true"
+                        className="invisible col-start-1 row-start-1 px-1.5 py-0.5 text-[14px] font-medium whitespace-pre select-none pointer-events-none"
+                        style={{ minWidth: "36px", maxWidth: "320px" }}
+                      >
+                        {userVal || "..."}
+                      </span>
+
+                      {/* Input thật với min-w-0 & size={1} để không bị ép kích thước mặc định 150px của trình duyệt */}
+                      <input
+                        type="text"
+                        size={1}
+                        disabled={showFeedback}
+                        value={userVal}
+                        placeholder="..."
+                        onChange={(e) => handleBlankChange(blankId, e.target.value)}
+                        className={`col-start-1 row-start-1 w-full min-w-0 text-center text-[14px] font-medium px-1.5 py-0.5 h-7 rounded-md transition-all outline-none ${blankStatus === "correct"
+                          ? "border-2 border-emerald-500 bg-emerald-50/90 text-emerald-900 font-bold"
+                          : blankStatus === "wrong"
+                            ? "border-2 border-rose-400 bg-rose-50/90 text-rose-800 font-bold line-through"
+                            : "border border-slate-300 hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-white text-slate-800 shadow-2xs"
+                          }`}
+                      />
+                    </span>
+
+                    {/* Hiển thị đáp án đúng kế bên khi làm sai */}
+                    {showFeedback && blankStatus === "wrong" && acceptedList.length > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 ml-1.5 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-xs font-bold shadow-xs whitespace-nowrap"
+                        title="Đáp án đúng"
+                      >
+                        <Check size={12} />
+                        {acceptedList.join(" / ")}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
 
       default:
         return <div>Unsupported question type</div>;
@@ -787,14 +1075,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     const promptText = normalizeLineBreaks(question.questionContent ?? "").trim();
     const extraIncorrect =
       question.incorrectSentence &&
-      question.incorrectSentence.trim() !== promptText &&
-      !promptText.includes(question.incorrectSentence.trim())
+        question.incorrectSentence.trim() !== promptText &&
+        !promptText.includes(question.incorrectSentence.trim())
         ? normalizeLineBreaks(question.incorrectSentence.trim())
         : "";
     const extraSource =
       question.sourceSentence &&
-      question.sourceSentence.trim() !== promptText &&
-      !promptText.includes(question.sourceSentence.trim())
+        question.sourceSentence.trim() !== promptText &&
+        !promptText.includes(question.sourceSentence.trim())
         ? normalizeLineBreaks(question.sourceSentence.trim())
         : "";
 
@@ -842,27 +1130,24 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
     return (
       <div
-        className={`mt-2 mb-[5px] p-4 rounded-2xl border-l-4 shadow-sm flex justify-between items-start gap-4 ${
-          isCorrect
-            ? "bg-emerald-50 border-emerald-400"
-            : "bg-rose-50 border-rose-400"
-        }`}
+        className={`mt-2 mb-[5px] p-4 rounded-2xl border-l-4 shadow-sm flex justify-between items-start gap-4 ${isCorrect
+          ? "bg-emerald-50 border-emerald-400"
+          : "bg-rose-50 border-rose-400"
+          }`}
       >
         <div className="flex-1">
           {(isCorrect || hasExplanation) && (
             <p
-              className={`text-sm font-bold ${
-                isCorrect ? "text-emerald-800" : "text-rose-800"
-              }`}
+              className={`text-sm font-bold ${isCorrect ? "text-emerald-800" : "text-rose-800"
+                }`}
             >
               {isCorrect ? "Tuyệt vời! Chính xác!" : "Giải thích chi tiết:"}
             </p>
           )}
 
           <div
-            className={`text-[13px] ${isCorrect || hasExplanation ? "mt-1.5" : ""} leading-relaxed ${
-              isCorrect ? "text-emerald-700" : "text-rose-700"
-            }`}
+            className={`text-[13px] ${isCorrect || hasExplanation ? "mt-1.5" : ""} leading-relaxed ${isCorrect ? "text-emerald-700" : "text-rose-700"
+              }`}
           >
             {!isCorrect && correctAnsText && (
               <div className={`${hasExplanation ? "mb-2" : ""} text-[14px] flex flex-wrap items-center gap-2`}>
@@ -870,6 +1155,44 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 <span className="bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg text-emerald-900 font-bold font-mono inline-block max-w-full break-words leading-relaxed whitespace-pre-line">
                   {correctAnsText}
                 </span>
+              </div>
+            )}
+
+            {/* Chi tiết từng ô trống cho audio_fill_blanks */}
+            {isAudioFillBlanks && audioBlanksList.length > 0 && (
+              <div className="mt-3 pt-2.5 border-t border-slate-200/70 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">Từng ô trống:</span>
+                {audioBlanksList.map((b: any, bIdx: number) => {
+                  const bId = b?.id || `blank${bIdx + 1}`;
+                  const userVal = userBlanksMap[bId] ?? userBlanksMap[`blank${bIdx + 1}`] ?? "";
+                  const accepted = getAcceptedList(bId, bIdx);
+                  const isBlankCorr = accepted.length > 0
+                    ? accepted.some((ans) => ans.trim().toLowerCase() === userVal.trim().toLowerCase())
+                    : (isCorrect ?? false);
+
+                  return (
+                    <span
+                      key={bId}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${isBlankCorr
+                        ? "bg-emerald-100/90 border-emerald-300 text-emerald-900"
+                        : "bg-rose-100/90 border-rose-300 text-rose-900"
+                        }`}
+                    >
+                      <span className="font-bold">({bIdx + 1})</span>
+                      {isBlankCorr ? (
+                        <span className="flex items-center gap-1 font-bold text-emerald-800">
+                          <Check size={12} /> {userVal || accepted[0]}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <span className="line-through text-rose-700 font-normal">{userVal || "Chưa điền"}</span>
+                          <span className="text-slate-400 font-normal">→</span>
+                          <span className="font-bold text-emerald-800">{accepted.join(" / ") || "(Thiếu đáp án)"}</span>
+                        </span>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
             )}
 
@@ -1007,11 +1330,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         ) : (
           <button
             onClick={onNext}
-            className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all group ${
-              isLastQuestion && isReviewMode && !isMastered
-                ? "bg-amber-600 hover:bg-amber-700"
-                : "bg-emerald-600 hover:bg-emerald-700"
-            }`}
+            className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all group ${isLastQuestion && isReviewMode && !isMastered
+              ? "bg-amber-600 hover:bg-amber-700"
+              : "bg-emerald-600 hover:bg-emerald-700"
+              }`}
           >
             {isLastQuestion
               ? isReviewMode

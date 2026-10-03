@@ -54,6 +54,10 @@ interface QuestionDetail {
   sourceSentence?: string;
   hintWord?: string;
   pairs?: MatchingPair[];
+  passageText?: string;
+  blanks?: Array<{ id: string; acceptedAnswers?: string | string[] }>;
+  gradingMode?: string;
+  [key: string]: any;
 }
 
 interface Question {
@@ -151,6 +155,18 @@ function getCorrectAnswerText(question: Question): string | null {
     return Array.isArray(detail.correctAnswer)
       ? detail.correctAnswer.join(" | ")
       : detail.correctAnswer;
+  }
+  if (type === "audio_fill_blanks" && detail.blanks) {
+    if (Array.isArray(detail.blanks)) {
+      const items = detail.blanks
+        .map((b: any, idx: number) => {
+          const ans = Array.isArray(b.acceptedAnswers) ? b.acceptedAnswers.join(" / ") : (b.acceptedAnswers || b.value || "");
+          return ans ? `(${idx + 1}) ${ans}` : "";
+        })
+        .filter(Boolean);
+      return items.length > 0 ? items.join(" | ") : null;
+    }
+    return null;
   }
   return null;
 }
@@ -380,6 +396,18 @@ export default function QuestionPopoverContent({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Đoạn văn nghe & điền từ (audio_fill_blanks) ── */}
+      {question.type === "audio_fill_blanks" && (question.detail as any)?.passageText && (
+        <div className="mb-2">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+            Đoạn văn có chỗ trống
+          </div>
+          <div className="p-2 bg-slate-50 border border-slate-200 rounded-md text-[11px] text-slate-700 leading-relaxed font-mono whitespace-pre-wrap">
+            {(question.detail as any).passageText}
           </div>
         </div>
       )}
