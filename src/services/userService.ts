@@ -5,58 +5,118 @@ import {
   User,
   UserListQuery,
 } from "../types/backend";
-import { apiClient, unwrapData } from "./apiClient";
+import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
-function mapUserResponse(user: any): User {
+export function mapUserResponse(user: any): User {
   if (!user) return user;
   const mapped = { ...user };
   if (user.teacher) {
+    const allClasses = (user.teacher.classes || []).map((c: any) => c.class).filter(Boolean);
     const activeClasses = (user.teacher.classes || [])
       .filter((c: any) => c.isActive)
-      .map((c: any) => c.class);
+      .map((c: any) => c.class)
+      .filter(Boolean);
+    const allClassesIds = (user.teacher.classes || []).map((c: any) => c.classId).filter(Boolean);
+    const activeClassIds = (user.teacher.classes || [])
+      .filter((c: any) => c.isActive)
+      .map((c: any) => c.classId)
+      .filter(Boolean);
+
+    const allSpecs = (user.teacher.teacherSpecializations || []).map((s: any) => s.specialization).filter(Boolean);
     const activeSpecs = (user.teacher.teacherSpecializations || [])
       .filter((s: any) => s.isActive)
-      .map((s: any) => s.specialization);
+      .map((s: any) => s.specialization)
+      .filter(Boolean);
+    const allSpecIds = (user.teacher.teacherSpecializations || []).map((s: any) => s.specializationId).filter(Boolean);
+    const activeSpecIds = (user.teacher.teacherSpecializations || [])
+      .filter((s: any) => s.isActive)
+      .map((s: any) => s.specializationId)
+      .filter(Boolean);
+
+    // Fallback: If user is inactive or has no active classes, retain historical classes for dashboard/center association
+    const resolvedClasses = activeClasses.length > 0 ? activeClasses : allClasses;
+    const resolvedClassIds = activeClassIds.length > 0 ? activeClassIds : allClassesIds;
+    const resolvedSpecs = activeSpecs.length > 0 ? activeSpecs : allSpecs;
+    const resolvedSpecIds = activeSpecIds.length > 0 ? activeSpecIds : allSpecIds;
 
     mapped.teacherProfile = {
       id: user.teacher.id,
       yearsOfExperience: user.teacher.yearsOfExperience ?? 0,
       description: user.teacher.description,
-      classIds: (user.teacher.classes || [])
-        .filter((c: any) => c.isActive)
-        .map((c: any) => c.classId),
-      specializationIds: (user.teacher.teacherSpecializations || [])
-        .filter((s: any) => s.isActive)
-        .map((s: any) => s.specializationId),
-      classes: activeClasses,
-      specializations: activeSpecs,
+      bankAccountNumber: user.teacher.bankAccountNumber,
+      bankName: user.teacher.bankName,
+      insuranceStartDate: user.teacher.insuranceStartDate,
+      employmentType: user.teacher.employmentType,
+      degrees: user.teacher.degrees || [],
+      classIds: resolvedClassIds,
+      specializationIds: resolvedSpecIds,
+      classes: resolvedClasses,
+      specializations: resolvedSpecs,
     };
   }
   if (user.student) {
+    const allClasses = (user.student.classes || []).map((c: any) => c.class).filter(Boolean);
     const activeClasses = (user.student.classes || [])
       .filter((c: any) => c.isActive)
-      .map((c: any) => c.class);
+      .map((c: any) => c.class)
+      .filter(Boolean);
+    const allClassesIds = (user.student.classes || []).map((c: any) => c.classId).filter(Boolean);
+    const activeClassIds = (user.student.classes || [])
+      .filter((c: any) => c.isActive)
+      .map((c: any) => c.classId)
+      .filter(Boolean);
+
+    const resolvedClasses = activeClasses.length > 0 ? activeClasses : allClasses;
+    const resolvedClassIds = activeClassIds.length > 0 ? activeClassIds : allClassesIds;
 
     mapped.studentProfile = {
       id: user.student.id,
-      classIds: (user.student.classes || [])
-        .filter((c: any) => c.isActive)
-        .map((c: any) => c.classId),
-      classes: activeClasses,
+      birthYear: user.student.birthYear ?? (user.studentProfile as any)?.birthYear,
+      parentFullName: user.student.parentFullName,
+      classIds: resolvedClassIds,
+      classes: resolvedClasses,
     };
   }
+
+  // Derive all associated centerIds from teacher / student classes
+  const teacherCenterIds = (user.teacher?.classes || [])
+    .map((c: any) => c.class?.centerId || c.class?.center?.id)
+    .filter(Boolean);
+  const studentCenterIds = (user.student?.classes || [])
+    .map((c: any) => c.class?.centerId || c.class?.center?.id)
+    .filter(Boolean);
+  const allCenterIds = Array.from(new Set([...teacherCenterIds, ...studentCenterIds]));
+
+  if (allCenterIds.length > 0) {
+    mapped.centerIds = allCenterIds;
+  }
+
+  // Preserve primary centerId if present in class entity hierarchy
+  if (!mapped.centerId) {
+    mapped.centerId = allCenterIds[0] || undefined;
+  }
+
   return mapped;
 }
 
 export const userService = {
+  async provisioningRoles(): Promise<Array<{ id: string; code: string; name: string }>> {
+    return unwrapData(await apiClient.get<ApiEnvelope<Array<{ id: string; code: string; name: string }>>>("/users/provisioning-roles"));
+  },
+  async studentRole(): Promise<{ id: string; code: string; name: string }> {
+    return unwrapData(await apiClient.get<ApiEnvelope<{ id: string; code: string; name: string }>>("/users/student-role"));
+  },
   async create(payload: CreateUserRequest): Promise<User> {
     const data = unwrapData(await apiClient.post<ApiEnvelope<User>>("/users", payload));
     return mapUserResponse(data);
   },
 
   async list(params?: UserListQuery): Promise<User[]> {
-    const data = unwrapData(await apiClient.get<ApiEnvelope<User[]>>("/users", { params }));
-    return (data || []).map(mapUserResponse);
+    const queryParams: any = { limit: 100, ...params };
+    // BE trả về paginated response { data: [...], meta: {...} }
+    // unwrapList lấy cả data và meta, ta chỉ cần data array
+    const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params: queryParams }));
+    return (result.data || []).map(mapUserResponse);
   },
 
   async get(id: string): Promise<User> {
@@ -72,5 +132,22 @@ export const userService = {
   async remove(id: string): Promise<User> {
     const data = unwrapData(await apiClient.delete<ApiEnvelope<User>>(`/users/${id}`));
     return mapUserResponse(data);
+  },
+
+  async uploadTeacherDegreeImages(files: File[]): Promise<string[]> {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append("files", file);
+    });
+    const response = await apiClient.post<ApiEnvelope<string[]>>(
+      "/users/teacher-degree-images/upload/multiple",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return unwrapData(response);
   },
 };

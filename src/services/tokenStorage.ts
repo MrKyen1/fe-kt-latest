@@ -70,4 +70,38 @@ export const tokenStorage = {
     localStorage.removeItem(STORAGE_KEYS.user);
     localStorage.removeItem("user");
   },
+
+  isAccessTokenExpired(): boolean {
+    return isTokenExpired(this.getAccessToken());
+  },
+
+  isRefreshTokenExpired(): boolean {
+    return isTokenExpired(this.getRefreshToken());
+  },
 };
+
+/**
+ * Kiểm tra xem JWT token đã hết hạn hay chưa dựa vào claim `exp`.
+ * Tự động parse payload theo chuẩn base64url với 5 giây buffer.
+ */
+export function isTokenExpired(token?: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return true;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    const payload = JSON.parse(jsonPayload);
+    if (typeof payload.exp !== "number") return false;
+    // 5s buffer phòng trường hợp lệch đồng hồ mạng
+    return payload.exp * 1000 <= Date.now() + 5000;
+  } catch {
+    return true;
+  }
+}

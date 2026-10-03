@@ -2,6 +2,8 @@ export type QuestionType =
   | "multiple_choice"
   | "audio_choice"
   | "image_choice"
+  | "true_false"
+  | "audio_image_choice"
   | "word_ordering"
   | "reading_comprehension"
   | "sentence_rewrite"
@@ -24,6 +26,9 @@ export interface ExamOption {
   label?: string;
   content: string;
   orderIndex?: number;
+  mediaId?: string;
+  media?: ExamMedia;
+  isCorrect?: boolean;
 }
 
 export interface ExamQuestion {
@@ -36,24 +41,41 @@ export interface ExamQuestion {
 
 
   
-  leftItems?: Array<string | { id: string; text: string }>;
-  rightItems?: Array<string | { id: string; text: string }>;
+  leftItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
+  rightItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
 
   correctAnswer?: string | string[] | Record<string, string>;
 
   explanation?: string;
-  
+  sourceSentence?: string;
+  incorrectSentence?: string;
+  hintWord?: string;
+  questionVersionId?: string;
 }
 
 export interface ExamData {
   id: string;
+  examId?: string;
+  assignmentStudentId?: string;
+  curriculumAssignmentStudentId?: string;
+  source?: "assignment" | "curriculum_assignment" | "self_study" | string;
+  curriculumId?: string;
   title: string;
   timeLimit: number; // in seconds
+  examType?: "practice" | "exam";
   status?: "in_progress" | "submitted";
   score?: string;
   maxScore?: string;
   percentage?: string;
   questions: ExamQuestion[];
+  expiresAt?: string | null;
+  attemptNumber?: number;
+  attemptPhase?: "initial" | "remediation";
+  taskStatus?: "in_progress" | "finished" | "mastered" | "remediation_required";
+  mastered?: boolean;
+  requiresRemediation?: boolean;
+  remainingQuestionCount?: number;
+  firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
 }
 
 export interface ExamState {
@@ -80,8 +102,7 @@ export interface Student {
   class?: string;
   startDate?: string;
   endDate?: string;
-  // Removed progress field as requested
-  // New ranking fields
+  progress?: number;
   totalTimeSpent?: number; // in minutes
   correctAnswers?: number;
   totalExams?: number;

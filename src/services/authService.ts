@@ -1,5 +1,5 @@
 import { unwrapData, apiClient, normalizeUser } from "./apiClient";
-import { tokenStorage } from "./tokenStorage";
+import { tokenStorage, isTokenExpired } from "./tokenStorage";
 import {
   AuthResponse,
   ChangePasswordRequest,
@@ -48,9 +48,31 @@ export const authService = {
     return session;
   },
 
-  async logout(refreshToken = tokenStorage.getRefreshToken()) {
-    if (!refreshToken) return;
-    await apiClient.post("/auth/logout", { refreshToken });
+  async logout(refreshToken?: string | null, accessToken?: string | null) {
+    const refresh = refreshToken ?? tokenStorage.getRefreshToken();
+    const access = accessToken ?? tokenStorage.getAccessToken();
+    if (!refresh) return;
+
+    const headers: Record<string, string> = {};
+    // Chỉ đính kèm Authorization header nếu access token vẫn còn hạn
+    // Tránh việc gửi token hết hạn khiến JwtAuthGuard ném lỗi 401 không đáng có
+    if (access && !isTokenExpired(access)) {
+      headers.Authorization = `Bearer ${access}`;
+    }
+
+    try {
+      await apiClient.post(
+        "/auth/logout",
+        { refreshToken: refresh },
+        {
+          headers,
+          timeout: 2000,
+          _skipAuthRefresh: true,
+        } as any,
+      );
+    } catch {
+      // Best-effort logout notification: ignore server/network failures silently
+    }
   },
 
   async logoutAll() {
@@ -89,6 +111,12 @@ export const authService = {
 
   async changePassword(payload: ChangePasswordRequest) {
     return unwrapData(await apiClient.patch("/auth/change-password", payload));
+  },
+
+  async resetStudentPassword(payload: ResetPasswordRequest) {
+    return unwrapData(await apiClient.post<import("../types/api").ApiEnvelope<ResetPasswordResponse>>(
+      "/auth/reset-student-password", payload,
+    ));
   },
 
   async resetPassword(payload: ResetPasswordRequest) {

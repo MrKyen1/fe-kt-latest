@@ -1,21 +1,34 @@
 import { useNavigate } from "react-router-dom";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, App } from "antd";
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { PATHS } from "../../routes/paths";
+import loginImg from "../../assets/login/login.png";
+import logoImg from "../../assets/logo/logo.png";
 
 const Login = () => {
+  const { message } = App.useApp();
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isLoggedIn, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Tự động điều hướng khi state user đã được commit trong AuthContext
+  useEffect(() => {
+    if (isLoggedIn && user) {
+      const targetPath = user.role === "student" ? PATHS.STUDENT.MY_EXAMS : PATHS.HOME;
+      navigate(targetPath, { replace: true });
+    }
+  }, [isLoggedIn, user, navigate]);
 
   const handleFinish = async (values: { username: string; password: string }) => {
     const { username, password } = values;
     setIsSubmitting(true);
     try {
-      await login(username, password);
+      const loggedInUser = await login(username, password);
       message.success("Đăng nhập thành công!");
-      navigate("/");
+      const targetPath = loggedInUser?.role === "student" ? PATHS.STUDENT.MY_EXAMS : PATHS.HOME;
+      navigate(targetPath, { replace: true });
     } catch (error: any) {
       console.error("Login failed:", error);
       message.error(error?.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
@@ -29,7 +42,7 @@ const Login = () => {
       {/* ===== LEFT: IMAGE (2/3) ===== */}
       <div className="hidden md:flex w-2/3 items-center justify-center">
         <img
-          src="src/assets/login/login.png"
+          src={loginImg}
           alt="Login Illustration"
           className="w-[80%] max-w-xl"
         />
@@ -41,7 +54,7 @@ const Login = () => {
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <img
-              src="/src/assets/logo/logo.png"
+              src={logoImg}
               alt="Logo"
               className="h-14 object-contain"
             />
@@ -55,7 +68,7 @@ const Login = () => {
           {/* ===== FORM ===== */}
           <Form
             layout="vertical"
-            onFinish={handleFinish} // ✅ Enter & Button đều chạy
+            onFinish={handleFinish} // Enter & Button deu chay
             requiredMark={false}
           >
             {/* Username */}
@@ -114,13 +127,15 @@ const Login = () => {
 
           {/* Register */}
           <p className="text-center text-sm text-gray-600 mt-4">
-            Bạn chưa có tài khoản?
-            <span
+            Bạn chưa có tài khoản?{" "}
+            <a
+              href="https://www.facebook.com/Nguyen.Xuan.Khoa.89"
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-blue-600 ml-1 cursor-pointer hover:underline"
-              onClick={() => navigate("/register")}
             >
-              Đăng ký ngay
-            </span>
+              Liên hệ với quản lý trung tâm.
+            </a>
           </p>
         </div>
       </div>

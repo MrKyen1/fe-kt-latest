@@ -1,22 +1,195 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QuestionCard } from "./QuestionCard";
 import { ExamData } from "../../types";
 import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
+import logoImg from "../../assets/logo/logo.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { Modal } from "antd";
+import { Trophy } from "lucide-react";
 import { studentLearningService } from "../../services/studentLearningService";
+import { parseBackendAnswer } from "./ExamDetail";
+import { formatScore, formatPercentage, formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
 
 interface ExamContainerProps {
   examData: ExamData;
-  isDarkMode?: boolean;
-  toggleDarkMode?: () => void;
 }
+
+type AnswerValue = string | string[] | Record<string, string>;
+
+// checkIsCorrect được giữ lại chỉ dùng để hiển thị optimistic UI trước khi BE trả kết quả.
+// Kết quả thực tế luôn lấy từ response của submitAnswer API.
+const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean => {
+  if (answer === undefined || answer === null || answer === "") return false;
+
+  const normalizeText = (text: any): string => {
+    if (typeof text !== "string") return "";
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "")
+      .replace(/\s+/g, " ");
+  };
+
+  const norm = (text: any): string => normalizeText(text);
+  const ansStr = norm(answer);
+  const correct = question.correctAnswer;
+
+  switch (question.type) {
+    case "multiple_choice":
+    case "audio_choice":
+    case "image_choice":
+    case "audio_image_choice":
+    case "true_false":
+    case "reading_comprehension":
+    case "multiple-choice":
+    case "listening":
+    case "true-false": {
+      const options: any[] = question.options || [];
+
+      // Lấy danh sách ID các đáp án đúng từ câu hỏi (options có isCorrect hoặc correctAnswer)
+      const correctOptionIdsFromOptions = options
+        .filter((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"))
+        .map((o: any) => norm(o.id || o.label || o.content));
+
+      let backendCorrectIds: string[] = [];
+      if (Array.isArray(correct)) {
+        backendCorrectIds = correct.map(norm);
+      } else if (typeof correct === "object" && correct !== null) {
+        if (Array.isArray((correct as any).selectedOptionIds)) {
+          backendCorrectIds = (correct as any).selectedOptionIds.map(norm);
+        } else if (Array.isArray((correct as any).correctOptionIds)) {
+          backendCorrectIds = (correct as any).correctOptionIds.map(norm);
+        }
+      } else if (correct !== undefined && correct !== null && correct !== "") {
+        backendCorrectIds = [norm(correct)];
+      }
+
+      const allCorrectIds = Array.from(new Set([...correctOptionIdsFromOptions, ...backendCorrectIds])).filter(Boolean);
+
+      // Nếu người dùng chọn mảng (câu hỏi chọn nhiều đáp án)
+      if (Array.isArray(answer)) {
+        const userSelectedIds = answer.map((a) => {
+          const opt = options.find((o: any) => norm(o.id) === norm(a) || norm(o.label) === norm(a) || norm(o.content) === norm(a));
+          return opt ? norm(opt.id || opt.label || opt.content) : norm(a);
+        });
+
+        if (allCorrectIds.length > 0) {
+          if (userSelectedIds.length !== allCorrectIds.length) return false;
+          return allCorrectIds.every((id) => userSelectedIds.includes(id));
+        }
+      }
+
+      // 1. Check if selected option object itself has isCorrect === true
+      const ansOpt = options.find((o: any) => {
+        const val = typeof o === "string" ? { content: o } : o;
+        return (
+          norm(val.id) === ansStr ||
+          norm(val.label) === ansStr ||
+          norm(val.content) === ansStr
+        );
+      });
+
+      // Nếu là câu đơn đáp án đúng
+      if (allCorrectIds.length <= 1) {
+        if (ansOpt && (ansOpt.isCorrect === true || String((ansOpt as any).isCorrect) === "true")) {
+          return true;
+        }
+
+        if (correct !== undefined && correct !== null && correct !== "") {
+          const corrStr = norm(correct);
+          if (ansStr === corrStr) return true;
+          if (ansOpt) {
+            if (norm(ansOpt.id) === corrStr || norm(ansOpt.label) === corrStr || norm(ansOpt.content) === corrStr) {
+              return true;
+            }
+          }
+          if (typeof correct === "object" && Array.isArray((correct as any).selectedOptionIds)) {
+            const ids = (correct as any).selectedOptionIds.map(norm);
+            if (ids.includes(ansStr) || (ansOpt && (ids.includes(norm(ansOpt.id)) || ids.includes(norm(ansOpt.label)) || ids.includes(norm(ansOpt.content))))) {
+              return true;
+            }
+          }
+        }
+
+        const correctOpt = options.find((o: any) => o && (o.isCorrect === true || String(o.isCorrect) === "true"));
+        if (correctOpt && ansOpt) {
+          if (ansOpt === correctOpt || (ansOpt.id && ansOpt.id === correctOpt.id) || (ansOpt.content && norm(ansOpt.content) === norm(correctOpt.content))) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    case "word_ordering":
+    case "word-ordering": {
+      const ansArr = Array.isArray(answer) ? answer : [];
+      if (Array.isArray(correct)) {
+        if (ansArr.length !== correct.length) return false;
+        return ansArr.every((val, idx) => normalizeText(val) === normalizeText(correct[idx]));
+      } else if (typeof correct === "string") {
+        const correctArr = correct.split(" ").filter(Boolean);
+        if (ansArr.length !== correctArr.length) return false;
+        return ansArr.every((val, idx) => normalizeText(val) === normalizeText(correctArr[idx]));
+      }
+      return false;
+    }
+
+    case "sentence_rewrite":
+    case "hint_rewrite":
+    case "fill-in-the-blank": {
+      const userText = normalizeText(answer);
+      if (typeof correct === "string") {
+        const accepted = correct.split("\n").map(normalizeText).filter(Boolean);
+        if (accepted.length > 0) {
+          return accepted.some(ans => ans === userText);
+        }
+        return userText === normalizeText(correct);
+      } else if (Array.isArray(correct)) {
+        return correct.map(normalizeText).some(ans => ans === userText);
+      }
+      return false;
+    }
+
+    case "error_correction": {
+      return normalizeText(answer) === normalizeText(correct);
+    }
+
+    case "matching": {
+      if (typeof answer !== "object" || typeof correct !== "object" || answer === null || correct === null) return false;
+
+      const leftItems = question.leftItems || [];
+      return leftItems.every((item: any) => {
+        const leftId = typeof item === "string" ? item : item.id;
+        const leftText = typeof item === "string" ? item : item.text;
+
+        const userMatchedId = (answer as any)[leftId];
+        const rightItems = question.rightItems || [];
+        const userMatchedItem = rightItems.find((r: any) => (typeof r === "string" ? r : r.id) === userMatchedId);
+        const userMatchedText = userMatchedItem ? (typeof userMatchedItem === "string" ? userMatchedItem : userMatchedItem.text) : "";
+
+        let correctMatchedText = "";
+        if ((correct as any)[leftId] !== undefined) {
+          const correctMatchedId = (correct as any)[leftId];
+          const correctMatchedItem = rightItems.find((r: any) => (typeof r === "string" ? r : r.id) === correctMatchedId);
+          correctMatchedText = correctMatchedItem ? (typeof correctMatchedItem === "string" ? correctMatchedItem : correctMatchedItem.text) : "";
+        } else if ((correct as any)[leftText] !== undefined) {
+          correctMatchedText = (correct as any)[leftText];
+        }
+
+        return normalizeText(userMatchedText) === normalizeText(correctMatchedText);
+      });
+    }
+
+    default:
+      return false;
+  }
+};
 
 const ExamContainer: React.FC<ExamContainerProps> = ({
   examData,
-  isDarkMode,
-  toggleDarkMode,
 }) => {
   const navigate = useNavigate();
   const { courseId } = useParams();
@@ -25,13 +198,12 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
     const initial: Record<string, AnswerValue> = {};
-    if (examData.status === "submitted") {
-      examData.questions.forEach((q) => {
-        if ((q as any).userAnswer !== undefined) {
-          initial[q.id] = (q as any).userAnswer;
-        }
-      });
-    }
+    // Load userAnswer cho cả submitted và in_progress (câu đã làm từ phiên trước)
+    examData.questions.forEach((q) => {
+      if ((q as any).userAnswer !== undefined) {
+        initial[q.id] = (q as any).userAnswer;
+      }
+    });
     return initial;
   });
 
@@ -39,17 +211,48 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     Record<string, "correct" | "wrong">
   >(() => {
     const initial: Record<string, "correct" | "wrong"> = {};
-    if (examData.status === "submitted") {
+    // Init cho cả submitted và in_progress (câu đã được chấm từ phiên trước)
+    // Không check status, chỉ cần question có isCorrect thì là đã trả lời rồi
+    examData.questions.forEach((q) => {
+      if ((q as any).isCorrect !== undefined) {
+        initial[q.id] = (q as any).isCorrect ? "correct" : "wrong";
+      }
+    });
+    return initial;
+  });
+
+  const isPracticeMode = examData.examType !== "exam";
+  // Theo đúng nghiệp vụ Backend (student-exam-attempts.service.ts):
+  // isInitialExam: Chỉ khi examType === "exam" VÀ là lượt đầu tiên (attemptNumber === 1 hoặc attemptPhase === "initial")
+  // Bất kỳ bài thi nào là "practice" HOẶC là lượt làm lại (attemptNumber > 1, remedial) đều thuộc luồng immediate feedback (chấm và khóa từng câu).
+  const isInitialExam =
+    examData.examType === "exam" &&
+    (examData.attemptNumber === 1 || examData.attemptPhase === "initial");
+
+  // Track which questions have been answered and locked.
+  // Trong lượt thi đầu của bài kiểm tra (isInitialExam), học sinh KHÔNG bị khóa câu hỏi và được đổi/sửa đáp án tự do.
+  const [lockedQuestions, setLockedQuestions] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    if (!isInitialExam) {
       examData.questions.forEach((q) => {
-        if ((q as any).isCorrect !== undefined) {
-          initial[q.id] = (q as any).isCorrect ? "correct" : "wrong";
+        if ((q as any).answeredAt || (q as any).userAnswer !== undefined) {
+          initial[q.id] = true;
         }
       });
     }
     return initial;
   });
 
-  const [timeRemaining, setTimeRemaining] = useState(examData.timeLimit);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number>(() => {
+    if (examData.expiresAt) {
+      const expiresMs = new Date(examData.expiresAt).getTime();
+      const nowMs = Date.now();
+      const diffSec = Math.floor((expiresMs - nowMs) / 1000);
+      return Math.max(0, diffSec);
+    }
+    return examData.timeLimit || 0;
+  });
   const [showFeedback, setShowFeedback] = useState(() => examData.status === "submitted");
   const [isCorrect, setIsCorrect] = useState(false);
   const [isExamComplete, setIsExamComplete] = useState(false);
@@ -58,6 +261,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     score?: string;
     maxScore?: string;
     percentage?: string;
+    displayResult?: string;
   } | null>(() => {
     if (examData.status === "submitted") {
       return {
@@ -70,43 +274,112 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentQuestion = examData.questions[currentIndex];
-  const totalQuestions = examData.questions.length;
-  const progressPercent = (currentIndex / totalQuestions) * 100;
-
-  const handleBackClick = () => {
-    if (isReviewMode) {
-      navigate(-1);
-      return;
-    }
-    Modal.confirm({
-      title: "Quay lại khóa học",
-      content:
-        "Bạn chắc chắn muốn quay lại? Tiến độ làm bài sẽ không được lưu.",
-      style: {
-        top: 200,
-      },
-      okText: "Quay lại",
-      okType: "danger",
-      cancelText: "Tiếp tục",
-      onOk() {
-        navigate(-1);
-      },
+  const [correctAnswers, setCorrectAnswers] = useState<Record<string, any>>(() => {
+    const initial: Record<string, any> = {};
+    examData.questions.forEach((q) => {
+      if (q.correctAnswer !== undefined) {
+        initial[q.id] = q.correctAnswer;
+      }
     });
-  };
+    return initial;
+  });
+
+  const [explanations, setExplanations] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    examData.questions.forEach((q) => {
+      if (q.explanation) {
+        initial[q.id] = q.explanation;
+      }
+    });
+    return initial;
+  });
+
+  // Backend startAttempt filters practice questions automatically.
+  // activeQuestions are directly examData.questions returned from BE.
+  const activeQuestions = examData.questions;
+
+  // Current mastered count in this attempt
+  const currentMasteredCount = useMemo(() => {
+    let count = 0;
+    examData.questions.forEach((q) => {
+      if (questionResults[q.id] === "correct" || (q as any).isCorrect === true) {
+        count++;
+      }
+    });
+    return count;
+  }, [examData.questions, questionResults]);
+
+  const isCurrentMastered100 =
+    submitResult
+      ? Boolean((submitResult as any)?.mastered) || (currentMasteredCount === examData.questions.length && examData.questions.length > 0)
+      : examData.questions.length === 0 ||
+        (currentMasteredCount === examData.questions.length && examData.questions.length > 0) ||
+        Boolean(examData.mastered);
+
+  const isPracticeCompleted100 =
+    !isInitialExam &&
+    (isExamComplete || examData.status === "submitted") &&
+    !isReviewMode &&
+    isCurrentMastered100;
+
+  const isExamType = examData.examType === "exam";
+
+  const currentScoreDisplay = useMemo(() => {
+    return formatStudentExamScoreDisplay({
+      isExamType,
+      score: submitResult?.score ?? examData.score,
+      maxScore: submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length,
+      percentage: submitResult?.percentage ?? examData.percentage,
+    });
+  }, [isExamType, submitResult, examData]);
+
+  const totalQuestions = activeQuestions.length;
+  const safeIndex = currentIndex >= totalQuestions ? 0 : currentIndex;
+  const rawQuestion = activeQuestions[safeIndex] || examData.questions[0];
+
+  const currentQuestion = useMemo(() => {
+    if (!rawQuestion) return rawQuestion;
+    return {
+      ...rawQuestion,
+      correctAnswer: correctAnswers[rawQuestion.id] !== undefined ? correctAnswers[rawQuestion.id] : rawQuestion.correctAnswer,
+      explanation: explanations[rawQuestion.id] !== undefined ? explanations[rawQuestion.id] : rawQuestion.explanation,
+    };
+  }, [rawQuestion, correctAnswers, explanations]);
+
+  const progressPercent = totalQuestions > 0 ? (currentMasteredCount / totalQuestions) * 100 : 100;
 
   // Timer logic
   useEffect(() => {
-    if (isReviewMode) return;
+    if (isReviewMode || isExamComplete) return;
+    if (examData.timeLimit <= 0 && !examData.expiresAt) return;
+
     if (timeRemaining <= 0) {
       handleFinish();
       return;
     }
+
     const timer = setInterval(() => {
-      setTimeRemaining((prev) => prev - 1);
+      setTimeRemaining((prev) => {
+        if (examData.expiresAt) {
+          const diffSec = Math.floor((new Date(examData.expiresAt).getTime() - Date.now()) / 1000);
+          if (diffSec <= 0) {
+            clearInterval(timer);
+            handleFinish();
+            return 0;
+          }
+          return diffSec;
+        }
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleFinish();
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
+
     return () => clearInterval(timer);
-  }, [timeRemaining, isReviewMode]);
+  }, [timeRemaining, isReviewMode, isExamComplete, examData.expiresAt, examData.timeLimit]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -115,40 +388,208 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   };
 
   useEffect(() => {
+    // Trong chế độ Xem lại đáp án (isReviewMode), LUÔN hiển thị feedback
+    if (isReviewMode) {
+      setShowFeedback(true);
+      const status = questionResults[currentQuestion.id];
+      const userAns = userAnswers[currentQuestion.id];
+      const isCorr = status
+        ? status === "correct"
+        : ((currentQuestion as any).isCorrect !== undefined
+            ? Boolean((currentQuestion as any).isCorrect)
+            : checkIsCorrect(currentQuestion, userAns));
+      setIsCorrect(isCorr);
+      return;
+    }
+
+    // Trong đề thi lượt đầu (isInitialExam), không hiện feedback trong khi làm bài
+    if (isInitialExam) {
+      setShowFeedback(false);
+      return;
+    }
+
     const status = questionResults[currentQuestion.id];
     if (status) {
       setShowFeedback(true);
       setIsCorrect(status === "correct");
+    } else if (lockedQuestions[currentQuestion.id] && (currentQuestion as any).isCorrect !== undefined) {
+      const isCorr = Boolean((currentQuestion as any).isCorrect);
+      setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: isCorr ? "correct" : "wrong" }));
+      setIsCorrect(isCorr);
+      setShowFeedback(true);
     } else {
       setShowFeedback(false);
     }
-  }, [currentQuestion.id, questionResults]);
+  }, [currentQuestion, questionResults, lockedQuestions, userAnswers, isInitialExam, isReviewMode]);
 
   const handleAnswerChange = (answer: AnswerValue) => {
+    if (isReviewMode) return;
+    if (!isInitialExam && lockedQuestions[currentQuestion.id]) return;
     setUserAnswers((prev) => ({
       ...prev,
       [currentQuestion.id]: answer,
     }));
   };
 
-  const handleSubmit = () => {
-    handleNext();
+  const handleSubmit = useCallback(async () => {
+    if (isInitialExam) return;
+    if (isSubmittingAnswer) return;
+    if (lockedQuestions[currentQuestion.id]) {
+      const existingResult = questionResults[currentQuestion.id];
+      if (existingResult) {
+        setIsCorrect(existingResult === "correct");
+        setShowFeedback(true);
+      }
+      return;
+    }
+
+    const answer = userAnswers[currentQuestion.id];
+    if (!isAnswerProvided(answer)) return;
+
+    const backendPayload = toBackendAnswer(currentQuestion, answer);
+
+    try {
+      setIsSubmittingAnswer(true);
+      console.log(`[ExamContainer Debug] Submitting answer for question ${currentQuestion.id}:`, {
+        attemptId: examData.id,
+        questionId: currentQuestion.id,
+        backendPayload,
+      });
+
+      const result = await studentLearningService.attempts.submitAnswer(
+        examData.id,
+        currentQuestion.id,
+        { answer: backendPayload },
+      );
+
+      console.log(`[ExamContainer Debug] BE submitAnswer result for ${currentQuestion.id}:`, result);
+
+      const calculatedIsCorrect = result.isCorrect ?? false;
+      const status = calculatedIsCorrect ? "correct" : "wrong";
+
+      const parsedCorrectAnswer = parseBackendAnswer(currentQuestion.type, result.correctAnswer);
+      const backendExplanation =
+        (result.feedback as any)?.explanation ||
+        (result.question as any)?.feedback?.explanation ||
+        (result.question as any)?.explanation;
+
+      if (parsedCorrectAnswer !== undefined) {
+        setCorrectAnswers((prev) => ({ ...prev, [currentQuestion.id]: parsedCorrectAnswer }));
+      }
+      if (backendExplanation) {
+        setExplanations((prev) => ({ ...prev, [currentQuestion.id]: backendExplanation }));
+      }
+
+      setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
+      setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
+      setIsCorrect(calculatedIsCorrect);
+      setShowFeedback(true);
+    } catch (err: any) {
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("trùng") || err.message.includes("ràng buộc") || err.message.includes("lock") || err.message.includes("already") || err.message.includes("đã được trả lời")));
+
+      if (is409) {
+        // Ưu tiên kiểm tra kết quả chấm chính xác từ Backend bằng cách re-fetch attempt
+        try {
+          const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+          const freshAns = freshAttempt?.answers?.find((a: any) => a.questionId === currentQuestion.id);
+          if (freshAns && (freshAns.answeredAt != null || freshAns.isCorrect !== undefined)) {
+            setLockedQuestions((prev) => ({ ...prev, [currentQuestion.id]: true }));
+            const status: "correct" | "wrong" = freshAns.isCorrect ? "correct" : "wrong";
+            const parsedCorr = parseBackendAnswer(currentQuestion.type, freshAns.correctAnswer);
+            if (parsedCorr !== undefined) {
+              setCorrectAnswers((prev) => ({ ...prev, [currentQuestion.id]: parsedCorr }));
+            }
+            const expl = freshAns.feedback?.explanation || freshAns.question?.feedback?.explanation || freshAns.question?.explanation;
+            if (expl) {
+              setExplanations((prev) => ({ ...prev, [currentQuestion.id]: expl }));
+            }
+            setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
+            setIsCorrect(Boolean(freshAns.isCorrect));
+            setShowFeedback(true);
+            return;
+          }
+        } catch (fErr) {
+          console.warn("Failed to refetch fresh attempt answer on 409", fErr);
+        }
+      }
+
+      Modal.error({
+        title: "Không thể nộp câu trả lời",
+        content: err instanceof Error ? err.message : "Đã có lỗi xảy ra khi nộp câu trả lời lên hệ thống. Vui lòng thử lại.",
+      });
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
+  }, [currentQuestion, userAnswers, isSubmittingAnswer, lockedQuestions, questionResults, examData.id, isInitialExam]);
+
+  const handleSelectQuestion = async (idx: number) => {
+    if (idx === currentIndex) return;
+    if (isSubmittingAnswer) return;
+    if (isReviewMode) {
+      setCurrentIndex(idx);
+      return;
+    }
+
+    if (isInitialExam) {
+      const currentAns = userAnswers[currentQuestion.id];
+      if (isAnswerProvided(currentAns)) {
+        try {
+          const backendPayload = toBackendAnswer(currentQuestion, currentAns);
+          await studentLearningService.attempts.saveAnswer(
+            examData.id,
+            currentQuestion.id,
+            { answer: backendPayload }
+          );
+        } catch (err) {
+          console.warn("Failed to auto-save answer on select question", err);
+        }
+      }
+    }
+
+    setShowFeedback(false);
+    setCurrentIndex(idx);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isReviewMode) {
       if (currentIndex < totalQuestions - 1) {
         setCurrentIndex((prev) => prev + 1);
       } else {
-        navigate(-1);
+        // Nếu đã hoàn thành 100%, thoát xem đáp án về màn hình chúc mừng / kết quả
+        if (isCurrentMastered100) {
+          setIsReviewMode(false);
+          setIsExamComplete(true);
+        } else {
+          // Nếu chưa đạt 100%, tự động tạo lượt làm lại các câu sai để học sinh làm tiếp tới khi đúng hết
+          handleRetryNewAttempt();
+        }
       }
       return;
     }
+
+    // Trong đề kiểm tra lượt đầu, lưu nháp đáp án lên backend khi chuyển câu
+    if (isInitialExam) {
+      const currentAns = userAnswers[currentQuestion.id];
+      if (isAnswerProvided(currentAns)) {
+        try {
+          const backendPayload = toBackendAnswer(currentQuestion, currentAns);
+          await studentLearningService.attempts.saveAnswer(
+            examData.id,
+            currentQuestion.id,
+            { answer: backendPayload }
+          );
+        } catch (err) {
+          console.warn("Failed to auto-save answer on next", err);
+        }
+      }
+    }
+
     setShowFeedback(false);
-    if (currentIndex < totalQuestions - 1) {
+    if (currentIndex < totalQuestions - 1 && currentMasteredCount < totalQuestions) {
       setCurrentIndex((prev) => prev + 1);
     } else {
-      handleFinish();
+      await handleFinish();
     }
   };
 
@@ -166,32 +607,99 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       case "multiple_choice":
       case "audio_choice":
       case "image_choice":
+      case "audio_image_choice":
+      case "true_false":
       case "reading_comprehension":
       case "multiple-choice":
       case "listening":
-      case "true-false":
-        return { selectedOptionIds: [String(answer)] };
+      case "true-false": {
+        const options: any[] = question.options || [];
+        const ansStr = String(answer);
+        const selectedOpt = options.find((o: any) => {
+          return String(o.id) === ansStr || String(o.label) === ansStr || String(o.content) === ansStr;
+        });
+
+        const selectedId = selectedOpt?.id ? String(selectedOpt.id) : ansStr;
+
+        const idsArray = Array.isArray(answer)
+          ? answer.map((a) => {
+              const opt = options.find((o: any) => String(o.id) === String(a) || String(o.label) === String(a) || String(o.content) === String(a));
+              return opt?.id ? String(opt.id) : String(a);
+            })
+          : [selectedId];
+
+        const payload = {
+          selectedOptionIds: idsArray,
+          selectedOptionId: selectedId,
+          optionId: selectedId,
+          value: selectedId,
+          text: selectedOpt?.content || ansStr,
+        };
+
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, {
+          questionId: question.id,
+          userAnswer: answer,
+          selectedId,
+          idsArray,
+          payload,
+        });
+
+        return payload;
+      }
       case "word_ordering":
-      case "word-ordering":
-        return { tokens: Array.isArray(answer) ? answer : [] };
+      case "word-ordering": {
+        const tokens = Array.isArray(answer) ? answer : [String(answer)];
+        const payload = {
+          tokens: tokens,
+          words: tokens,
+          text: tokens.join(" "),
+          value: tokens,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
       case "sentence_rewrite":
       case "hint_rewrite":
-      case "fill-in-the-blank":
-        return { text: String(answer ?? "") };
-      case "error_correction":
-        return { correctedSentence: String(answer ?? "") };
-      case "matching":
-        return {
-          pairs:
-            answer && typeof answer === "object" && !Array.isArray(answer)
-              ? Object.entries(answer).map(([leftItemId, rightItemId]) => ({
-                  leftItemId,
-                  rightItemId,
-                }))
-              : [],
+      case "fill-in-the-blank": {
+        const textStr = String(answer ?? "").trim();
+        const payload = {
+          text: textStr,
+          value: textStr,
+          answer: textStr,
         };
-      default:
-        return answer ?? {};
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      case "error_correction": {
+        const textStr = String(answer ?? "").trim();
+        const payload = {
+          correctedSentence: textStr,
+          text: textStr,
+          value: textStr,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      case "matching": {
+        const pairs =
+          answer && typeof answer === "object" && !Array.isArray(answer)
+            ? Object.entries(answer).map(([leftItemId, rightItemId]) => ({
+              leftItemId: String(leftItemId),
+              rightItemId: String(rightItemId),
+            }))
+            : [];
+        const payload = {
+          pairs: pairs,
+          matches: pairs,
+        };
+        console.log(`[ExamContainer Debug] toBackendAnswer (${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
+      default: {
+        const payload = answer ?? {};
+        console.log(`[ExamContainer Debug] toBackendAnswer (default:${question.type}):`, { questionId: question.id, userAnswer: answer, payload });
+        return payload;
+      }
     }
   };
 
@@ -200,30 +708,185 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
     try {
       setIsSubmitting(true);
-      const result = (await studentLearningService.attempts.submit(examData.id, {
-        answers: examData.questions.map((question) => ({
-          questionId: question.id,
-          answer: toBackendAnswer(question, userAnswers[question.id]),
-        })),
-      })) as { score?: string; maxScore?: string; percentage?: string };
+
+      const isInitialExam = !isPracticeMode && ((examData as any).attemptNumber === 1 || !(examData as any).attemptNumber);
+
+      const newResults: Record<string, "correct" | "wrong"> = {};
+      const newCorrects: Record<string, any> = {};
+      const newExplanations: Record<string, string> = {};
+
+      const formattedAnswersPayload = examData.questions
+        .map((q) => {
+          const userAns = userAnswers[q.id];
+          if (!isAnswerProvided(userAns)) return null;
+          return {
+            questionId: q.id,
+            answer: toBackendAnswer(q, userAns),
+          };
+        })
+        .filter(Boolean) as { questionId: string; answer: any }[];
+
+      console.log(`[ExamContainer Debug] handleFinish starting (isInitialExam: ${isInitialExam}):`, formattedAnswersPayload);
+
+      let result: any = null;
+
+      if (isInitialExam) {
+        // Cho lượt thi kiểm tra lần đầu, gọi submitAttempt duy nhất 1 lần với full answers payload
+        try {
+          result = await studentLearningService.attempts.submit(examData.id, {
+            answers: formattedAnswersPayload,
+          });
+          console.log(`[ExamContainer Debug] BE submit attempt response:`, result);
+        } catch (error: any) {
+          console.error(`[ExamContainer Debug] BE submit attempt error:`, error);
+          const statusCode = error?.statusCode ?? error?.body?.statusCode ?? error?.response?.status;
+          const is409 = statusCode === 409 || (typeof error?.message === "string" && (error.message.includes("trùng") || error.message.includes("ràng buộc") || error.message.includes("submitted")));
+          if (!is409) throw error;
+        }
+      } else {
+        // Cho lượt ôn tập hoặc làm lại (attempt > 1), submit các câu chưa được gửi
+        // Tuân thủ thứ tự orderIndex của Backend (ensureSequentialAnswer)
+        for (const q of examData.questions) {
+          const ans = userAnswers[q.id];
+          if (isAnswerProvided(ans) && !lockedQuestions[q.id]) {
+            try {
+              const backendPayload = toBackendAnswer(q, ans);
+              const res = await studentLearningService.attempts.submitAnswer(
+                examData.id,
+                q.id,
+                { answer: backendPayload }
+              );
+              setLockedQuestions((prev) => ({ ...prev, [q.id]: true }));
+              if (res && res.isCorrect !== undefined && res.isCorrect !== null) {
+                newResults[q.id] = res.isCorrect ? "correct" : "wrong";
+              }
+            } catch (submitErr: any) {
+              // Bỏ qua lỗi 409 nếu câu đã nộp hoặc attempt đã finalized
+            }
+          }
+        }
+
+        try {
+          result = await studentLearningService.attempts.submit(examData.id, { answers: [] });
+        } catch (err: any) {
+          // Bỏ qua 409 nếu Backend đã tự động finalize khi submit câu cuối cùng
+        }
+      }
+
+      // Re-fetch attempt detail từ backend để lấy kết quả chính xác 100%
+      const mergedResults: Record<string, "correct" | "wrong"> = { ...questionResults, ...newResults };
+
+      try {
+        const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+        console.log(`[ExamContainer Debug] BE freshAttempt response:`, freshAttempt);
+
+        const rawScore = freshAttempt?.score ?? result?.score;
+        const rawMaxScore = freshAttempt?.maxScore ?? result?.maxScore;
+        const rawPercentage = freshAttempt?.percentage ?? result?.percentage;
+
+        if (freshAttempt?.answers && Array.isArray(freshAttempt.answers)) {
+          freshAttempt.answers.forEach((ans: any) => {
+            if (ans.isCorrect !== undefined && ans.isCorrect !== null) {
+              mergedResults[ans.questionId] = ans.isCorrect ? "correct" : "wrong";
+            }
+            let parsedCorr = parseBackendAnswer(ans.questionType, ans.correctAnswer);
+            if (parsedCorr === undefined) {
+              const qInExam = examData.questions.find((q) => q.id === ans.questionId);
+              if (qInExam && qInExam.correctAnswer !== undefined) {
+                parsedCorr = qInExam.correctAnswer;
+              }
+            }
+            if (parsedCorr !== undefined) {
+              newCorrects[ans.questionId] = parsedCorr;
+            }
+            const expl = ans.feedback?.explanation || ans.question?.feedback?.explanation || ans.question?.explanation;
+            if (expl) {
+              newExplanations[ans.questionId] = expl;
+            }
+          });
+
+          setQuestionResults({ ...mergedResults });
+          setCorrectAnswers((prev) => ({ ...prev, ...newCorrects }));
+          setExplanations((prev) => ({ ...prev, ...newExplanations }));
+        }
+
+        const finalScoreStr = rawScore !== undefined && rawScore !== null ? String(rawScore) : "0.00";
+        const finalMaxScoreStr = rawMaxScore !== undefined && rawMaxScore !== null ? String(rawMaxScore) : String(examData.questions.length);
+        const finalPercentageStr = rawPercentage !== undefined && rawPercentage !== null ? String(rawPercentage) : "0.00";
+
+        const isMastered = freshAttempt?.mastered ?? (Number(finalScoreStr) >= Number(finalMaxScoreStr));
+        const remCount = freshAttempt?.remainingQuestionCount ?? Math.max(0, Number(finalMaxScoreStr) - Number(finalScoreStr));
+
+        result = {
+          ...result,
+          ...freshAttempt,
+          score: finalScoreStr,
+          maxScore: finalMaxScoreStr,
+          percentage: finalPercentageStr,
+          displayResult: freshAttempt?.displayResult || `${finalScoreStr} / ${finalMaxScoreStr}`,
+          mastered: isMastered,
+          remainingQuestionCount: remCount,
+          cumulativeCorrectCount: Number(finalScoreStr),
+          totalQuestions: Number(finalMaxScoreStr),
+        };
+      } catch (e) {
+        console.warn("Failed to fetch fresh attempt result", e);
+      }
+
+      if (result?.status !== "submitted") {
+        throw new Error(
+          (result as any)?.message ||
+          "Hệ thống chưa ghi nhận hoàn thành bài thi. Vui lòng kiểm tra lại kết nối và thử nộp lại."
+        );
+      }
 
       setSubmitResult(result);
       setIsExamComplete(true);
       setIsReviewMode(false);
       setShowFeedback(false);
-    } catch (error) {
+    } catch (error: any) {
       Modal.error({
-        title: "Khong the nop bai",
-        content: error instanceof Error ? error.message : "Vui long thu lai sau.",
+        title: "Không thể nộp bài",
+        content: error instanceof Error ? error.message : "Vui lòng thử lại sau.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const getQuestionStatus = (question: typeof currentQuestion) => {
+  // Tự động nộp bài lên backend nếu đề ôn tập/làm lại đã hoàn thành 100% câu hỏi nhưng attempt vẫn ở trạng thái in_progress
+  useEffect(() => {
+    if (
+      !isReviewMode &&
+      !isInitialExam &&
+      examData.status === "in_progress" &&
+      !isExamComplete &&
+      !isSubmitting &&
+      (examData.questions.length === 0 || (currentMasteredCount === examData.questions.length && examData.questions.length > 0))
+    ) {
+      const allInitiallyCorrect =
+        examData.questions.length === 0 ||
+        examData.questions.every((q) => (q as any).isCorrect === true || questionResults[q.id] === "correct");
+
+      // Nếu tất cả câu hỏi đều đã được làm đúng (resume attempt đã hoàn thành hoặc đề rỗng)
+      if (allInitiallyCorrect) {
+        handleFinish();
+      }
+    }
+  }, [
+    isReviewMode,
+    isInitialExam,
+    examData.status,
+    isExamComplete,
+    isSubmitting,
+    examData.questions,
+    currentMasteredCount,
+    questionResults,
+  ]);
+
+  const getQuestionStatus = (question: { id: string }) => {
     const answer = userAnswers[question.id];
-    if (questionResults[question.id]) {
+    if ((!isInitialExam || isReviewMode) && questionResults[question.id]) {
       return questionResults[question.id];
     }
     if (!isAnswerProvided(answer)) {
@@ -244,10 +907,65 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }).length;
   const totalUnanswered = totalQuestions - totalAnswered;
 
-  const shouldShowFeedback = showFeedback || isReviewMode;
+  const shouldShowFeedback = !isInitialExam || isReviewMode ? showFeedback : false;
 
-  const handleReview = () => {
-    setIsExamComplete(false);
+  const handleReview = async () => {
+    try {
+      const freshAttempt = (await studentLearningService.attempts.get(examData.id)) as any;
+      if (freshAttempt) {
+        if (freshAttempt.score !== undefined || freshAttempt.percentage !== undefined) {
+          setSubmitResult((prev) => ({
+            ...prev,
+            ...freshAttempt,
+            score: freshAttempt.score != null ? String(freshAttempt.score) : prev?.score,
+            maxScore: freshAttempt.maxScore != null ? String(freshAttempt.maxScore) : prev?.maxScore,
+            percentage: freshAttempt.percentage != null ? String(freshAttempt.percentage) : prev?.percentage,
+            displayResult: freshAttempt.displayResult || prev?.displayResult,
+          }));
+        }
+      }
+      if (freshAttempt?.answers) {
+        const newResults: Record<string, "correct" | "wrong"> = {};
+        const newCorrects: Record<string, any> = {};
+        const newExplanations: Record<string, string> = {};
+        const newAnswers: Record<string, any> = {};
+
+        freshAttempt.answers.forEach((ans: any) => {
+          if (ans.isCorrect !== undefined && ans.isCorrect !== null) {
+            newResults[ans.questionId] = ans.isCorrect ? "correct" : "wrong";
+          }
+          const rawUserAns = ans.answer ?? ans.userAnswer;
+          if (rawUserAns !== undefined && rawUserAns !== null) {
+            const parsedUser = parseBackendAnswer(ans.questionType, rawUserAns);
+            newAnswers[ans.questionId] = parsedUser !== undefined ? parsedUser : rawUserAns;
+          }
+          let parsedCorr = parseBackendAnswer(ans.questionType, ans.correctAnswer);
+          if (parsedCorr === undefined) {
+            const qInExam = examData.questions.find((q) => q.id === ans.questionId);
+            if (qInExam && qInExam.correctAnswer !== undefined) {
+              parsedCorr = qInExam.correctAnswer;
+            }
+          }
+          if (parsedCorr !== undefined) {
+            newCorrects[ans.questionId] = parsedCorr;
+          }
+          const expl = ans.feedback?.explanation || ans.question?.feedback?.explanation || ans.question?.explanation;
+          if (expl) {
+            newExplanations[ans.questionId] = expl;
+          }
+        });
+
+        if (Object.keys(newAnswers).length > 0) {
+          setUserAnswers((prev) => ({ ...newAnswers, ...prev }));
+        }
+        setQuestionResults((prev) => ({ ...prev, ...newResults }));
+        setCorrectAnswers((prev) => ({ ...prev, ...newCorrects }));
+        setExplanations((prev) => ({ ...prev, ...newExplanations }));
+      }
+    } catch (e) {
+      console.warn("Failed to fetch fresh attempt for review", e);
+    }
+
     setIsReviewMode(true);
     setShowFeedback(true);
     setCurrentIndex(0);
@@ -273,6 +991,99 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     }
   };
 
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleRetryNewAttempt = async (forceRestart = false) => {
+    if (isRetrying) return;
+    try {
+      setIsRetrying(true);
+      let attemptResult: any = null;
+      const targetExamId = examData.examId || (examData as any).exam?.id || examData.id;
+      const shouldRestart = forceRestart;
+
+      const isTeacherAssigned =
+        examData.source === "teacher_assigned" ||
+        (!examData.source && !!examData.assignmentStudentId);
+
+      const isCurriculum =
+        examData.source === "self_study" ||
+        (!examData.source && (!!(examData as any).curriculumId || !!(examData as any).curriculumAssignmentStudentId));
+
+      console.log("[handleRetryNewAttempt] Start with forceRestart:", forceRestart, "shouldRestart:", shouldRestart);
+      if (isTeacherAssigned) {
+        if (!examData.assignmentStudentId || !targetExamId) {
+          throw new Error("Thông tin bài giao không hợp lệ.");
+        }
+        attemptResult = await studentLearningService.examAssignments.startAttempt(
+          examData.assignmentStudentId,
+          targetExamId,
+          shouldRestart ? { restart: true } : undefined
+        );
+        console.log("[handleRetryNewAttempt] teacherAssigned attemptResult:", attemptResult);
+      } else if (isCurriculum) {
+        let curriculumId = (examData as any).curriculumId;
+        if (!curriculumId && (examData as any).curriculumAssignmentStudentId) {
+          try {
+            const currList = await studentLearningService.curriculums.list({ limit: 100 });
+            const list = Array.isArray(currList) ? currList : (currList as any)?.data ?? [];
+            const matched = list.find((c: any) =>
+              c.enrollmentId === (examData as any).curriculumAssignmentStudentId ||
+              (c as any).id === (examData as any).curriculumAssignmentStudentId ||
+              c.curriculumId === (examData as any).curriculumAssignmentStudentId
+            );
+            if (matched) {
+              curriculumId = matched.curriculumId || (matched as any).id;
+            }
+          } catch (cErr) {
+            console.warn("Failed to resolve curriculumId in handleRetryNewAttempt:", cErr);
+          }
+        }
+        if (!curriculumId || !targetExamId) {
+          throw new Error("Thông tin lộ trình học không hợp lệ.");
+        }
+        attemptResult = await studentLearningService.curriculums.startAttempt(
+          curriculumId,
+          targetExamId,
+          shouldRestart ? { restart: true } : undefined
+        );
+        console.log("[handleRetryNewAttempt] curriculum attemptResult:", attemptResult);
+      } else {
+        throw new Error("Nguồn bài thi không hỗ trợ làm lại.");
+      }
+
+      const attemptId = attemptResult?.id;
+      if (!attemptId) {
+        if ((attemptResult as any)?.mastered) {
+          Modal.success({
+            title: "Hoàn thành bài thi",
+            content: "Bạn đã hoàn thành 100% bài thi này!",
+          });
+          return;
+        }
+        throw new Error("Không thể tạo lượt làm bài mới.");
+      }
+      
+      navigate(`/exam/${attemptId}`, { replace: true });
+      window.location.reload();
+    } catch (err: any) {
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      if (is409) {
+        Modal.warning({
+          title: "Không thể tạo lượt làm mới",
+          content: "Đề kiểm tra này đã được nộp và không cho phép làm lại.",
+        });
+      } else {
+        Modal.error({
+          title: "Không thể bắt đầu làm lại",
+          content: err instanceof Error ? err.message : "Vui lòng thử lại sau.",
+        });
+      }
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const handleResetExam = () => {
     setUserAnswers({});
     setQuestionResults({});
@@ -284,73 +1095,233 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     setCurrentIndex(0);
   };
 
-  if (isExamComplete && !isReviewMode) {
+  const handleBackClick = () => {
+    if (isReviewMode) {
+      setIsReviewMode(false);
+      setIsExamComplete(true);
+      return;
+    }
+    Modal.confirm({
+      title: "Quay lại khóa học",
+      content:
+        "Bạn chắc chắn muốn quay lại? Tiến độ làm bài sẽ không được lưu.",
+      style: {
+        top: 200,
+      },
+      okText: "Quay lại",
+      okType: "danger",
+      cancelText: "Tiếp tục",
+      onOk() {
+        navigate(-1);
+      },
+    });
+  };
+
+  if (isPracticeCompleted100 && !isReviewMode) {
     return (
-      <div className="min-h-screen bg-slate-50  p-6 md:p-10 transition-colors">
-        <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-700">
-          <div className="p-8 md:p-10 text-center">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-4">
-              Kết quả bài thi
+      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center">
+        <div className="max-w-lg w-full bg-white rounded-3xl shadow-lg p-8 md:p-10 text-center border border-slate-200">
+          {/* Icon */}
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Trophy className="w-8 h-8 text-emerald-600 stroke-[1.75]" />
+          </div>
+
+          {/* Title */}
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">
+            Hoàn thành 100% Đề Ôn Tập!
+          </h1>
+          <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+            Tuyệt vời! Bạn đã trả lời chính xác toàn bộ{" "}
+            <span className="font-semibold text-slate-700">{examData.questions.length} / {examData.questions.length}</span>{" "}
+            câu hỏi trong đề ôn tập này.
+          </p>
+
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-left">
+              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1.5">Số câu đúng</p>
+              <p className="text-2xl font-bold text-emerald-700">{examData.questions.length} / {examData.questions.length}</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 text-left">
+              <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1.5">Tỷ lệ chính xác</p>
+              <p className="text-2xl font-bold text-indigo-700">100%</p>
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={async () => {
+                if (examData.status === "in_progress" && !isExamComplete) {
+                  await handleFinish();
+                }
+                navigate(-1);
+              }}
+              className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
+            >
+              Quay lại bài học
+            </button>
+            <button
+              onClick={async () => {
+                await handleReview();
+              }}
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+            >
+              Xem lại tất cả đáp án
+            </button>
+            <button
+              onClick={() => handleRetryNewAttempt(true)}
+              disabled={isRetrying}
+              title="Làm lại toàn bộ đề"
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+            >
+              {isRetrying ? "Đang tạo lượt mới..." : "Ôn tập lại"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isExamComplete && !isReviewMode) {
+    const isMastered = (submitResult as any)?.mastered;
+    const remainingCount = (submitResult as any)?.remainingQuestionCount ?? 0;
+    const isExamType = examData.examType === "exam";
+
+    // Icon & header config based on result type
+    const resultIcon = isMastered ? (
+      <Trophy className="w-8 h-8 stroke-[1.75]" />
+    ) : isExamType ? (
+      <span className="text-2xl">📋</span>
+    ) : (
+      <span className="text-2xl">📖</span>
+    );
+
+    const iconBg = isMastered ? "bg-emerald-100 text-emerald-600" : isExamType ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600";
+    const titleText = isMastered ? "Hoàn thành 100%!" : isExamType ? "Kết quả bài kiểm tra" : "Kết quả bài ôn tập";
+
+    // Stat cards
+    const stats: { label: string; value: React.ReactNode; bg: string; labelColor: string; valueColor: string }[] = [
+      {
+        label: isExamType ? "Điểm số (Thang 10)" : "Tiến độ ôn tập",
+        value: isExamType
+          ? `${currentScoreDisplay.primaryText} / 10 đ`
+          : (isMastered ? "100% (Thành thạo)" : `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`),
+        bg: "bg-emerald-50 border-emerald-100",
+        labelColor: "text-emerald-600",
+        valueColor: "text-emerald-700",
+      },
+      {
+        label: "Tỷ lệ chính xác",
+        value: `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`,
+        bg: isMastered ? "bg-indigo-50 border-indigo-100" : "bg-amber-50 border-amber-100",
+        labelColor: isMastered ? "text-indigo-600" : "text-amber-600",
+        valueColor: isMastered ? "text-indigo-700" : "text-amber-700",
+      },
+      {
+        label: isExamType ? "Số câu làm đúng" : "Số câu hoàn thành",
+        value: `${formatScore(submitResult?.score ?? examData.score)} / ${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu`,
+        bg: "bg-slate-50 border-slate-200",
+        labelColor: "text-slate-500",
+        valueColor: "text-slate-800",
+      },
+      {
+        label: "Chưa trả lời",
+        value: `${totalUnanswered} câu`,
+        bg: "bg-slate-50 border-slate-200",
+        labelColor: "text-slate-500",
+        valueColor: "text-slate-800",
+      },
+    ];
+
+    return (
+      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center">
+        <div className="max-w-lg w-full bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden">
+          {/* Header banner */}
+          <div className={`px-8 pt-8 pb-6 text-center`}>
+            {/* Icon */}
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${iconBg}`}>
+              {resultIcon}
+            </div>
+
+            {/* Title */}
+            <h1 className="text-2xl font-bold text-slate-800 mb-1.5">
+              {titleText}
             </h1>
-            <p className="text-lg text-slate-600 dark:text-slate-300 mb-6">
-              Backend da cham diem{" "}
-              <span className="font-black text-emerald-600 dark:text-emerald-400">
-                {submitResult?.score ?? "-"}
-              </span>{" "}
-              tren tong diem{" "}
-              <span className="font-black text-slate-900 dark:text-slate-100">
-                {submitResult?.maxScore ?? "-"}
-              </span>{" "}
-              ({submitResult?.percentage ?? "-"}%).
-            </p>
-            <div className="grid grid-cols-2 gap-4 text-left mb-8">
-              <div className="rounded-3xl bg-emerald-50 dark:bg-emerald-900/20 p-5 border border-emerald-100 dark:border-emerald-700">
-                <p className="text-sm uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
-                  Diem
-                </p>
-                <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
-                  {submitResult?.score ?? "-"}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-rose-50 dark:bg-rose-900/20 p-5 border border-rose-100 dark:border-rose-700">
-                <p className="text-sm uppercase tracking-widest text-rose-700 dark:text-rose-300">
-                  Tong diem
-                </p>
-                <p className="text-3xl font-bold text-rose-700 dark:text-rose-300">
-                  {submitResult?.maxScore ?? "-"}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700">
-                <p className="text-sm uppercase tracking-widest text-slate-600 dark:text-slate-400">
-                  Chua lam
-                </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                  {totalUnanswered}
-                </p>
-              </div>
-              <div className="rounded-3xl bg-slate-50 dark:bg-slate-800/80 p-5 border border-slate-200 dark:border-slate-700">
-                <p className="text-sm uppercase tracking-widest text-slate-600 dark:text-slate-400">
-                  Tong cau
-                </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                  {totalQuestions}
-                </p>
-              </div>
+
+            {/* Subtitle */}
+            {isExamType && !isMastered && (
+              <p className="text-sm text-amber-600 font-medium leading-relaxed mt-2">
+                Điểm kiểm tra lượt đầu đã được ghi nhận. Hãy làm lại câu sai để hoàn thành 100%.
+              </p>
+            )}
+            {isMastered && (
+              <p className="text-sm text-slate-500 leading-relaxed mt-1">
+                Bạn đã trả lời đúng toàn bộ câu hỏi. Chúc mừng!
+              </p>
+            )}
+          </div>
+
+          {/* Stats grid */}
+          <div className="px-8 pb-6">
+            <div className="grid grid-cols-2 gap-3">
+              {stats.map((s, i) => (
+                <div key={i} className={`p-4 rounded-2xl border ${s.bg}`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wider mb-1.5 ${s.labelColor}`}>{s.label}</p>
+                  <p className={`text-2xl font-bold ${s.valueColor}`}>{s.value}</p>
+                </div>
+              ))}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          </div>
+
+          {/* Buttons */}
+          <div className="px-8 pb-8 flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
+            >
+              Quay lại
+            </button>
+            <button
+              onClick={handleReview}
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+            >
+              Xem lại đáp án
+            </button>
+            {isMastered ? (
               <button
-                onClick={() => navigate(-1)}
-                className="px-6 py-4 rounded-3xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 font-semibold hover:bg-slate-200 transition"
+                onClick={() => handleRetryNewAttempt(true)}
+                disabled={isRetrying}
+                title="Làm lại toàn bộ đề"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
               >
-                Quay lai
+                {isRetrying ? "Đang tạo lượt mới..." : "Ôn tập lại"}
               </button>
-              <button
-                onClick={handleResetExam}
-                className="px-6 py-4 rounded-3xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
-              >
-                Lam lai attempt moi
-              </button>
-            </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleRetryNewAttempt(false)}
+                  disabled={isRetrying}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {isRetrying
+                    ? "Đang tạo lượt mới..."
+                    : remainingCount > 0
+                    ? `Làm lại câu sai (${remainingCount} câu)`
+                    : "Làm tiếp / Làm lại"}
+                </button>
+                {((examData as any).isRedo || (examData as any).is_redo) && (
+                  <button
+                    onClick={() => handleRetryNewAttempt(true)}
+                    disabled={isRetrying}
+                    title="Bắt đầu lại chu kỳ ôn tập với toàn bộ câu hỏi"
+                    className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition disabled:opacity-50"
+                  >
+                    Ôn tập lại cả đề
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -358,83 +1329,46 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }
 
   return (
-    <div className="text-slate-800 dark:text-slate-200 flex flex-col h-screen overflow-hidden font-sans bg-slate-50 dark:bg-slate-900 transition-colors">
-      <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
+    <div className="text-slate-800 flex flex-col h-screen overflow-hidden font-sans bg-slate-50 transition-colors">
+      <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
         <div className="flex items-center gap-3">
           <button
             onClick={handleBackClick}
-            className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+            className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
             title="Quay lại"
           >
             <ArrowLeftOutlined className="text-lg" />
           </button>
           <img
-            src="/src/assets/logo/logo.png"
+            src={logoImg}
             alt="Logo"
             className="h-14 object-contain"
           />
           <h1 className="font-bold text-xl">{examData.title}</h1>
         </div>
         <div className="flex items-center gap-4 md:gap-8">
-          {toggleDarkMode && (
-            <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-              title="Toggle Dark Mode"
-            >
-              {isDarkMode ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                  />
-                </svg>
-              )}
-            </button>
-          )}
           {isReviewMode ? (
-            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-800">
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                Điểm: {examData.score} / {examData.maxScore} ({examData.percentage}%)
+            <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
+              <span className="text-sm font-bold text-emerald-700">
+                {isExamType
+                  ? `Điểm: ${currentScoreDisplay.primaryText} / 10 đ (Đúng ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu)`
+                  : `Ôn tập: Đúng ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu (${formatPercentage(submitResult?.percentage ?? examData.percentage)}%)`}
               </span>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700">
-                <ClockCircleOutlined className="text-emerald-600 dark:text-emerald-400" />
-                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
+              <div className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">
+                <ClockCircleOutlined className="text-emerald-600" />
+                <span className="font-mono font-bold text-emerald-700">
                   {formatTime(timeRemaining)}
                 </span>
               </div>
               <button
                 onClick={handleFinish}
                 disabled={isSubmitting}
-                className="px-4 py-1.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-md text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+                className="px-4 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-xs font-semibold hover:bg-rose-100 transition-colors"
               >
-                {isSubmitting ? "DANG NOP..." : "NOP BAI"}
+                {isSubmitting ? "ĐANG NỘP..." : "NỘP BÀI"}
               </button>
             </>
           )}
@@ -442,30 +1376,34 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       </header>
 
       <main className="flex-1 flex overflow-hidden">
-        <aside className="w-72 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 transition-colors">
+        <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 transition-colors">
           <div className="p-5 flex-1 overflow-y-auto">
             <div className="mb-6">
               <div className="flex justify-between items-end mb-2">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Tiến độ làm bài
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {!isInitialExam && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
                 </span>
-                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                  {currentIndex + 1}/{totalQuestions}
+                <span className="text-sm font-bold text-emerald-600">
+                  {!isInitialExam && !isReviewMode
+                    ? `${currentMasteredCount}/${examData.questions.length}`
+                    : `${currentIndex + 1}/${totalQuestions}`}
                 </span>
               </div>
-              <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                 <div
-                  className="bg-emerald-500 dark:bg-emerald-400 h-full transition-all duration-500"
+                  className="bg-emerald-500 h-full transition-all duration-500"
                   style={{ width: `${progressPercent}%` }}
                 ></div>
               </div>
             </div>
 
-            <div className="mb-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Danh sách câu hỏi
+            <div className="mb-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+              {!isInitialExam && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
             </div>
             <div className="grid grid-cols-5 gap-2">
-              {examData.questions.map((q, idx) => {
+              {activeQuestions.map((q, idx) => {
+                const originalIdx = examData.questions.findIndex((item) => item.id === q.id);
+                const questionNumber = originalIdx >= 0 ? originalIdx + 1 : idx + 1;
                 const isCurrent = idx === currentIndex;
                 const isSelected =
                   !!userAnswers[q.id] &&
@@ -481,81 +1419,78 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 if (isCurrent) {
                   if (questionStatus === "correct") {
                     itemClass +=
-                      " bg-emerald-500 text-white border-emerald-500 dark:bg-emerald-600 dark:border-emerald-600";
+                      " bg-emerald-500 text-white border-emerald-500";
                   } else if (questionStatus === "wrong") {
                     itemClass +=
-                      " bg-rose-500 text-white border-rose-500 dark:bg-rose-600 dark:border-rose-600";
+                      " bg-rose-500 text-white border-rose-500";
                   } else if (isSelected) {
-                    // 🟦 Câu hiện tại + chưa chấm + ĐÃ CHỌN
                     itemClass +=
-                      " bg-blue-700 text-white border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-700";
+                      " bg-blue-700 text-white border-blue-200";
                   } else {
-                    // 🔵 Câu hiện tại + chưa chấm + CHƯA CHỌN
                     itemClass +=
-                      " border-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400";
+                      " border-2 border-blue-600 text-blue-600";
                   }
                 }
-
                 // =======================
                 // KHÔNG PHẢI CÂU HIỆN TẠI
                 // =======================
                 else {
                   if (questionStatus === "correct") {
                     itemClass +=
-                      " bg-emerald-500 text-white border-emerald-500 dark:bg-emerald-600 dark:border-emerald-600";
+                      " bg-emerald-500 text-white border-emerald-500";
                   } else if (questionStatus === "wrong") {
                     itemClass +=
-                      " bg-rose-500 text-white border-rose-500 dark:bg-rose-600 dark:border-rose-600";
+                      " bg-rose-500 text-white border-rose-500";
                   } else if (isSelected) {
                     itemClass +=
-                      " bg-blue-700 text-white border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-700";
+                      " bg-blue-700 text-white border-blue-200";
                   } else {
                     itemClass +=
-                      " border-slate-200 text-slate-600 dark:border-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50";
+                      " border-slate-200 text-slate-600 hover:bg-slate-50";
                   }
                 }
                 return (
                   <div
                     key={q.id}
                     className={itemClass}
-                    onClick={() => (isReviewMode || !showFeedback) && setCurrentIndex(idx)}
+                    onClick={() => handleSelectQuestion(idx)}
                   >
-                    {idx + 1}
+                    {questionNumber}
                   </div>
                 );
               })}
             </div>
           </div>
-          <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-            <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mb-2 text-center underline uppercase">
+          <div className="p-4 border-t border-slate-200 bg-slate-50">
+            <div className="text-[10px] text-slate-400 italic mb-2 text-center underline uppercase">
               Chú thích:
             </div>
-            <div className="grid grid-cols-2 gap-3 text-[10px] dark:text-slate-400 ">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-slate-200   dark:bg-slate-700 border border-gray-300 dark:border-slate-600" />
+            <div className="grid grid-cols-2 gap-3 text-[10px]">
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-slate-200 border border-gray-300" />
                 Chưa chọn
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-blue-500 dark:bg-blue-600" />
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-blue-500" />
                 Đã chọn
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 dark:bg-emerald-600" />
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-emerald-500" />
                 Đúng
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500 dark:bg-rose-600" />
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="w-3 h-3 rounded-full bg-rose-500" />
                 Sai
               </div>
             </div>
           </div>
         </aside>
 
-        <section className="flex-1 bg-slate-50 dark:bg-slate-900 p-6 md:p-8 pt-10 flex flex-col items-center justify-center overflow-hidden relative transition-colors">
+        <section className="flex-1 bg-slate-50 p-6 md:p-8 pt-10 flex flex-col items-center justify-center overflow-hidden relative transition-colors">
           <div
-            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} h-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-700/80 relative flex flex-col transition-all duration-500`}
+            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 relative flex flex-col transition-all duration-500`}
           >
-            <div className="absolute -top-3.5 left-6 bg-emerald-600 dark:bg-emerald-500 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider z-20 shadow-md">
+            <div className="absolute -top-3.5 left-6 bg-emerald-600 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider z-20 shadow-md">
               CÂU HỎI {currentIndex + 1}
             </div>
 
@@ -573,12 +1508,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                     question={currentQuestion}
                     currentAnswer={userAnswers[currentQuestion.id]}
                     onAnswerChange={handleAnswerChange}
-                    onSubmit={handleSubmit}
-                    isCorrect={isCorrect}
+                    onSubmit={!isInitialExam ? handleSubmit : handleFinish}
+                    isCorrect={isReviewMode ? (questionResults[currentQuestion.id] === "correct" || (currentQuestion as any).isCorrect) : isCorrect}
                     showFeedback={shouldShowFeedback}
                     onNext={handleNext}
-                    isLastQuestion={currentIndex === totalQuestions - 1}
+                    isLastQuestion={isReviewMode ? currentIndex === totalQuestions - 1 : (currentIndex === totalQuestions - 1 || (!isInitialExam && currentMasteredCount === totalQuestions))}
                     isReviewMode={isReviewMode}
+                    isPracticeMode={!isInitialExam}
+                    isMastered={isCurrentMastered100}
                   />
                 </motion.div>
               </AnimatePresence>

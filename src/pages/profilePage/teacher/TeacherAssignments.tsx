@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Button,
   Card,
@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   Modal,
+  Popover,
   Row,
   Select,
   Space,
@@ -19,10 +20,14 @@ import {
   Typography,
   message,
   Statistic,
-  Badge,
   Tooltip,
   Progress,
+  Alert,
+  Segmented,
+  DatePicker,
 } from "antd";
+import dayjs from "dayjs";
+import { SafeSelect } from "../../../components/SafeSelect";
 
 import {
   BookOutlined,
@@ -35,219 +40,250 @@ import {
   CheckCircleOutlined,
   UserOutlined,
   ClockCircleOutlined,
+  ReloadOutlined,
+  BankOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  GlobalOutlined,
+  EyeOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  TrophyOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
+import { ClipboardList, Info, Building2, Filter } from "lucide-react";
 
 import { teacherLearningService } from "../../../services/teacherLearningService";
 import { learningCmsService } from "../../../services/learningCmsService";
 import { academicService } from "../../../services/academicService";
 import { userService } from "../../../services/userService";
-import { RefreshCcw, RefreshCwIcon } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
+import { Can } from "../../../components/Can";
+import { getErrorMessage } from "../../../services/apiClient";
+import { Center, Specialization } from "../../../types/backend";
+import { ExamAnalyticsModal } from "./components/ExamAnalyticsModal";
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 // ==================== TYPES ====================
 type AssignmentStatus = "active" | "cancelled";
 
-interface ExamAssignmentRow {
+interface ExamOption {
   id: string;
   title?: string;
-  instructions?: string;
-  classId: string;
-  class?: { id: string; name?: string };
-  examId: string;
-  exam?: { id: string; title?: string; code?: string };
-  studentIds?: string[];
-  status: AssignmentStatus;
-  isActive?: boolean;
-  createdAt?: string;
-  created_at?: string;
+  code?: string;
+  status?: string;
+  examType?: string;
+  specializationId?: string;
 }
-
-interface CurriculumAssignmentRow {
+interface CurriculumOption {
   id: string;
   title?: string;
-  instructions?: string;
-  classId: string;
-  class?: { id: string; name?: string };
-  curriculumId: string;
-  curriculum?: { id: string; title?: string; code?: string };
-  studentIds?: string[];
-  status: AssignmentStatus;
-  isActive?: boolean;
-  createdAt?: string;
-  created_at?: string;
+  code?: string;
+  status?: string;
+  specializationId?: string;
 }
-
-interface ExamOption { id: string; title?: string; code?: string; status?: string; }
-interface CurriculumOption { id: string; title?: string; code?: string; status?: string; }
-interface ClassOption { id: string; name?: string; centerId?: string; }
-interface StudentOption { id: string; fullName?: string; code?: string; studentProfile?: { classes?: { id: string }[] }; }
+interface ClassOption {
+  id: string;
+  name?: string;
+  centerId?: string;
+  specializationId?: string;
+  specialization?: { id?: string; name?: string };
+}
+interface StudentOption {
+  id: string;
+  fullName?: string;
+  code?: string;
+  phone?: string;
+  email?: string;
+  dateOfBirth?: string;
+  startDate?: string;
+  citizenId?: string;
+  address?: string;
+  studentProfile?: {
+    id?: string;
+    parentFullName?: string;
+    birthYear?: number;
+    classes?: { id: string; name?: string; centerId?: string; class?: { id: string; name?: string; centerId?: string } }[];
+  };
+}
 
 // ==================== STATUS TAG ====================
 const statusTag = (status: AssignmentStatus) => {
   if (status === "active")
-    return <Tag color="success" className="rounded-full border-none text-xs font-semibold px-3">✓ Đang hoạt động</Tag>;
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold px-3">Đang hoạt động</Tag>;
   return <Tag color="default" className="rounded-full border-none text-xs font-semibold px-3">Đã huỷ</Tag>;
 };
 
-// ==================== EXAM ASSIGNMENT ANALYTICS MODAL ====================
-function ExamAnalyticsModal({
-  assignmentId,
-  open,
-  onClose,
-}: {
-  assignmentId: string | null;
-  open: boolean;
-  onClose: () => void;
-}) {
+const maxAttemptsTag = (n?: number | null) => {
+  if (n === 1) {
+    return <Tag color="purple" className="rounded-full border-none text-xs font-semibold">Đề kiểm tra</Tag>;
+  }
+  return <Tag color="blue" className="rounded-full border-none text-xs font-semibold">Đề ôn tập</Tag>;
+};
+
+// ==================== HELPER FORMATTERS ====================
+function formatDuration(seconds?: number | null) {
+  if (seconds == null || isNaN(seconds) || seconds <= 0) return "—";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  if (mins === 0) return `${secs} giây`;
+  return `${mins} phút ${secs > 0 ? `${secs}s` : ""}`;
+}
+
+function formatDateTime(dateStr?: string | null) {
+  if (!dateStr) return "—";
+  try {
+    return new Date(dateStr).toLocaleString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+// ==================== EXAM ANALYTICS MODAL ====================
+// Extracted to ./components/ExamAnalyticsModal.tsx
+
+// ==================== CURRICULUM ANALYTICS MODAL ====================
+function CurriculumAnalyticsModal({
+  assignmentId, open, onClose,
+}: { assignmentId: string | null; open: boolean; onClose: () => void }) {
   const [data, setData] = useState<any>(null);
+  const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || !assignmentId) return;
+    if (!open || !assignmentId) {
+      setData(null);
+      setDetail(null);
+      return;
+    }
     setLoading(true);
-    teacherLearningService.examAssignments
-      .analytics(assignmentId)
-      .then(setData)
-      .catch(() => message.error("Không thể tải analytics"))
+    Promise.allSettled([
+      teacherLearningService.curriculumAssignments.analytics(assignmentId),
+      teacherLearningService.curriculumAssignments.get(assignmentId),
+    ])
+      .then(([analyticsRes, detailRes]) => {
+        if (analyticsRes.status === "fulfilled") {
+          setData(analyticsRes.value);
+        }
+        if (detailRes.status === "fulfilled") {
+          setDetail(detailRes.value);
+        }
+      })
+      .catch((err) => message.error(getErrorMessage(err, "Không thể tải analytics"), 5))
       .finally(() => setLoading(false));
   }, [open, assignmentId]);
 
+  const studentsList = useMemo(() => {
+    if (data?.students && Array.isArray(data.students) && data.students.length > 0) {
+      return data.students;
+    }
+    const raw = detail?.students || [];
+    return raw.map((s: any) => ({
+      studentId: s.studentId || s.student?.id,
+      code: s.student?.user?.code || s.student?.code || "—",
+      fullName: s.student?.user?.fullName || s.student?.fullName || "Học sinh",
+      email: s.student?.user?.email || s.student?.email || "—",
+      status: s.status || "assigned",
+      progressPercentage: parseFloat(s.progressPercentage || "0"),
+      finishedExamsCount: s.finishedExamsCount || 0,
+      totalRequiredExamsCount: s.totalRequiredExamsCount || 0,
+      finishedAt: s.finishedAt,
+    }));
+  }, [data, detail]);
+
   return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      title={
-        <div className="flex items-center gap-2 text-indigo-700">
-          <BarChartOutlined />
-          <span className="font-bold">Thống kê bài thi được giao</span>
-        </div>
-      }
-      width={680}
+    <Modal open={open} onCancel={onClose} footer={null}
+      title={<div className="flex items-center gap-2 text-purple-700"><BarChartOutlined /><span className="font-bold">Thống kê giáo trình học được giao</span></div>}
+      centered
+      maskClosable={false}
+      width={780}
+      className="rounded-3xl overflow-hidden"
+      styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
     >
       {loading ? (
-        <div className="flex justify-center py-10">
-          <Spin size="large" />
-        </div>
+        <div className="flex justify-center py-10"><Spin size="large" /></div>
       ) : data ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Row gutter={[16, 16]}>
-            <Col span={8}>
-              <Card className="rounded-2xl border-slate-100 bg-indigo-50 text-center">
-                <Statistic
-                  title="Học sinh được giao"
-                  value={data.assignedCount ?? 0}
-                  prefix={<TeamOutlined className="text-indigo-500" />}
-                  valueStyle={{ color: "#4f46e5" }}
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center">
-                <Statistic
-                  title="Đã nộp bài"
-                  value={data.submittedCount ?? 0}
-                  prefix={<CheckCircleOutlined className="text-emerald-500" />}
-                  valueStyle={{ color: "#10b981" }}
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card className="rounded-2xl border-slate-100 bg-amber-50 text-center">
-                <Statistic
-                  title="Tổng lượt làm"
-                  value={data.attemptsCount ?? 0}
-                  prefix={<ClockCircleOutlined className="text-amber-500" />}
-                  valueStyle={{ color: "#f59e0b" }}
-                />
-              </Card>
-            </Col>
+            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-purple-50 text-center">
+              <Statistic title="Học sinh được giao" value={data.assignedCount ?? studentsList.length}
+                prefix={<TeamOutlined className="text-purple-500" />} valueStyle={{ color: "#7c3aed" }} />
+            </Card></Col>
+            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center">
+              <Statistic title="Đã hoàn thành" value={data.completedCount ?? 0}
+                prefix={<CheckCircleOutlined className="text-emerald-500" />} valueStyle={{ color: "#10b981" }} />
+            </Card></Col>
+            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-amber-50 text-center">
+              <Statistic title="Đang học" value={data.inProgressCount ?? 0}
+                prefix={<ClockCircleOutlined className="text-amber-500" />} valueStyle={{ color: "#f59e0b" }} />
+            </Card></Col>
+            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-slate-50 text-center">
+              <Statistic title="Tiến độ TB" value={`${data.averageProgress?.toFixed(1) ?? "0"}%`}
+                prefix={<BarChartOutlined className="text-slate-500" />} valueStyle={{ color: "#475569" }} />
+            </Card></Col>
           </Row>
+          <Progress percent={Math.round(data.averageProgress ?? 0)}
+            strokeColor={{ "0%": "#7c3aed", "100%": "#10b981" }}
+            format={(p) => `Tiến độ TB: ${p}%`} />
 
-          <Row gutter={[16, 16]}>
-            <Col span={12}>
-              <Card className="rounded-2xl border-slate-100">
-                <div className="text-slate-500 text-sm mb-1">Điểm trung bình</div>
-                <div className="text-2xl font-bold text-slate-800">
-                  {data.averageScore?.toFixed(2) ?? "—"}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">
-                  ({data.averagePercentage?.toFixed(1) ?? "—"}%)
-                </div>
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card className="rounded-2xl border-slate-100">
-                <div className="text-slate-500 text-sm mb-1">Điểm cao nhất</div>
-                <div className="text-2xl font-bold text-emerald-600">
-                  {data.bestScore?.toFixed(2) ?? "—"}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">
-                  ({data.bestPercentage?.toFixed(1) ?? "—"}%)
-                </div>
-              </Card>
-            </Col>
-          </Row>
-
-          {data.scoreDistribution && (
-            <Card className="rounded-2xl border-slate-100">
-              <div className="text-slate-600 font-semibold mb-3">Phân phối điểm</div>
-              <div className="space-y-2">
-                {Object.entries(data.scoreDistribution as Record<string, number>).map(([range, count]) => (
-                  <div key={range} className="flex items-center gap-3">
-                    <span className="text-sm text-slate-500 w-16 font-mono">{range}%</span>
-                    <div className="flex-1 bg-slate-100 rounded-full h-2">
-                      <div
-                        className="bg-indigo-500 h-2 rounded-full transition-all"
-                        style={{
-                          width: data.submittedCount
-                            ? `${(count / data.submittedCount) * 100}%`
-                            : "0%",
-                        }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold text-slate-700 w-6 text-right">{count}</span>
-                  </div>
-                ))}
+          {/* Student Progress Table */}
+          {studentsList.length > 0 && (
+            <Card className="rounded-2xl border-slate-100 shadow-sm" bodyStyle={{ padding: "16px" }}>
+              <div className="text-slate-700 font-bold text-sm mb-3 flex items-center justify-between">
+                <span>Tiến độ từng học sinh</span>
+                <span className="text-xs text-slate-400 font-normal">Tổng {studentsList.length} học sinh</span>
               </div>
-            </Card>
-          )}
-
-          {data.perQuestion?.length > 0 && (
-            <Card className="rounded-2xl border-slate-100">
-              <div className="text-slate-600 font-semibold mb-3">Thống kê theo câu hỏi</div>
               <Table
                 size="small"
-                pagination={false}
-                rowKey="questionId"
-                dataSource={data.perQuestion}
+                pagination={{ pageSize: 5 }}
+                rowKey="studentId"
+                dataSource={studentsList}
                 columns={[
                   {
-                    title: "Câu hỏi",
-                    dataIndex: "questionId",
-                    render: (id: string) => (
-                      <span className="font-mono text-xs text-slate-400">{id.slice(0, 8)}…</span>
-                    ),
-                  },
-                  {
-                    title: "Đúng / Tổng",
+                    title: "Học sinh",
                     render: (_: any, r: any) => (
-                      <span className="font-semibold text-slate-700">
-                        {r.correct} / {r.total}
-                      </span>
+                      <div>
+                        <div className="font-bold text-slate-800 text-xs">{r.fullName}</div>
+                        <div className="text-[10px] text-slate-400">{r.code} {r.email && `• ${r.email}`}</div>
+                      </div>
                     ),
                   },
                   {
-                    title: "Tỷ lệ đúng",
-                    dataIndex: "correctnessRate",
-                    render: (rate: number) => (
-                      <Progress
-                        percent={Math.round(rate)}
-                        size="small"
-                        strokeColor={rate >= 70 ? "#10b981" : rate >= 40 ? "#f59e0b" : "#ef4444"}
-                      />
+                    title: "Trạng thái",
+                    width: 130,
+                    render: (_: any, r: any) => {
+                      if (r.status === "finished" || r.progressPercentage >= 100) {
+                        return <Tag color="success" className="rounded-full text-xs font-semibold">Hoàn thành</Tag>;
+                      }
+                      if (r.status === "in_progress" || r.progressPercentage > 0) {
+                        return <Tag color="warning" className="rounded-full text-xs font-semibold">Đang học</Tag>;
+                      }
+                      return <Tag color="default" className="rounded-full text-xs text-slate-400">Chưa bắt đầu</Tag>;
+                    },
+                  },
+                  {
+                    title: "Tiến độ",
+                    width: 180,
+                    render: (_: any, r: any) => (
+                      <Progress percent={Math.round(r.progressPercentage || 0)} size="small"
+                        strokeColor={{ "0%": "#7c3aed", "100%": "#10b981" }} />
+                    ),
+                  },
+                  {
+                    title: "Số bài thi",
+                    width: 110,
+                    align: "center" as const,
+                    render: (_: any, r: any) => (
+                      <span className="text-xs font-semibold text-slate-600">
+                        {r.finishedExamsCount} {r.totalRequiredExamsCount > 0 ? `/ ${r.totalRequiredExamsCount}` : ""}
+                      </span>
                     ),
                   },
                 ]}
@@ -255,123 +291,35 @@ function ExamAnalyticsModal({
             </Card>
           )}
         </div>
-      ) : (
-        <Empty description="Chưa có dữ liệu thống kê" />
-      )}
-    </Modal>
-  );
-}
-
-// ==================== CURRICULUM ANALYTICS MODAL ====================
-function CurriculumAnalyticsModal({
-  assignmentId,
-  open,
-  onClose,
-}: {
-  assignmentId: string | null;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !assignmentId) return;
-    setLoading(true);
-    teacherLearningService.curriculumAssignments
-      .analytics(assignmentId)
-      .then(setData)
-      .catch(() => message.error("Không thể tải analytics"))
-      .finally(() => setLoading(false));
-  }, [open, assignmentId]);
-
-  return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      title={
-        <div className="flex items-center gap-2 text-purple-700">
-          <BarChartOutlined />
-          <span className="font-bold">Thống kê giáo trình học được giao</span>
-        </div>
-      }
-      width={520}
-    >
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Spin size="large" />
-        </div>
-      ) : data ? (
-        <div className="space-y-4">
-          <Row gutter={[16, 16]}>
-            <Col span={12}>
-              <Card className="rounded-2xl border-slate-100 bg-purple-50 text-center">
-                <Statistic
-                  title="Học sinh được giao"
-                  value={data.assignedCount ?? 0}
-                  prefix={<TeamOutlined className="text-purple-500" />}
-                  valueStyle={{ color: "#7c3aed" }}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center">
-                <Statistic
-                  title="Đã hoàn thành"
-                  value={data.completedCount ?? 0}
-                  prefix={<CheckCircleOutlined className="text-emerald-500" />}
-                  valueStyle={{ color: "#10b981" }}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card className="rounded-2xl border-slate-100 bg-amber-50 text-center">
-                <Statistic
-                  title="Đang học"
-                  value={data.inProgressCount ?? 0}
-                  prefix={<ClockCircleOutlined className="text-amber-500" />}
-                  valueStyle={{ color: "#f59e0b" }}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card className="rounded-2xl border-slate-100 bg-slate-50 text-center">
-                <Statistic
-                  title="Tiến độ TB"
-                  value={`${data.averageProgress?.toFixed(1) ?? "0"}%`}
-                  prefix={<BarChartOutlined className="text-slate-500" />}
-                  valueStyle={{ color: "#475569" }}
-                />
-              </Card>
-            </Col>
-          </Row>
-          <Progress
-            percent={Math.round(data.averageProgress ?? 0)}
-            strokeColor={{ "0%": "#7c3aed", "100%": "#10b981" }}
-            format={(p) => `Tiến độ TB: ${p}%`}
-          />
-        </div>
-      ) : (
-        <Empty description="Chưa có dữ liệu thống kê" />
-      )}
+      ) : <Empty description="Chưa có dữ liệu thống kê" />}
     </Modal>
   );
 }
 
 // ==================== MAIN COMPONENT ====================
 export default function TeacherAssignments() {
-  const { user } = useAuth();
+  const { user, refreshProfile, hasPermission } = useAuth();
+  const userRoleCode = typeof user?.role === "object" ? (user?.role as any)?.code : user?.role;
+  const isTeacher = userRoleCode === "teacher";
   const [activeTab, setActiveTab] = useState("exam");
 
   // ---- Data ----
+  const [centers, setCenters] = useState<Center[]>([]);
+  const [specializations, setSpecializations] = useState<Specialization[]>([]);
+  const [allClasses, setAllClasses] = useState<ClassOption[]>([]);
   const [exams, setExams] = useState<ExamOption[]>([]);
   const [curriculums, setCurriculums] = useState<CurriculumOption[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
 
-  const [examAssignments, setExamAssignments] = useState<ExamAssignmentRow[]>([]);
-  const [curriculumAssignments, setCurriculumAssignments] = useState<CurriculumAssignmentRow[]>([]);
+  const [examAssignments, setExamAssignments] = useState<any[]>([]);
+  const [curriculumAssignments, setCurriculumAssignments] = useState<any[]>([]);
+
+  // ---- Filtering & Scopes ----
+  const [selectedCenterId, setSelectedCenterId] = useState<string>("all");
+  const [assignmentScope, setAssignmentScope] = useState<"my" | "center" | "all">(isTeacher ? "my" : "center");
+  const [searchKeyword, setSearchKeyword] = useState<string>("");
+  const [centerInitialized, setCenterInitialized] = useState(false);
 
   // ---- Loading ----
   const [loading, setLoading] = useState(false);
@@ -387,192 +335,633 @@ export default function TeacherAssignments() {
   const [examForm] = Form.useForm();
   const [curriculumForm] = Form.useForm();
 
-  // ---- Selected class (for filtering students in form) ----
+  // ---- Selected class (for filtering students and exams/curriculums) ----
   const [selectedClassForExam, setSelectedClassForExam] = useState<string | undefined>(undefined);
   const [selectedClassForCurriculum, setSelectedClassForCurriculum] = useState<string | undefined>(undefined);
 
+  const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
+  const [examVersionsMap, setExamVersionsMap] = useState<Record<string, any[]>>({});
+
+  const handleExamSelectionChange = async (ids: string[]) => {
+    setSelectedExamIds(ids);
+    const newVersionsMap = { ...examVersionsMap };
+    for (const id of ids) {
+      if (!newVersionsMap[id]) {
+        try {
+          const versions = await learningCmsService.exams.listVersions(id);
+          newVersionsMap[id] = versions || [];
+        } catch (err) {
+          console.error("Failed to fetch versions for exam " + id, err);
+        }
+      }
+    }
+    setExamVersionsMap(newVersionsMap);
+  };
+
+  // ==================== USER CENTERS & SPECIALIZATIONS ====================
+  const teacherClassIds = useMemo(() => {
+    const list1 = user?.teacherProfile?.classes?.map((c: any) => c.id || c.classId) ?? [];
+    const list2 = user?.teacher?.classes?.map((c: any) => c.classId || c.id) ?? [];
+    const list3 = (user?.teacherProfile as any)?.classIds ?? [];
+    return Array.from(new Set([...list1, ...list2, ...list3].filter(Boolean)));
+  }, [user]);
+
+  const userCenters = useMemo(() => {
+    const set = new Set<string>();
+    if (user?.centerId) set.add(user.centerId);
+    if (user?.teacherProfile?.centerId) set.add(user.teacherProfile.centerId);
+    if ((user?.teacher as any)?.centerId) set.add((user.teacher as any).centerId);
+    (user?.teacherProfile?.classes ?? []).forEach((c: any) => {
+      const cid = c.centerId || c.center?.id || c.class?.centerId || c.class?.center?.id;
+      if (cid) set.add(cid);
+    });
+    (user?.teacher?.classes ?? []).forEach((c: any) => {
+      const cid = c.centerId || c.center?.id || c.class?.centerId || c.class?.center?.id;
+      if (cid) set.add(cid);
+    });
+    // Match with allClasses as well
+    allClasses.filter((c) => teacherClassIds.includes(c.id)).forEach((c) => {
+      if (c.centerId) set.add(c.centerId);
+    });
+    return Array.from(set);
+  }, [user, allClasses, teacherClassIds]);
+
+  const displayCenters = useMemo(() => {
+    if (isTeacher) {
+      const matched = centers.filter((c) => userCenters.includes(c.id));
+      if (matched.length > 0) return matched;
+      if (user?.centerId) {
+        const fallback = centers.filter((c) => c.id === user.centerId);
+        if (fallback.length > 0) return fallback;
+      }
+      return [];
+    }
+    return centers;
+  }, [isTeacher, centers, userCenters, user?.centerId]);
+
+  const teacherSpecializationIds = useMemo(() => {
+    const set = new Set<string>();
+    (user?.teacherProfile?.specializationIds ?? []).forEach((id: string) => set.add(id));
+    (user?.teacherProfile?.specializations ?? []).forEach((s: any) => set.add(s.id));
+    (user?.teacher?.teacherSpecializations ?? []).forEach((ts: any) => {
+      if (ts.specializationId) set.add(ts.specializationId);
+      if (ts.specialization?.id) set.add(ts.specialization.id);
+    });
+    (allClasses ?? []).forEach((c: any) => {
+      if (teacherClassIds.includes(c.id) && c.specializationId) {
+        set.add(c.specializationId);
+      }
+    });
+    return Array.from(set);
+  }, [user, allClasses, teacherClassIds]);
+
   // ==================== LOAD DATA ====================
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     try {
       setLoading(true);
-      const results = await Promise.allSettled([
-        learningCmsService.exams.list({ status: "published", limit: 100 }),
-        learningCmsService.curriculums.list({ status: "published", limit: 100 }),
-        academicService.classes.list(),
-        userService.list({ roleCode: "student" }),
+      const [
+        examsRes,
+        curriculumsRes,
+        classesRes,
+        studentsRes,
+        examAssignmentsRes,
+        curriculumAssignmentsRes,
+        centersRes,
+        specializationsRes,
+      ] = await Promise.allSettled([
+        hasPermission("learning.read") ? learningCmsService.exams.list({ status: "published", limit: 100 }) : Promise.resolve({ data: [] }),
+        hasPermission("learning.read") ? learningCmsService.curriculums.list({ status: "published", limit: 100 }) : Promise.resolve({ data: [] }),
+        hasPermission("classes.read") ? academicService.classes.list({ limit: 100, isActive: true }) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "student" }) : Promise.resolve([]),
         teacherLearningService.examAssignments.list({ limit: 100 }),
         teacherLearningService.curriculumAssignments.list({ limit: 100 }),
+        hasPermission("centers.read") ? academicService.centers.list({ limit: 100 }) : Promise.resolve([]),
+        hasPermission("specializations.read") ? academicService.specializations.list({ limit: 100 }) : Promise.resolve([]),
       ]);
 
-      const get = (i: number, name: string) => {
-        const res = results[i];
-        if (res.status === "rejected") {
-          // If classes/students endpoints fail with 403 (Teacher role), use DB fallback data
-          if (name === "classes") {
-            return (user?.teacherProfile?.classes && user.teacherProfile.classes.length > 0)
-              ? user.teacherProfile.classes
-              : [
-                  {
-                    id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5",
-                    name: "Toán 6",
-                    centerId: "019ec447-5427-739e-8836-da553381201d"
-                  },
-                  {
-                    id: "019ee7fe-1348-7338-a198-4fc554482a58",
-                    name: "Tiếng anh 10",
-                    centerId: "019e7c0b-52e2-72f2-b59a-e44e0d6bb29c"
-                  }
-                ];
-          }
-          if (name === "students") {
-            return [
-              {
-                id: "019ec448-71b0-76bc-b821-4b758e23e6ea",
-                fullName: "Ngô Đăng Kiên",
-                code: "139384",
-                studentProfile: {
-                  id: "019ec448-71c2-755d-9540-771691e28d3a",
-                  classes: [
-                    {
-                      id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5"
-                    }
-                  ]
-                }
-              },
-              {
-                id: "019ee804-260f-706c-b7cb-730856a408fa",
-                fullName: "Nguyễn Văn Hải",
-                code: "132495",
-                studentProfile: {
-                  id: "019ee804-2614-74a2-9b3f-83fed96cf805",
-                  classes: [
-                    {
-                      id: "019ee7fe-1348-7338-a198-4fc554482a58"
-                    }
-                  ]
-                }
-              }
-            ];
-          }
-          if (name === "examAssignments") {
-            const local = localStorage.getItem("mock_exam_assignments");
-            return local ? { data: JSON.parse(local) } : { data: [] };
-          }
-          if (name === "curriculumAssignments") {
-            const local = localStorage.getItem("mock_curriculum_assignments");
-            return local ? { data: JSON.parse(local) } : { data: [] };
-          }
-          return null;
-        }
-        
-        // Even if API resolves, we merge local storage assignments so they show up
-        const apiData = res.value;
-        if (name === "examAssignments") {
-          const local = localStorage.getItem("mock_exam_assignments");
-          const localList = local ? JSON.parse(local) : [];
-          const apiList = apiData?.data ?? [];
-          const mergedList = apiList.map((apiItem: any) => {
-            const localItem = localList.find((x: any) => x.id === apiItem.id);
-            return {
-              ...localItem,
-              ...apiItem,
-              studentIds: apiItem.studentIds ?? localItem?.studentIds,
-              students: apiItem.students ?? localItem?.students,
-            };
-          });
-          const apiIds = new Set(apiList.map((x: any) => x.id));
-          const uniqueLocal = localList.filter((x: any) => !apiIds.has(x.id));
-          return { data: [...uniqueLocal, ...mergedList] };
-        }
-        if (name === "curriculumAssignments") {
-          const local = localStorage.getItem("mock_curriculum_assignments");
-          const localList = local ? JSON.parse(local) : [];
-          const apiList = apiData?.data ?? [];
-          const mergedList = apiList.map((apiItem: any) => {
-            const localItem = localList.find((x: any) => x.id === apiItem.id);
-            return {
-              ...localItem,
-              ...apiItem,
-              studentIds: apiItem.studentIds ?? localItem?.studentIds,
-              students: apiItem.students ?? localItem?.students,
-            };
-          });
-          const apiIds = new Set(apiList.map((x: any) => x.id));
-          const uniqueLocal = localList.filter((x: any) => !apiIds.has(x.id));
-          return { data: [...uniqueLocal, ...mergedList] };
-        }
-        return apiData;
-      };
+      setExams(examsRes.status === "fulfilled" ? examsRes.value?.data ?? [] : []);
+      setCurriculums(curriculumsRes.status === "fulfilled" ? curriculumsRes.value?.data ?? [] : []);
+      const rawClasses = classesRes.status === "fulfilled" ? classesRes.value ?? [] : (user?.teacherProfile?.classes ?? []);
+      setAllClasses(rawClasses);
+      setClasses(rawClasses);
+      setAllStudents(studentsRes.status === "fulfilled" ? studentsRes.value ?? [] : []);
 
-      // API đã filter status="published" server-side, không cần filter lại client-side
-      setExams(get(0, "exams")?.data ?? []);
-      setCurriculums(get(1, "curriculums")?.data ?? []);
-      setClasses(get(2, "classes") ?? []);
-      setAllStudents(get(3, "students") ?? []);
-      setExamAssignments(get(4, "examAssignments")?.data ?? []);
-      setCurriculumAssignments(get(5, "curriculumAssignments")?.data ?? []);
-    } catch {
-      message.error("Tải dữ liệu thất bại");
+      const rawExams = examAssignmentsRes.status === "fulfilled" ? examAssignmentsRes.value?.data ?? [] : [];
+      setExamAssignments(rawExams);
+
+      // Asynchronously fetch assignment details to load recipient student profiles & exams
+      Promise.all(
+        rawExams.map((item: any) =>
+          teacherLearningService.examAssignments.get(item.id)
+            .catch(() => item)
+        )
+      ).then((detailed) => {
+        setExamAssignments(detailed);
+      });
+
+      const rawCurriculums = curriculumAssignmentsRes.status === "fulfilled" ? curriculumAssignmentsRes.value?.data ?? [] : [];
+      setCurriculumAssignments(rawCurriculums);
+
+      // Asynchronously fetch curriculum assignment details to load recipient student profiles
+      Promise.all(
+        rawCurriculums.map((item: any) =>
+          teacherLearningService.curriculumAssignments.get(item.id)
+            .catch(() => item)
+        )
+      ).then((detailed) => {
+        setCurriculumAssignments(detailed);
+      });
+
+      const rawCenters = (centersRes.status === "fulfilled" ? centersRes.value ?? [] : []).filter((c: any) => c.isActive !== false);
+      setCenters(rawCenters);
+      setSpecializations(specializationsRes.status === "fulfilled" ? specializationsRes.value ?? [] : []);
+    } catch (err: any) {
+      message.error(getErrorMessage(err, "Tải dữ liệu thất bại"), 5);
     } finally {
       setLoading(false);
     }
   };
 
-  // Students filtered by selected class
+  // Auto initialize selectedCenterId based on user context
+  useEffect(() => {
+    if (!centerInitialized && centers.length > 0) {
+      if (isTeacher) {
+        if (userCenters.length > 0) {
+          setSelectedCenterId(userCenters[0]);
+        } else if (user?.centerId) {
+          setSelectedCenterId(user.centerId);
+        } else if (displayCenters.length > 0) {
+          setSelectedCenterId(displayCenters[0].id);
+        }
+      } else {
+        setSelectedCenterId("all");
+      }
+      setCenterInitialized(true);
+    }
+  }, [centers, userCenters, user?.centerId, centerInitialized, isTeacher, displayCenters]);
+
+  // Ensure teacher never has an invalid centerId or 'all' when they only have 1 center
+  useEffect(() => {
+    if (isTeacher && centerInitialized && userCenters.length > 0) {
+      if (selectedCenterId !== "all" && !userCenters.includes(selectedCenterId)) {
+        setSelectedCenterId(userCenters[0]);
+      } else if (selectedCenterId === "all" && userCenters.length === 1) {
+        setSelectedCenterId(userCenters[0]);
+      }
+    }
+  }, [isTeacher, centerInitialized, userCenters, selectedCenterId]);
+
+  // ==================== HELPER RESOLVERS ====================
+  const getCenterName = (centerId?: string) => {
+    if (!centerId) return undefined;
+    return centers.find((c) => c.id === centerId)?.name;
+  };
+
+  const getSpecializationName = (specId?: string) => {
+    if (!specId) return undefined;
+    return specializations.find((s) => s.id === specId)?.name;
+  };
+
+  const getClassSpecializationId = (classId?: string) => {
+    if (!classId) return undefined;
+    const cls = allClasses.find((c) => c.id === classId);
+    return cls?.specializationId || (cls as any)?.specialization?.id;
+  };
+
+  const getRecordCenterId = (record: any) => {
+    if (record.class?.centerId) return record.class.centerId;
+    if (record.class?.center?.id) return record.class.center.id;
+    if (record.classId) {
+      const cls = allClasses.find((c) => c.id === record.classId);
+      if (cls?.centerId) return cls.centerId;
+    }
+    if (record.students?.length || record.studentIds?.length) {
+      const targetStudentIds =
+        record.students?.map((s: any) => s.studentId || s.student?.id || s.id) || record.studentIds || [];
+      const matchedStudent = allStudents.find(
+        (s) => targetStudentIds.includes(s.id) || targetStudentIds.includes(s.studentProfile?.id)
+      );
+      if (matchedStudent) {
+        const studentClasses = matchedStudent.studentProfile?.classes ?? [];
+        for (const sc of studentClasses) {
+          const cid = (sc as any).centerId || (sc as any).center?.id || (sc as any).class?.centerId;
+          if (cid) return cid;
+          const matchedCls = allClasses.find((c) => c.id === (sc.id || (sc as any).classId));
+          if (matchedCls?.centerId) return matchedCls.centerId;
+        }
+      }
+    }
+    if (
+      record.teacherId &&
+      (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)
+    ) {
+      return userCenters[0] || user?.centerId;
+    }
+    return undefined;
+  };
+
+  const isMyRecord = (record: any) => {
+    if (!isTeacher) return true;
+    if (
+      record.teacherId &&
+      (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)
+    ) {
+      return true;
+    }
+    if (record.classId && teacherClassIds.includes(record.classId)) {
+      return true;
+    }
+    if (record.students?.length || record.studentIds?.length) {
+      const targetStudentIds =
+        record.students?.map((s: any) => s.studentId || s.student?.id || s.id) || record.studentIds || [];
+      const hasMyStudent = allStudents.some((s) => {
+        if (!targetStudentIds.includes(s.id) && !targetStudentIds.includes(s.studentProfile?.id)) return false;
+        const studentClassIds = [
+          ...((s.studentProfile as any)?.classIds ?? []),
+          ...((s.studentProfile as any)?.classes?.map((c: any) => c.id || c.classId) ?? []),
+        ];
+        return studentClassIds.some((cid) => teacherClassIds.includes(cid));
+      });
+      if (hasMyStudent) return true;
+    }
+    return false;
+  };
+
+  // ==================== FILTERED LISTS ====================
+
+  /**
+   * Phân giải tên học sinh từ đối tượng recipient (hỗ trợ cả examAssignment và curriculumAssignment)
+   */
+  const resolveStudentName = useCallback(
+    (s: any): string => {
+      if (!s) return "Học sinh";
+      const directName =
+        s.student?.user?.fullName ||
+        s.student?.fullName ||
+        s.user?.fullName ||
+        s.studentName ||
+        s.fullName;
+      if (directName) return directName;
+
+      const targetId = s.studentId || s.student?.id || s.id || (typeof s === "string" ? s : undefined);
+      if (targetId) {
+        const found = allStudents.find(
+          (st) =>
+            st.id === targetId ||
+            st.studentProfile?.id === targetId ||
+            (st as any).student?.id === targetId ||
+            (st as any).studentProfileId === targetId
+        );
+        if (found) {
+          return found.fullName || found.code || targetId;
+        }
+      }
+
+      return targetId || "Học sinh";
+    },
+    [allStudents]
+  );
+
+  const filteredExamAssignments = useMemo(() => {
+    return examAssignments.filter((record) => {
+      const itemCenterId = getRecordCenterId(record);
+
+      // Strict Teacher Center Boundary: Never show records from other centers
+      if (isTeacher) {
+        if (itemCenterId && userCenters.length > 0 && !userCenters.includes(itemCenterId) && !isMyRecord(record)) {
+          return false;
+        }
+      }
+
+      // Center Filter
+      if (selectedCenterId !== "all") {
+        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
+        if (!itemCenterId && record.classId) {
+          const cls = allClasses.find((c) => c.id === record.classId);
+          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
+        }
+      }
+
+      // Scope Filter
+      if (assignmentScope === "my" && isTeacher) {
+        if (!isMyRecord(record)) return false;
+      }
+
+      // Search Keyword
+      if (searchKeyword.trim()) {
+        const kw = searchKeyword.toLowerCase();
+        const title = (record.title || "").toLowerCase();
+        const examNames = (record.exams || []).map((e: any) => `${e.exam?.title || ""} ${e.exam?.code || ""}`).join(" ").toLowerCase();
+        const clsName = (record.class?.name || allClasses.find((c) => c.id === record.classId)?.name || "").toLowerCase();
+        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
+        const studentNames = (record.students || []).map((s: any) => resolveStudentName(s)).join(" ").toLowerCase();
+        if (!title.includes(kw) && !examNames.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw) && !studentNames.includes(kw)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [examAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, userCenters, resolveStudentName]);
+
+  const filteredCurriculumAssignments = useMemo(() => {
+    return curriculumAssignments.filter((record) => {
+      const itemCenterId = getRecordCenterId(record);
+
+      // Strict Teacher Center Boundary: Never show records from other centers
+      if (isTeacher) {
+        if (itemCenterId && userCenters.length > 0 && !userCenters.includes(itemCenterId) && !isMyRecord(record)) {
+          return false;
+        }
+      }
+
+      // Center Filter
+      if (selectedCenterId !== "all") {
+        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
+        if (!itemCenterId && record.classId) {
+          const cls = allClasses.find((c) => c.id === record.classId);
+          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
+        }
+      }
+
+      // Scope Filter
+      if (assignmentScope === "my" && isTeacher) {
+        if (!isMyRecord(record)) return false;
+      }
+
+      // Search Keyword
+      if (searchKeyword.trim()) {
+        const kw = searchKeyword.toLowerCase();
+        const title = (record.title || record.curriculum?.title || "").toLowerCase();
+        const curCode = (record.curriculum?.code || "").toLowerCase();
+        const clsName = (record.class?.name || allClasses.find((c) => c.id === record.classId)?.name || "").toLowerCase();
+        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
+        const studentNames = (record.students || []).map((s: any) => resolveStudentName(s)).join(" ").toLowerCase();
+        if (!title.includes(kw) && !curCode.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw) && !studentNames.includes(kw)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [curriculumAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, userCenters, resolveStudentName]);
+
+  // Helper to resolve all class IDs for a student
+  const getStudentClassIds = useCallback((student: StudentOption): string[] => {
+    const profile = student.studentProfile as any;
+    if (!profile) return [];
+    const ids = new Set<string>();
+    if (Array.isArray(profile.classIds)) {
+      profile.classIds.forEach((id: string) => ids.add(id));
+    }
+    if (Array.isArray(profile.classes)) {
+      profile.classes.forEach((c: any) => {
+        const cid = c.classId || c.id || c.class?.id;
+        if (cid) ids.add(cid);
+      });
+    }
+    return Array.from(ids);
+  }, []);
+
+  // ==================== MODAL OPTIONS ====================
+  const teacherAssignedClasses = useMemo(() => {
+    if (!isTeacher) return [];
+
+    const classMap = new Map<string, any>();
+
+    // 1. From allClasses that match teacherClassIds
+    allClasses.filter((c) => teacherClassIds.includes(c.id)).forEach((c) => {
+      const spec = specializations.find((s) => s.id === c.specializationId);
+      classMap.set(c.id, {
+        ...c,
+        specializationName: spec?.name || (c as any).specialization?.name,
+      });
+    });
+
+    // 2. From user?.teacher?.classes (Auth profile)
+    (user?.teacher?.classes || [])
+      .filter((tc: any) => tc.isActive !== false && tc.class && tc.class.isActive !== false)
+      .forEach((tc: any) => {
+        const cid = tc.classId || tc.class?.id;
+        if (cid) {
+          const spec = specializations.find((s) => s.id === (tc.class.specializationId || tc.specializationId));
+          classMap.set(cid, {
+            id: cid,
+            name: tc.class.name,
+            centerId: tc.class.centerId || tc.centerId,
+            specializationId: tc.class.specializationId || tc.specializationId,
+            center: tc.class.center,
+            specialization: tc.class.specialization,
+            specializationName: spec?.name || tc.class.specialization?.name,
+          });
+        }
+      });
+
+    // 3. Fallback from user?.teacherProfile?.classes
+    (user?.teacherProfile?.classes || []).forEach((c: any) => {
+      const cid = c.id || c.classId;
+      if (cid && !classMap.has(cid)) {
+        const spec = specializations.find((s) => s.id === c.specializationId);
+        classMap.set(cid, {
+          ...c,
+          id: cid,
+          specializationName: spec?.name || c.specialization?.name,
+        });
+      }
+    });
+
+    let teacherClasses = Array.from(classMap.values());
+
+    // Filter by selected center if specific center selected
+    if (selectedCenterId && selectedCenterId !== "all") {
+      teacherClasses = teacherClasses.filter((c) => c.centerId === selectedCenterId);
+    } else if (userCenters.length > 0) {
+      teacherClasses = teacherClasses.filter((c) => c.centerId && userCenters.includes(c.centerId));
+    }
+
+    return teacherClasses;
+  }, [isTeacher, allClasses, teacherClassIds, user, specializations, selectedCenterId, userCenters]);
+
+  const modalClasses = useMemo(() => {
+    let list = allClasses;
+    if (selectedCenterId !== "all") {
+      list = list.filter((c) => c.centerId === selectedCenterId);
+    } else if (isTeacher && userCenters.length > 0) {
+      list = list.filter((c) => c.centerId && userCenters.includes(c.centerId));
+    }
+    return list;
+  }, [allClasses, selectedCenterId, isTeacher, userCenters]);
+
+  const assignableClasses = useMemo(() => {
+    if (isTeacher) {
+      return teacherAssignedClasses;
+    }
+    return modalClasses;
+  }, [isTeacher, teacherAssignedClasses, modalClasses]);
+
+  const modalExams = useMemo(() => {
+    if (selectedClassForExam) {
+      const cls = assignableClasses.find((c) => c.id === selectedClassForExam) || allClasses.find((c) => c.id === selectedClassForExam);
+      const classSpecId = cls?.specializationId || (cls as any)?.specialization?.id;
+      if (classSpecId) {
+        return exams.filter((e) => e.specializationId === classSpecId);
+      }
+    }
+    if (isTeacher && teacherSpecializationIds.length > 0) {
+      return exams.filter((e) => e.specializationId && teacherSpecializationIds.includes(e.specializationId));
+    }
+    return exams;
+  }, [exams, selectedClassForExam, assignableClasses, allClasses, isTeacher, teacherSpecializationIds]);
+
+  const modalDirectCurriculums = useMemo(() => {
+    if (selectedClassForCurriculum) {
+      const cls = assignableClasses.find((c) => c.id === selectedClassForCurriculum) || allClasses.find((c) => c.id === selectedClassForCurriculum);
+      const classSpecId = cls?.specializationId || (cls as any)?.specialization?.id;
+      if (classSpecId) {
+        return curriculums.filter((c) => c.specializationId === classSpecId);
+      }
+    }
+    if (isTeacher && teacherSpecializationIds.length > 0) {
+      return curriculums.filter((c) => c.specializationId && teacherSpecializationIds.includes(c.specializationId));
+    }
+    return curriculums;
+  }, [curriculums, selectedClassForCurriculum, assignableClasses, allClasses, isTeacher, teacherSpecializationIds]);
+
+  const handleClassChangeForExam = (classId?: string) => {
+    setSelectedClassForExam(classId);
+    examForm.setFieldValue("studentIds", []);
+    if (classId) {
+      const classSpecId = isTeacher
+        ? teacherAssignedClasses.find((c: any) => c.id === classId)?.specializationId || getClassSpecializationId(classId)
+        : getClassSpecializationId(classId);
+      if (classSpecId) {
+        const currentExamIds: string[] = examForm.getFieldValue("examIds") || [];
+        const validExamIds = currentExamIds.filter((id) => {
+          const ex = exams.find((e) => e.id === id);
+          return ex && ex.specializationId === classSpecId;
+        });
+        if (validExamIds.length < currentExamIds.length) {
+          examForm.setFieldValue("examIds", validExamIds);
+          setSelectedExamIds(validExamIds);
+        }
+      }
+    }
+  };
+
+  const handleClassChangeForCurriculum = (classId?: string) => {
+    setSelectedClassForCurriculum(classId);
+    curriculumForm.setFieldValue("studentIds", []);
+    if (classId) {
+      const classSpecId = getClassSpecializationId(classId);
+      if (classSpecId) {
+        const currentCurriculumId = curriculumForm.getFieldValue("curriculumId");
+        if (currentCurriculumId) {
+          const curr = curriculums.find((c) => c.id === currentCurriculumId);
+          if (curr && curr.specializationId && curr.specializationId !== classSpecId) {
+            curriculumForm.setFieldValue("curriculumId", undefined);
+            message.info("Đã tự động bỏ chọn giáo trình không cùng môn học với lớp vừa chọn");
+          }
+        }
+      }
+    }
+  };
+
+  const handleResetFilters = () => {
+    const defaultCenter = isTeacher && userCenters.length > 0 ? userCenters[0] : (isTeacher && user?.centerId ? user.centerId : "all");
+    setSelectedCenterId(defaultCenter);
+    setAssignmentScope(isTeacher ? "my" : "center");
+    setSearchKeyword("");
+  };
+
+  /**
+   * Lọc học sinh theo lớp và trung tâm.
+   * Với giáo viên: CHỈ hiển thị học sinh thuộc các lớp do giáo viên phụ trách tại trung tâm của giáo viên.
+   */
   const getStudentsForClass = (classId?: string) => {
-    if (!classId) return allStudents;
-    return allStudents.filter((s) =>
-      s.studentProfile?.classes?.some((c) => c.id === classId)
-    );
+    let list = allStudents;
+
+    if (isTeacher) {
+      // 1. Học sinh bắt buộc phải thuộc ít nhất 1 lớp mà giáo viên này phụ trách
+      list = list.filter((s) => {
+        const studentClassIds = getStudentClassIds(s);
+        return studentClassIds.some((cid) => teacherClassIds.includes(cid));
+      });
+
+      // 2. Khóa học sinh theo trung tâm của giáo viên
+      const activeCenterId = selectedCenterId !== "all" ? selectedCenterId : userCenters[0];
+      if (activeCenterId) {
+        list = list.filter((s) => {
+          const studentClassIds = getStudentClassIds(s);
+          return studentClassIds.some((cid) => {
+            const cls = allClasses.find((c) => c.id === cid);
+            return cls && cls.centerId === activeCenterId;
+          });
+        });
+      }
+
+      // 3. Nếu đã chọn lớp cụ thể, lọc đúng học sinh của lớp đó
+      if (classId) {
+        return list.filter((s) => getStudentClassIds(s).includes(classId));
+      }
+      return list;
+    }
+
+    // Với Admin / Quản lý
+    const activeCenterId = selectedCenterId !== "all" ? selectedCenterId : undefined;
+    if (activeCenterId) {
+      list = list.filter((s) => {
+        const studentClassIds = getStudentClassIds(s);
+        return studentClassIds.some((cid) => {
+          const cls = allClasses.find((c) => c.id === cid);
+          return cls && cls.centerId === activeCenterId;
+        });
+      });
+    }
+
+    if (classId) {
+      return list.filter((s) => getStudentClassIds(s).includes(classId));
+    }
+    return list;
   };
 
   // ==================== EXAM ASSIGNMENT HANDLERS ====================
   const handleCreateExamAssignment = async (values: any) => {
+    const examIds: string[] = Array.isArray(values.examIds) ? values.examIds : [values.examIds];
+    if (!examIds.length) { message.warning("Vui lòng chọn ít nhất 1 bài thi!"); return; }
+    const rawStudentIds = Array.isArray(values.studentIds) ? values.studentIds.filter(Boolean) : [];
+    if (!values.classId && !rawStudentIds.length) {
+      message.warning("Vui lòng chọn lớp học hoặc ít nhất 1 học sinh!");
+      return;
+    }
     try {
       setSubmitting(true);
-      const res = await teacherLearningService.examAssignments.create({
-        examId: values.examId,
-        classId: values.classId,
-        studentIds: values.studentIds?.length ? values.studentIds : undefined,
+      const examVersions = values.examVersions || {};
+      const examsPayload = examIds.map((examId) => ({
+        examId,
+        examVersionId: examVersions[examId] || undefined,
+      }));
+
+      // NOTE: maxAttempts da bi xoa (migration 1780000030000).
+      // Backend tu dong biet day la de kiem tra hay on tap qua examType.
+      await teacherLearningService.examAssignments.create({
+        exams: examsPayload,
+        classId: values.classId || undefined,
+        studentIds: rawStudentIds.length ? Array.from(new Set(rawStudentIds)) : undefined,
         title: values.title || undefined,
         instructions: values.instructions || undefined,
       });
-
-      // Save created assignment in local storage
-      const selectedExam = exams.find(e => e.id === values.examId);
-      const selectedClass = classes.find(c => c.id === values.classId);
-      const newLocalAssignment = {
-        id: res?.id || res?.data?.id || `local-${Date.now()}`,
-        title: values.title || selectedExam?.title || undefined,
-        instructions: values.instructions || undefined,
-        classId: values.classId,
-        class: selectedClass ? { id: selectedClass.id, name: selectedClass.name } : undefined,
-        examId: values.examId,
-        exam: selectedExam ? { id: selectedExam.id, title: selectedExam.title, code: selectedExam.code } : undefined,
-        studentIds: values.studentIds?.length ? values.studentIds : undefined,
-        status: "active" as const,
-        isActive: true,
-        createdAt: res?.createdAt || res?.data?.createdAt || (res as any)?.created_at || (res as any)?.data?.created_at || new Date().toISOString(),
-        students: res?.students || res?.data?.students || (values.studentIds || []).map((studentId: string) => ({ studentId })),
-      };
-
-      const local = localStorage.getItem("mock_exam_assignments");
-      const list = local ? JSON.parse(local) : [];
-      list.unshift(newLocalAssignment);
-      localStorage.setItem("mock_exam_assignments", JSON.stringify(list));
-
-      message.success("Giao bài thi thành công!");
+      message.success(`Giao ${examIds.length > 1 ? `${examIds.length} bài thi` : "bài thi"} thành công!`);
       examForm.resetFields();
+      setSelectedExamIds([]);
+      setExamVersionsMap({});
       setSelectedClassForExam(undefined);
       setExamFormOpen(false);
       loadAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Giao bài thi thất bại";
-      message.error(msg);
+      const msg = getErrorMessage(err, "Giao bài thi thất bại");
+      message.error(msg, 5);
     } finally {
       setSubmitting(false);
     }
@@ -581,31 +970,17 @@ export default function TeacherAssignments() {
   const handleCancelExamAssignment = (id: string) => {
     Modal.confirm({
       title: "Huỷ giao bài thi",
-      content: "Xác nhận huỷ assignment này? Học sinh sẽ không thể làm bài mới từ assignment này.",
+      content: "Học sinh sẽ không thể làm bài mới từ assignment này.",
       okText: "Huỷ assignment",
       okButtonProps: { danger: true },
       cancelText: "Đóng",
       onOk: async () => {
         try {
           await teacherLearningService.examAssignments.cancel(id);
-
-          // Update in local storage
-          const local = localStorage.getItem("mock_exam_assignments");
-          if (local) {
-            const list = JSON.parse(local);
-            const updated = list.map((item: any) => {
-              if (item.id === id) {
-                return { ...item, status: "cancelled" as const, isActive: false };
-              }
-              return item;
-            });
-            localStorage.setItem("mock_exam_assignments", JSON.stringify(updated));
-          }
-
           message.success("Đã huỷ assignment");
           loadAll();
-        } catch {
-          message.error("Huỷ thất bại");
+        } catch (err: any) {
+          message.error(getErrorMessage(err, "Huỷ thất bại"), 5);
         }
       },
     });
@@ -613,47 +988,41 @@ export default function TeacherAssignments() {
 
   // ==================== CURRICULUM ASSIGNMENT HANDLERS ====================
   const handleCreateCurriculumAssignment = async (values: any) => {
+    const rawStudentIds = Array.isArray(values.studentIds) ? values.studentIds.filter(Boolean) : [];
+    if (!values.classId && !rawStudentIds.length) {
+      message.warning("Vui lòng chọn lớp học hoặc ít nhất 1 học sinh!");
+      return;
+    }
+
+    let resolvedStudentIds = rawStudentIds;
+    if (values.classId && !resolvedStudentIds.length) {
+      const classStudents = getStudentsForClass(values.classId);
+      resolvedStudentIds = classStudents
+        .map((s: any) => s.studentProfile?.id || s.id)
+        .filter(Boolean);
+      if (!resolvedStudentIds.length) {
+        message.warning("Lớp học đã chọn hiện chưa có học sinh nào!");
+        return;
+      }
+    }
+
     try {
       setSubmitting(true);
-      const res = await teacherLearningService.curriculumAssignments.create({
+      await teacherLearningService.curriculumAssignments.create({
         curriculumId: values.curriculumId,
-        classId: values.classId,
-        studentIds: values.studentIds?.length ? values.studentIds : undefined,
+        studentIds: Array.from(new Set(resolvedStudentIds)),
+        classId: values.classId || undefined,
         title: values.title || undefined,
         instructions: values.instructions || undefined,
       });
-
-      // Save created assignment in local storage
-      const selectedCurriculum = curriculums.find(c => c.id === values.curriculumId);
-      const selectedClass = classes.find(c => c.id === values.classId);
-      const newLocalAssignment = {
-        id: res?.id || res?.data?.id || `local-${Date.now()}`,
-        title: values.title || selectedCurriculum?.title || undefined,
-        instructions: values.instructions || undefined,
-        classId: values.classId,
-        class: selectedClass ? { id: selectedClass.id, name: selectedClass.name } : undefined,
-        curriculumId: values.curriculumId,
-        curriculum: selectedCurriculum ? { id: selectedCurriculum.id, title: selectedCurriculum.title, code: selectedCurriculum.code } : undefined,
-        studentIds: values.studentIds?.length ? values.studentIds : undefined,
-        status: "active" as const,
-        isActive: true,
-        createdAt: res?.createdAt || res?.data?.createdAt || (res as any)?.created_at || (res as any)?.data?.created_at || new Date().toISOString(),
-        students: res?.students || res?.data?.students || (values.studentIds || []).map((studentId: string) => ({ studentId })),
-      };
-
-      const local = localStorage.getItem("mock_curriculum_assignments");
-      const list = local ? JSON.parse(local) : [];
-      list.unshift(newLocalAssignment);
-      localStorage.setItem("mock_curriculum_assignments", JSON.stringify(list));
-
-      message.success("Giao giáo trình học thành công!");
+      message.success("Giao giáo trình thành công!");
       curriculumForm.resetFields();
       setSelectedClassForCurriculum(undefined);
       setCurriculumFormOpen(false);
       loadAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Giao giáo trình thất bại";
-      message.error(msg);
+      const msg = getErrorMessage(err, "Giao giáo trình thất bại");
+      message.error(msg, 5);
     } finally {
       setSubmitting(false);
     }
@@ -662,31 +1031,17 @@ export default function TeacherAssignments() {
   const handleCancelCurriculumAssignment = (id: string) => {
     Modal.confirm({
       title: "Huỷ giao giáo trình học",
-      content: "Xác nhận huỷ? Học sinh sẽ không tiếp tục truy cập giáo trình này.",
+      content: "Học sinh sẽ không còn truy cập giáo trình này.",
       okText: "Huỷ assignment",
       okButtonProps: { danger: true },
       cancelText: "Đóng",
       onOk: async () => {
         try {
           await teacherLearningService.curriculumAssignments.cancel(id);
-
-          // Update in local storage
-          const local = localStorage.getItem("mock_curriculum_assignments");
-          if (local) {
-            const list = JSON.parse(local);
-            const updated = list.map((item: any) => {
-              if (item.id === id) {
-                return { ...item, status: "cancelled" as const, isActive: false };
-              }
-              return item;
-            });
-            localStorage.setItem("mock_curriculum_assignments", JSON.stringify(updated));
-          }
-
           message.success("Đã huỷ assignment");
           loadAll();
-        } catch {
-          message.error("Huỷ thất bại");
+        } catch (err: any) {
+          message.error(getErrorMessage(err, "Huỷ thất bại"), 5);
         }
       },
     });
@@ -696,80 +1051,180 @@ export default function TeacherAssignments() {
   const examAssignmentColumns = [
     {
       title: "Bài thi",
-      render: (_: any, record: ExamAssignmentRow) => (
-        <div>
-          <div className="font-semibold text-slate-800">
-            {record.title || record.exam?.title || record.exam?.code || "—"}
+      width: 240,
+      render: (_: any, record: any) => {
+        const examItems = record.exams || [];
+        const titleStr = record.title;
+        return (
+          <div className="max-w-[230px]">
+            {titleStr && (
+              <Tooltip title={titleStr} placement="topLeft">
+                <div className="font-semibold text-slate-800 mb-1 truncate cursor-pointer hover:text-indigo-600 transition-colors">
+                  {titleStr}
+                </div>
+              </Tooltip>
+            )}
+            <div className="text-slate-600 text-sm space-y-1">
+              {examItems.map((item: any, idx: number) => {
+                const examTitle = item.exam?.title || item.exam?.code || item.examId;
+                return (
+                  <div key={item.examId || idx} className={titleStr ? "pl-2 border-l-2 border-slate-200" : ""}>
+                    <Tooltip title={examTitle} placement="topLeft">
+                      <div className={`truncate cursor-pointer hover:text-indigo-600 transition-colors ${titleStr ? "text-xs font-normal" : "font-semibold text-slate-800"}`}>
+                        {examTitle}
+                      </div>
+                    </Tooltip>
+                    {item.exam?.code && (
+                      <Tooltip title={item.exam.code}>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">{item.exam.code}</div>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              })}
+              {examItems.length === 0 && !titleStr && <span className="text-slate-400">—</span>}
+            </div>
           </div>
-          {record.exam && (
-            <div className="text-xs text-slate-400 font-mono">{record.exam.code}</div>
-          )}
-        </div>
-      ),
+        );
+      },
     },
     {
       title: "Lớp học",
-      render: (_: any, record: ExamAssignmentRow) => (
-        <Tag color="blue" className="rounded-full">
-          {record.class?.name || record.classId}
-        </Tag>
-      ),
+      width: 140,
+      render: (_: any, record: any) => {
+        const className = record.class?.name;
+        if (!className) return <span className="text-slate-400 text-sm">—</span>;
+        return (
+          <Tooltip title={className} placement="topLeft">
+            <Tag color="blue" className="rounded-full max-w-[130px] truncate inline-block align-middle cursor-pointer">
+              {className}
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: "Người giao",
+      width: 160,
+      render: (_: any, record: any) => {
+        const isMe =
+          (record.teacherId && (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)) ||
+          (isTeacher && record.classId && teacherClassIds.includes(record.classId));
+        const teacherName =
+          record.teacher?.user?.fullName ||
+          record.teacher?.fullName ||
+          record.teacher?.name ||
+          (isMe ? user?.fullName : undefined);
+        return (
+          <div className="flex items-center gap-1.5 flex-nowrap max-w-[150px]">
+            {teacherName ? (
+              <Tooltip title={teacherName} placement="topLeft">
+                <span className="text-sm text-slate-700 truncate inline-block cursor-pointer">
+                  {teacherName}
+                </span>
+              </Tooltip>
+            ) : (
+              <span className="text-sm text-slate-400">—</span>
+            )}
+            {isMe && (
+              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold shrink-0">
+                Tôi
+              </Tag>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Đối tượng",
-      render: (_: any, record: ExamAssignmentRow) => {
-        const studentCount = record.studentIds?.length ?? (record as any).students?.length;
-        return studentCount ? (
-          <span className="text-sm text-slate-600">
-            <UserOutlined className="mr-1 text-indigo-400" />
-            {studentCount} học sinh được chọn
-          </span>
+      width: 130,
+      render: (_: any, record: any) => {
+        const students = record.students || [];
+        const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
+        const cnt = record.studentIds?.length ?? studentList.length;
+        if (cnt) {
+          const tooltipContent = (
+            <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
+              {studentList.map((s: any, idx: number) => {
+                const name = resolveStudentName(s);
+                const statusText = s.status === "finished" ? "Đã hoàn thành" : s.status === "in_progress" ? "Đang làm" : "Chưa bắt đầu";
+                return (
+                  <div key={s.id || idx} className="truncate">
+                    <span className="font-medium">{name}</span>: <span className="font-semibold text-emerald-300">{statusText}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+          const content = (
+            <span className="text-sm text-slate-600 truncate inline-block cursor-pointer">
+              <UserOutlined className="mr-1 text-indigo-400" />
+              {cnt} học sinh
+            </span>
+          );
+          return <Tooltip title={tooltipContent} placement="topLeft">{content}</Tooltip>;
+        }
+        return <span className="text-sm text-slate-600 whitespace-nowrap"><TeamOutlined className="mr-1 text-emerald-400" />Toàn bộ lớp</span>;
+      },
+    },
+    {
+      title: "Hình thức",
+      width: 120,
+      align: "center" as const,
+      render: (_: any, record: any) => {
+        const examItems = record.exams || [];
+        const isExam = examItems.some((e: any) => e.exam?.examType === "exam");
+        return isExam ? (
+          <Tag color="purple" className="rounded-full border-none text-xs font-semibold m-0">
+            Đề kiểm tra
+          </Tag>
         ) : (
-          <span className="text-sm text-slate-600">
-            <TeamOutlined className="mr-1 text-emerald-400" />
-            Toàn bộ lớp
-          </span>
+          <Tag color="blue" className="rounded-full border-none text-xs font-semibold m-0">
+            Đề ôn tập
+          </Tag>
         );
       },
     },
     {
       title: "Trạng thái",
-      render: (_: any, record: ExamAssignmentRow) => statusTag(record.status),
+      width: 130,
+      align: "center" as const,
+      render: (_: any, record: any) => statusTag(record.status),
     },
     {
       title: "Ngày tạo",
-      render: (_: any, record: ExamAssignmentRow) => {
-        const dateStr = record.createdAt || record.created_at;
-        return dateStr ? (
-          <span className="text-xs text-slate-400">
-            {new Date(dateStr).toLocaleDateString("vi-VN")}
-          </span>
+      width: 110,
+      align: "center" as const,
+      render: (_: any, record: any) => {
+        const d = record.createdAt || record.created_at;
+        return d ? (
+          <Tooltip title={dayjs(d).format("HH:mm:ss DD/MM/YYYY")}>
+            <span className="text-xs text-slate-400 cursor-default">{new Date(d).toLocaleDateString("vi-VN")}</span>
+          </Tooltip>
         ) : "—";
       },
     },
     {
       title: "Thao tác",
-      align: "right" as const,
-      render: (_: any, record: ExamAssignmentRow) => (
+      width: 85,
+      align: "center" as const,
+      render: (_: any, record: any) => (
         <Space size="small">
           <Tooltip title="Xem thống kê">
-            <Button
-              type="text"
-              size="small"
+            <Button type="text" size="small"
               icon={<BarChartOutlined className="text-slate-400 hover:text-indigo-600" />}
               onClick={() => setExamAnalyticsId(record.id)}
             />
           </Tooltip>
           {record.status === "active" && (
-            <Tooltip title="Huỷ assignment">
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<CloseCircleOutlined className="text-slate-400 hover:text-rose-600" />}
-                onClick={() => handleCancelExamAssignment(record.id)}
-              />
-            </Tooltip>
+            <Can perform={["learning.manage", "learning.assign"]} mode="any">
+              <Tooltip title="Huỷ assignment">
+                <Button type="text" size="small" danger
+                  icon={<CloseCircleOutlined className="text-slate-400 hover:text-rose-600" />}
+                  onClick={() => handleCancelExamAssignment(record.id)}
+                />
+              </Tooltip>
+            </Can>
           )}
         </Space>
       ),
@@ -779,102 +1234,167 @@ export default function TeacherAssignments() {
   const curriculumAssignmentColumns = [
     {
       title: "Giáo trình học",
-      render: (_: any, record: CurriculumAssignmentRow) => (
-        <div>
-          <div className="font-semibold text-slate-800">
-            {record.title || record.curriculum?.title || record.curriculum?.code || "—"}
+      width: 250,
+      render: (_: any, record: any) => {
+        const titleStr = record.title || record.curriculum?.title || record.curriculum?.code || "—";
+        const codeStr = record.curriculum?.code;
+        return (
+          <div className="max-w-[240px]">
+            <Tooltip title={titleStr} placement="topLeft">
+              <div className="font-semibold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors">
+                {titleStr}
+              </div>
+            </Tooltip>
+            {codeStr && (
+              <Tooltip title={codeStr}>
+                <div className="text-xs text-slate-400 font-mono truncate">{codeStr}</div>
+              </Tooltip>
+            )}
           </div>
-          {record.curriculum && (
-            <div className="text-xs text-slate-400 font-mono">{record.curriculum.code}</div>
-          )}
-        </div>
-      ),
-    },
-    {
-      title: "Lớp học",
-      render: (_: any, record: CurriculumAssignmentRow) => (
-        <Tag color="purple" className="rounded-full">
-          {record.class?.name || record.classId}
-        </Tag>
-      ),
-    },
-    {
-      title: "Đối tượng",
-      render: (_: any, record: CurriculumAssignmentRow) => {
-        const studentCount = record.studentIds?.length ?? (record as any).students?.length;
-        return studentCount ? (
-          <span className="text-sm text-slate-600">
-            <UserOutlined className="mr-1 text-purple-400" />
-            {studentCount} học sinh được chọn
-          </span>
-        ) : (
-          <span className="text-sm text-slate-600">
-            <TeamOutlined className="mr-1 text-emerald-400" />
-            Toàn bộ lớp
-          </span>
         );
       },
     },
     {
+      title: "Lớp học",
+      width: 140,
+      render: (_: any, record: any) => {
+        const className = record.class?.name;
+        if (!className) return <span className="text-slate-400 text-sm">—</span>;
+        return (
+          <Tooltip title={className} placement="topLeft">
+            <Tag color="purple" className="rounded-full max-w-[130px] truncate inline-block align-middle cursor-pointer">
+              {className}
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: "Người giao",
+      width: 160,
+      render: (_: any, record: any) => {
+        const isMe =
+          (record.teacherId && (record.teacherId === user?.teacherProfile?.id || record.teacherId === user?.id)) ||
+          (isTeacher && record.classId && teacherClassIds.includes(record.classId));
+        const teacherName =
+          record.teacher?.user?.fullName ||
+          record.teacher?.fullName ||
+          record.teacher?.name ||
+          (isMe ? user?.fullName : undefined);
+        return (
+          <div className="flex items-center gap-1.5 flex-nowrap max-w-[150px]">
+            {teacherName ? (
+              <Tooltip title={teacherName} placement="topLeft">
+                <span className="text-sm text-slate-700 truncate inline-block cursor-pointer">
+                  {teacherName}
+                </span>
+              </Tooltip>
+            ) : (
+              <span className="text-sm text-slate-400">—</span>
+            )}
+            {isMe && (
+              <Tag color="purple" className="rounded-full px-1.5 py-0 border-none text-[10px] font-bold shrink-0">
+                Tôi
+              </Tag>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Đối tượng",
+      width: 130,
+      render: (_: any, record: any) => {
+        const students = record.students || [];
+        const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
+        const cnt = record.studentIds?.length ?? studentList.length;
+        if (cnt) {
+          const tooltipContent = (
+            <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
+              {studentList.map((s: any, idx: number) => {
+                const name = resolveStudentName(s);
+                const statusText = s.status === "finished" ? "Đã hoàn thành" : s.status === "in_progress" ? "Đang làm" : "Chưa bắt đầu";
+                return (
+                  <div key={s.id || idx} className="truncate">
+                    <span className="font-medium">{name}</span>: <span className="font-semibold text-purple-300">{statusText}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+          const content = (
+            <span className="text-sm text-slate-600 truncate inline-block cursor-pointer">
+              <UserOutlined className="mr-1 text-purple-400" />
+              {cnt} học sinh
+            </span>
+          );
+          return <Tooltip title={tooltipContent} placement="topLeft">{content}</Tooltip>;
+        }
+        return <span className="text-sm text-slate-600 whitespace-nowrap"><TeamOutlined className="mr-1 text-emerald-400" />Toàn bộ lớp</span>;
+      },
+    },
+    {
       title: "Trạng thái",
-      render: (_: any, record: CurriculumAssignmentRow) => statusTag(record.status),
+      width: 130,
+      align: "center" as const,
+      render: (_: any, record: any) => statusTag(record.status),
     },
     {
       title: "Ngày tạo",
-      render: (_: any, record: CurriculumAssignmentRow) => {
-        const dateStr = record.createdAt || record.created_at;
-        return dateStr ? (
-          <span className="text-xs text-slate-400">
-            {new Date(dateStr).toLocaleDateString("vi-VN")}
-          </span>
+      width: 110,
+      align: "center" as const,
+      render: (_: any, record: any) => {
+        const d = record.createdAt || record.created_at;
+        return d ? (
+          <Tooltip title={dayjs(d).format("HH:mm:ss DD/MM/YYYY")}>
+            <span className="text-xs text-slate-400 cursor-default">{new Date(d).toLocaleDateString("vi-VN")}</span>
+          </Tooltip>
         ) : "—";
       },
     },
     {
       title: "Thao tác",
-      align: "right" as const,
-      render: (_: any, record: CurriculumAssignmentRow) => (
+      width: 85,
+      align: "center" as const,
+      render: (_: any, record: any) => (
         <Space size="small">
           <Tooltip title="Xem thống kê">
-            <Button
-              type="text"
-              size="small"
+            <Button type="text" size="small"
               icon={<BarChartOutlined className="text-slate-400 hover:text-purple-600" />}
               onClick={() => setCurriculumAnalyticsId(record.id)}
             />
           </Tooltip>
           {record.status === "active" && (
-            <Tooltip title="Huỷ assignment">
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<CloseCircleOutlined className="text-slate-400 hover:text-rose-600" />}
-                onClick={() => handleCancelCurriculumAssignment(record.id)}
-              />
-            </Tooltip>
+            <Can perform={["learning.manage", "learning.assign"]} mode="any">
+              <Tooltip title="Huỷ assignment">
+                <Button type="text" size="small" danger
+                  icon={<CloseCircleOutlined className="text-slate-400 hover:text-rose-600" />}
+                  onClick={() => handleCancelCurriculumAssignment(record.id)}
+                />
+              </Tooltip>
+            </Can>
           )}
         </Space>
       ),
     },
   ];
 
+  // ==================== STUDENT MANAGEMENT ====================
+  const reloadStudents = async () => {
+    try {
+      const res = await userService.list({ roleCode: "student", limit: 100 });
+      setAllStudents(res || []);
+    } catch (e) {
+      console.error("Failed to reload students", e);
+    }
+  };
+
   // ==================== RENDER ====================
   return (
     <ConfigProvider
       theme={{
-        token: {
-          borderRadius: 12,
-          colorPrimary: "#4f46e5",
-          fontFamily: "Inter, system-ui, -apple-system, sans-serif",
-        },
-        components: {
-          Table: {
-            headerBg: "#f8fafc",
-            headerColor: "#475569",
-            rowHoverBg: "#f1f5f9",
-          },
-        },
+        token: { borderRadius: 12, colorPrimary: "#0891b2", fontFamily: "Inter, system-ui, -apple-system, sans-serif" },
+        components: { Table: { headerBg: "#f8fafc", headerColor: "#475569", rowHoverBg: "#f1f5f9" } },
       }}
     >
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
@@ -883,260 +1403,457 @@ export default function TeacherAssignments() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
               <div>
-                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
-                  📋 Quản lý Giao bài
+                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight flex items-center gap-2">
+                  <ClipboardList size={26} className="text-indigo-600" />
+                  Quản lý Giao bài
                 </Title>
                 <Text className="text-slate-500 text-sm">
-                  Giao bài thi hoặc giáo trình học cho lớp học / học sinh cụ thể
+                  Gắn giáo trình vào lớp, giao bài thi hoặc giáo trình cho học sinh cụ thể
                 </Text>
               </div>
-              <Button
-                icon={<RefreshCcw />}
-                onClick={loadAll}
-                className="rounded-xl border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600"
-              >
+              <Button icon={<ReloadOutlined />} onClick={loadAll}
+                className="rounded-xl border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600">
                 Làm mới
               </Button>
             </div>
 
-            {/* Tabs */}
-            <Tabs
-              activeKey={activeTab}
-              onChange={setActiveTab}
-              type="card"
-              size="large"
-              className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
-              tabBarStyle={{ padding: "16px 16px 0", background: "white", marginBottom: 0 }}
-              items={[
-                {
-                  key: "exam",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
-                      <FileTextOutlined />
-                      <span>Giao Bài Thi</span>
-                      <Badge
-                        count={examAssignments.filter((a) => a.status === "active").length}
-                        className="ml-1"
-                        style={{ backgroundColor: "#4f46e5" }}
-                      />
+            {/* Filter & Search Toolbar */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Left: Center Select & Scope Filter */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <BankOutlined className="text-indigo-500" />
+                      Trung tâm:
                     </span>
-                  ),
-                  children: (
-                    <div className="p-6">
-                      {/* Create button */}
-                      <div className="flex justify-end mb-4">
-                        <Button
-                          type="primary"
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            examForm.resetFields();
-                            setSelectedClassForExam(undefined);
-                            setExamFormOpen(true);
-                          }}
-                          className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-indigo-500/20"
-                        >
-                          Giao Bài Thi Mới
-                        </Button>
-                      </div>
+                    <Select
+                      value={selectedCenterId}
+                      onChange={(val) => setSelectedCenterId(val)}
+                      className="min-w-[210px]"
+                      options={
+                        isTeacher
+                          ? displayCenters.length > 1
+                            ? [
+                                { value: "all", label: "Tất cả trung tâm của bạn" },
+                                ...displayCenters.map((c) => ({
+                                  value: c.id,
+                                  label: (
+                                    <div className="flex items-center gap-2 justify-between">
+                                      <span className="truncate max-w-[180px]">{c.name}</span>
+                                      <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                        Của bạn
+                                      </Tag>
+                                    </div>
+                                  ),
+                                })),
+                              ]
+                            : displayCenters.map((c) => ({
+                                value: c.id,
+                                label: (
+                                  <div className="flex items-center gap-2 justify-between">
+                                    <span className="truncate max-w-[180px]">{c.name}</span>
+                                    <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                      Của bạn
+                                    </Tag>
+                                  </div>
+                                ),
+                              }))
+                          : [
+                              { value: "all", label: "Tất cả trung tâm (All)" },
+                              ...displayCenters.map((c) => ({
+                                value: c.id,
+                                label: (
+                                  <div className="flex items-center gap-2 justify-between">
+                                    <span className="truncate max-w-[180px]">{c.name}</span>
+                                    {userCenters.includes(c.id) && (
+                                      <Tag color="cyan" className="rounded-full text-[10px] py-0 px-1.5 m-0 font-medium">
+                                        Của bạn
+                                      </Tag>
+                                    )}
+                                  </div>
+                                ),
+                              })),
+                            ]
+                      }
+                    />
+                  </div>
 
-                      {/* Table */}
-                      {examAssignments.length === 0 ? (
-                        <div className="py-16 text-center">
-                          <Empty
-                            description={
-                              <span className="text-slate-400">
-                                Chưa có bài thi nào được giao.
-                                <br />
-                                Nhấn "Giao Bài Thi Mới" để bắt đầu.
-                              </span>
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <Table
-                          dataSource={examAssignments}
-                          columns={examAssignmentColumns}
-                          rowKey="id"
-                          pagination={{ pageSize: 10, showSizeChanger: false }}
-                          bordered={false}
-                          className="rounded-2xl overflow-hidden"
-                        />
-                      )}
-                    </div>
-                  ),
-                },
-                {
-                  key: "curriculum",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
-                      <BookOutlined />
-                      <span>Giao Giáo Trình</span>
-                      <Badge
-                        count={curriculumAssignments.filter((a) => a.status === "active").length}
-                        className="ml-1"
-                        style={{ backgroundColor: "#7c3aed" }}
-                      />
+                  <Divider orientation="vertical" className="h-6 hidden sm:block" />
+
+                  {/* Scope Segmented */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <FilterOutlined className="text-indigo-500" />
+                      Phạm vi:
                     </span>
-                  ),
-                  children: (
-                    <div className="p-6">
-                      {/* Create button */}
-                      <div className="flex justify-end mb-4">
-                        <Button
-                          type="primary"
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            curriculumForm.resetFields();
-                            setSelectedClassForCurriculum(undefined);
-                            setCurriculumFormOpen(true);
-                          }}
-                          className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-purple-500/20"
-                          style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
-                        >
-                          Giao giáo trình Mới
-                        </Button>
-                      </div>
+                    <Segmented
+                      value={assignmentScope}
+                      onChange={(val: any) => setAssignmentScope(val)}
+                      options={
+                        isTeacher
+                          ? displayCenters.length > 1
+                            ? [
+                              { label: "Bài của tôi", value: "my" },
+                              { label: "Toàn trung tâm", value: "center" },
+                              { label: "Tất cả trung tâm của tôi", value: "all" },
+                            ]
+                            : [
+                              { label: "Bài của tôi", value: "my" },
+                              { label: "Toàn trung tâm", value: "center" },
+                            ]
+                          : [
+                            { label: "Theo trung tâm", value: "center" },
+                            { label: "Tất cả hệ thống (All)", value: "all" },
+                          ]
+                      }
+                    />
+                  </div>
+                </div>
 
-                      {/* Table */}
-                      {curriculumAssignments.length === 0 ? (
-                        <div className="py-16 text-center">
-                          <Empty
-                            description={
-                              <span className="text-slate-400">
-                                Chưa có giáo trình nào được giao.
-                                <br />
-                                Nhấn "Giao Giáo Trình Mới" để bắt đầu.
-                              </span>
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <Table
-                          dataSource={curriculumAssignments}
-                          columns={curriculumAssignmentColumns}
-                          rowKey="id"
-                          pagination={{ pageSize: 10, showSizeChanger: false }}
-                          bordered={false}
-                          className="rounded-2xl overflow-hidden"
+                {/* Right: Search Input & Reset */}
+                <div className="flex items-center gap-3">
+                  <Input
+                    placeholder="Tìm bài thi, giáo trình, lớp, học sinh..."
+                    prefix={<SearchOutlined className="text-slate-400" />}
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    allowClear
+                    className="w-full sm:w-72 rounded-xl"
+                  />
+                  {(
+                    (isTeacher ? (userCenters.length > 0 && selectedCenterId !== userCenters[0]) : selectedCenterId !== "all") ||
+                    (isTeacher ? assignmentScope !== "my" : assignmentScope !== "center") ||
+                    searchKeyword
+                  ) && (
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={handleResetFilters}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap px-1 font-semibold"
+                    >
+                      Đặt lại
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status summary banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 pt-3 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-semibold text-slate-600">Đang lọc:</span>
+                  <Tag color={selectedCenterId === "all" ? "orange" : "blue"} className="rounded-full">
+                    {selectedCenterId === "all" ? "Tất cả trung tâm" : (centers.find((c) => c.id === selectedCenterId)?.name || "Trung tâm đã chọn")}
+                  </Tag>
+                  <Tag color={assignmentScope === "all" ? "purple" : assignmentScope === "my" ? "green" : "default"} className="rounded-full">
+                    {assignmentScope === "my" ? "Chỉ bài của tôi" : assignmentScope === "center" ? "Toàn trung tâm" : "Tất cả (All)"}
+                  </Tag>
+                  {searchKeyword && (
+                    <Tag color="cyan" className="rounded-full">
+                      Từ khóa: "{searchKeyword}"
+                    </Tag>
+                  )}
+                </div>
+                <div className="text-slate-400 font-medium">
+                  {activeTab === "exam" && `Hiển thị ${filteredExamAssignments.length} / ${examAssignments.length} bài thi`}
+                  {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumAssignments.length} giáo trình đã giao`}
+                </div>
+              </div>
+            </div>
+
+            {/* Tabs - ConfigProvider sets cardGutter so card tabs have visible spacing */}
+            <ConfigProvider theme={{ components: { Tabs: { cardGutter: 8 } } }}>
+              <Tabs
+                activeKey={activeTab}
+                onChange={setActiveTab}
+                type="card"
+                size="large"
+                className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
+                tabBarStyle={{ padding: "16px 16px 0", background: "white", marginBottom: 0 }}
+                items={[
+                  // ======= TAB 1: EXAM ASSIGNMENT =======
+                  {
+                    key: "exam",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <FileTextOutlined />
+                        <span>Giao Bài Thi</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-4 rounded-xl"
+                          title="Giao bài thi cho học sinh"
+                          description="Có thể chọn nhiều bài thi cùng lúc. Hãy chọn lớp học trước để hệ thống tự động lọc các đề thi thuộc đúng môn học của lớp."
                         />
-                      )}
-                    </div>
-                  ),
-                },
-              ]}
-            />
+                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                          <Can perform="learning.assign">
+                            <Button type="primary" icon={<PlusOutlined />}
+                              onClick={() => {
+                                refreshProfile().catch(() => { });
+                                examForm.resetFields();
+                                setSelectedClassForExam(undefined);
+                                setExamFormOpen(true);
+                              }}
+                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
+                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+                            >
+                              Giao Bài Thi Mới
+                            </Button>
+                          </Can>
+                        </div>
+                        {filteredExamAssignments.length === 0 ? (
+                          <div className="py-16 text-center">
+                            <Empty description={<span className="text-slate-400">Không tìm thấy bài thi nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Bài Thi Mới".</span>} />
+                          </div>
+                        ) : (
+                          <Table
+                            dataSource={filteredExamAssignments}
+                            columns={examAssignmentColumns}
+                            rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }}
+                            bordered={false}
+                            scroll={{ x: 1000 }}
+                            className="rounded-2xl overflow-hidden"
+                          />
+                        )}
+                      </div>
+                    ),
+                  },
+
+                  // ======= TAB 2: CURRICULUM ASSIGNMENT =======
+                  {
+                    key: "curriculum",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <BookOutlined />
+                        <span>Giao Giáo Trình</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <Alert
+                          type="info"
+                          showIcon
+                          className="mb-4 rounded-xl"
+                          title="Giao giáo trình cho học sinh"
+                          description="Chọn lớp học và học sinh cụ thể (để trống ô học sinh để giao cho toàn bộ lớp). Hệ thống tự động theo dõi và đo lường tiến độ hoàn thành các bài thi trong giáo trình của từng học sinh."
+                        />
+                        <div className="!flex !justify-end !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                          <Can perform="learning.assign">
+                            <Button type="primary" icon={<PlusOutlined />}
+                              onClick={() => {
+                                refreshProfile().catch(() => { });
+                                curriculumForm.resetFields();
+                                setSelectedClassForCurriculum(undefined);
+                                setCurriculumFormOpen(true);
+                              }}
+                              className="rounded-xl h-10 px-5 font-semibold shadow-md shadow-cyan-500/20"
+                              style={{ background: "#0891b2", borderColor: "#0891b2" }}
+                            >
+                              Giao Giáo Trình Mới
+                            </Button>
+                          </Can>
+                        </div>
+                        {filteredCurriculumAssignments.length === 0 ? (
+                          <div className="py-16 text-center">
+                            <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được giao phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Giáo Trình Mới".</span>} />
+                          </div>
+                        ) : (
+                          <Table
+                            dataSource={filteredCurriculumAssignments}
+                            columns={curriculumAssignmentColumns}
+                            rowKey="id"
+                            pagination={{ pageSize: 10, showSizeChanger: false }}
+                            bordered={false}
+                            scroll={{ x: 1000 }}
+                            className="rounded-2xl overflow-hidden"
+                          />
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            </ConfigProvider>
           </div>
         </Spin>
       </div>
 
       {/* ==================== EXAM ASSIGNMENT FORM MODAL ==================== */}
-      <Modal
-        open={examFormOpen}
-        onCancel={() => setExamFormOpen(false)}
-        footer={null}
-        title={
-          <div className="flex items-center gap-2 text-indigo-700 font-bold text-lg">
-            <FileTextOutlined />
-            Giao Bài Thi Mới
-          </div>
-        }
-        width={560}
+      <Modal open={examFormOpen} onCancel={() => setExamFormOpen(false)} footer={null}
+        title={<div className="flex items-center gap-2 text-indigo-700 font-bold text-lg"><FileTextOutlined />Giao Bài Thi Mới</div>}
+        centered
+        maskClosable={false}
+        width={640}
+        styles={{
+          body: {
+            maxHeight: "74vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "8px",
+          },
+        }}
       >
-        <Form
-          form={examForm}
-          layout="vertical"
-          onFinish={handleCreateExamAssignment}
-          className="pt-2"
-        >
-          <Form.Item
-            name="examId"
-            label="Bài thi (chỉ hiển thị đã phát hành)"
-            rules={[{ required: true, message: "Vui lòng chọn bài thi!" }]}
-          >
-            <Select
-              showSearch
-              placeholder="Chọn bài thi..."
-              optionFilterProp="children"
-              className="rounded-xl"
-            >
-              {exams.map((e) => (
-                <Select.Option key={e.id} value={e.id}>
-                  {e.title || e.code} <span className="text-slate-400 text-xs ml-1">({e.code})</span>
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-
+        <Form form={examForm} layout="vertical" onFinish={handleCreateExamAssignment} className="pt-2">
           <Form.Item
             name="classId"
-            label="Lớp học"
-            rules={[{ required: true, message: "Vui lòng chọn lớp!" }]}
+            label={
+              <span>
+                Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp trước để hệ thống lọc danh sách đề thi theo đúng môn học)</span>
+              </span>
+            }
           >
             <Select
               showSearch
               placeholder="Chọn lớp học..."
               optionFilterProp="children"
               className="rounded-xl"
-              onChange={(val) => {
-                setSelectedClassForExam(val);
-                examForm.setFieldValue("studentIds", []);
-              }}
+              allowClear
+              onChange={handleClassChangeForExam}
             >
-              {classes.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.name}
-                </Select.Option>
-              ))}
+              {assignableClasses.map((c: any) => {
+                const specName = c.specializationName || (getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)));
+                return (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.name}
+                    {specName && (
+                      <span className="text-slate-400 text-xs ml-1.5 font-normal">
+                        ({specName})
+                      </span>
+                    )}
+                  </Select.Option>
+                );
+              })}
             </Select>
           </Form.Item>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-slate-700 font-medium text-sm flex items-center gap-1">
+                <span className="text-red-500">*</span> Bài thi <span className="text-slate-400 font-normal text-xs">(có thể chọn nhiều)</span>
+              </span>
+              {selectedClassForExam && getClassSpecializationId(selectedClassForExam) && (
+                <span className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full font-medium">
+                  Môn: {getSpecializationName(getClassSpecializationId(selectedClassForExam))} ({modalExams.length} đề thi)
+                </span>
+              )}
+            </div>
+            <Form.Item
+              name="examIds"
+              rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 bài thi!" }]}
+              extra={
+                selectedClassForExam && modalExams.length === 0 ? (
+                  <span className="text-amber-600 text-xs mt-1 block">
+                    Chưa có đề thi nào thuộc môn học này được xuất bản (Published).
+                  </span>
+                ) : undefined
+              }
+            >
+              <SafeSelect
+                mode="multiple"
+                showSearch
+                placeholder={selectedClassForExam ? "Chọn bài thi thuộc môn học của lớp..." : "Chọn bài thi..."}
+                optionFilterProp="children"
+                optionLabelProp="label"
+                className="rounded-xl"
+                onChange={handleExamSelectionChange}
+              >
+                {modalExams.map((e) => (
+                  <Select.Option
+                    key={e.id}
+                    value={e.id}
+                    label={`${e.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}${e.title || e.code}`}
+                  >
+                    <div className="flex items-center justify-between py-0.5">
+                      <span>
+                        <span className="font-semibold text-slate-700">{e.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}</span>
+                        {e.title || e.code}
+                      </span>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        {e.code && <span className="text-slate-400">({e.code})</span>}
+                        {e.specializationId && getSpecializationName(e.specializationId) && (
+                          <span className="text-indigo-500">• {getSpecializationName(e.specializationId)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </Select.Option>
+                ))}
+              </SafeSelect>
+            </Form.Item>
+          </div>
+
+          {selectedExamIds.length > 0 && (
+            <div className="mb-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+              <span className="text-xs font-bold text-slate-500 block mb-1">Chọn phiên bản cho từng đề thi (Mặc định bản mới nhất):</span>
+              {selectedExamIds.map((examId) => {
+                const exam = exams.find((e) => e.id === examId);
+                const versions = examVersionsMap[examId] || [];
+                return (
+                  <div key={examId} className="flex items-center justify-between gap-3 text-xs bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="font-semibold text-slate-700 truncate max-w-[280px]">
+                      {exam?.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}
+                      {exam?.title || exam?.code}
+                    </span>
+                    <Form.Item
+                      name={["examVersions", examId]}
+                      className="mb-0"
+                      initialValue=""
+                    >
+                      <Select className="w-52 text-xs font-medium" size="small">
+                        <Select.Option value="">Bản mới nhất (Latest)</Select.Option>
+                        {versions.map((v: any) => (
+                          <Select.Option key={v.id} value={v.id}>
+                            Phiên bản {v.versionNumber} ({v.questionCount} câu){v.isCurrent ? " (Hiện tại)" : ""}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <Form.Item
             name="studentIds"
-            label={
-              <span>
-                Học sinh được chọn{" "}
-                <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span>
-              </span>
-            }
+            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span></span>}
+            extra={!selectedClassForExam ? (
+              <div className="text-amber-600 text-xs mt-1 flex items-center gap-1.5">
+                <Info size={13} className="shrink-0" />
+                <span><b>Mẹo:</b> Hãy chọn <b>Lớp học</b> trước để hệ thống tự động lọc đúng học sinh thuộc lớp bạn phụ trách.</span>
+              </div>
+            ) : undefined}
           >
-            <Select
+            <SafeSelect
               mode="multiple"
               showSearch
-              placeholder="Chọn học sinh cụ thể (tuỳ chọn)..."
-              optionFilterProp="children"
+              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForExam ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}
+              optionFilterProp="label"
               className="rounded-xl"
-            >
-              {getStudentsForClass(selectedClassForExam).map((s) => (
-                <Select.Option key={s.studentProfile?.id || s.id} value={s.studentProfile?.id || s.id}>
-                  {s.fullName || s.code}{" "}
-                  <span className="text-slate-400 text-xs">@{s.code}</span>
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item name="title" label="Tiêu đề (tuỳ chọn)">
-            <Input placeholder="VD: Bài kiểm tra Unit 1" className="rounded-xl" />
-          </Form.Item>
-
-          <Form.Item name="instructions" label="Hướng dẫn (tuỳ chọn)">
-            <Input.TextArea
-              rows={3}
-              placeholder="Hướng dẫn làm bài cho học sinh..."
-              className="rounded-xl"
+              options={getStudentsForClass(selectedClassForExam).map((s) => ({
+                key: s.studentProfile?.id || s.id,
+                value: s.studentProfile?.id || s.id,
+                label: `${s.fullName || s.code} @${s.code}`,
+              }))}
             />
           </Form.Item>
 
+          <Form.Item name="title" label="Tiêu đề (tùy chọn)">
+            <Input placeholder="VD: Bài kiểm tra Unit 1" className="rounded-xl" />
+          </Form.Item>
+          <Form.Item name="instructions" label="Hướng dẫn (tùy chọn)">
+            <Input.TextArea rows={3} placeholder="Hướng dẫn làm bài cho học sinh..." className="rounded-xl" />
+          </Form.Item>
           <Divider className="my-4" />
           <div className="flex justify-end gap-3">
-            <Button onClick={() => setExamFormOpen(false)} className="rounded-xl">
-              Huỷ
-            </Button>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={submitting}
-              className="rounded-xl px-6 font-semibold shadow-md shadow-indigo-500/20"
+            <Button onClick={() => setExamFormOpen(false)} className="rounded-xl">Huỷ</Button>
+            <Button type="primary" htmlType="submit" loading={submitting}
+              className="rounded-xl px-6 font-semibold shadow-md shadow-cyan-500/20"
+              style={{ background: "#0891b2", borderColor: "#0891b2" }}
             >
               Giao bài thi
             </Button>
@@ -1145,114 +1862,126 @@ export default function TeacherAssignments() {
       </Modal>
 
       {/* ==================== CURRICULUM ASSIGNMENT FORM MODAL ==================== */}
-      <Modal
-        open={curriculumFormOpen}
-        onCancel={() => setCurriculumFormOpen(false)}
-        footer={null}
-        title={
-          <div className="flex items-center gap-2 text-purple-700 font-bold text-lg">
-            <BookOutlined />
-            Giao Giáo Trình Học Mới
-          </div>
-        }
-        width={560}
+      <Modal open={curriculumFormOpen} onCancel={() => setCurriculumFormOpen(false)} footer={null}
+        title={<div className="flex items-center gap-2 text-purple-700 font-bold text-lg"><BookOutlined />Giao Giáo Trình Mới</div>}
+        centered
+        maskClosable={false}
+        width={640}
+        styles={{
+          body: {
+            maxHeight: "74vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "8px",
+          },
+        }}
       >
-        <Form
-          form={curriculumForm}
-          layout="vertical"
-          onFinish={handleCreateCurriculumAssignment}
-          className="pt-2"
-        >
-          <Form.Item
-            name="curriculumId"
-            label="Giáo trình học (chỉ hiển thị đã phát hành)"
-            rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
-          >
-            <Select
-              showSearch
-              placeholder="Chọn giáo trình học..."
-              optionFilterProp="children"
-              className="rounded-xl"
-            >
-              {curriculums.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-
+        <Form form={curriculumForm} layout="vertical" onFinish={handleCreateCurriculumAssignment} className="pt-2">
           <Form.Item
             name="classId"
-            label="Lớp học"
-            rules={[{ required: true, message: "Vui lòng chọn lớp!" }]}
-          >
-            <Select
-              showSearch
-              placeholder="Chọn lớp học..."
-              optionFilterProp="children"
-              className="rounded-xl"
-              onChange={(val) => {
-                setSelectedClassForCurriculum(val);
-                curriculumForm.setFieldValue("studentIds", []);
-              }}
-            >
-              {classes.map((c) => (
-                <Select.Option key={c.id} value={c.id}>
-                  {c.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            name="studentIds"
             label={
               <span>
-                Học sinh được chọn{" "}
-                <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span>
+                Lớp học <span className="text-slate-400 font-normal text-xs">(chọn lớp trước để hệ thống lọc giáo trình theo đúng môn học)</span>
               </span>
             }
           >
             <Select
-              mode="multiple"
               showSearch
-              placeholder="Chọn học sinh cụ thể (tuỳ chọn)..."
+              placeholder="Chọn lớp học (tùy chọn)..."
               optionFilterProp="children"
               className="rounded-xl"
+              allowClear
+              onChange={handleClassChangeForCurriculum}
             >
-              {getStudentsForClass(selectedClassForCurriculum).map((s) => (
-                <Select.Option key={s.studentProfile?.id || s.id} value={s.studentProfile?.id || s.id}>
-                  {s.fullName || s.code}{" "}
-                  <span className="text-slate-400 text-xs">@{s.code}</span>
-                </Select.Option>
-              ))}
+              {assignableClasses.map((c: any) => {
+                const specName = c.specializationName || (getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)));
+                return (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.name}
+                    {specName && (
+                      <span className="text-slate-400 text-xs ml-1.5 font-normal">
+                        ({specName})
+                      </span>
+                    )}
+                  </Select.Option>
+                );
+              })}
             </Select>
           </Form.Item>
 
-          <Form.Item name="title" label="Tiêu đề (tuỳ chọn)">
-            <Input placeholder="VD: Giáo trình A1 - Học kỳ 1" className="rounded-xl" />
-          </Form.Item>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-slate-700 font-medium text-sm flex items-center gap-1">
+                <span className="text-red-500">*</span> Giáo trình
+              </span>
+              {selectedClassForCurriculum && getClassSpecializationId(selectedClassForCurriculum) && (
+                <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200/80 px-2.5 py-0.5 rounded-full font-medium">
+                  Môn: {getSpecializationName(getClassSpecializationId(selectedClassForCurriculum))} ({modalDirectCurriculums.length} giáo trình)
+                </span>
+              )}
+            </div>
+            <Form.Item
+              name="curriculumId"
+              rules={[{ required: true, message: "Vui lòng chọn giáo trình!" }]}
+              extra={
+                selectedClassForCurriculum && modalDirectCurriculums.length === 0 ? (
+                  <span className="text-amber-600 text-xs mt-1 block">
+                    Chưa có giáo trình nào thuộc môn học này được xuất bản (Published).
+                  </span>
+                ) : undefined
+              }
+            >
+              <Select showSearch placeholder={selectedClassForCurriculum ? "Chọn giáo trình thuộc môn học của lớp..." : "Chọn giáo trình..."} optionFilterProp="children" className="rounded-xl">
+                {modalDirectCurriculums.map((c) => (
+                  <Select.Option key={c.id} value={c.id}>
+                    {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
+                    {c.specializationId && getSpecializationName(c.specializationId) && (
+                      <span className="text-purple-600 text-xs ml-1.5 font-normal">
+                        • {getSpecializationName(c.specializationId)}
+                      </span>
+                    )}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </div>
 
-          <Form.Item name="instructions" label="Hướng dẫn (tuỳ chọn)">
-            <Input.TextArea
-              rows={3}
-              placeholder="Hướng dẫn học tập cho học sinh..."
+          <Form.Item
+            name="studentIds"
+            label={<span>Học sinh cụ thể <span className="text-slate-400 font-normal text-xs">(bỏ trống = toàn bộ lớp)</span></span>}
+            extra={!selectedClassForCurriculum ? (
+              <div className="text-amber-600 text-xs mt-1 flex items-center gap-1.5">
+                <Info size={13} className="shrink-0" />
+                <span><b>Mẹo:</b> Hãy chọn <b>Lớp học</b> trước để hệ thống tự động lọc học sinh theo lớp, hoặc để trống ô học sinh để giao toàn bộ lớp.</span>
+              </div>
+            ) : undefined}
+          >
+            <SafeSelect
+              mode="multiple"
+              showSearch
+              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForCurriculum ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}
+              optionFilterProp="label"
               className="rounded-xl"
+              options={getStudentsForClass(selectedClassForCurriculum).map((s) => ({
+                key: s.studentProfile?.id || s.id,
+                value: s.studentProfile?.id || s.id,
+                label: `${s.fullName || s.code} @${s.code}`,
+              }))}
             />
           </Form.Item>
 
+          <Form.Item name="title" label="Tiêu đề (tùy chọn)">
+            <Input placeholder="VD: Giáo trình A1 - Học kỳ 1" className="rounded-xl" />
+          </Form.Item>
+          <Form.Item name="instructions" label="Hướng dẫn (tùy chọn)">
+            <Input.TextArea rows={3} placeholder="Hướng dẫn học tập cho học sinh..." className="rounded-xl" />
+          </Form.Item>
           <Divider className="my-4" />
           <div className="flex justify-end gap-3">
-            <Button onClick={() => setCurriculumFormOpen(false)} className="rounded-xl">
-              Huỷ
-            </Button>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={submitting}
-              className="rounded-xl px-6 font-semibold shadow-md shadow-purple-500/20"
-              style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+            <Button onClick={() => setCurriculumFormOpen(false)} className="rounded-xl">Huỷ</Button>
+            <Button type="primary" htmlType="submit" loading={submitting}
+              className="rounded-xl px-6 font-semibold shadow-md shadow-cyan-500/20"
+              style={{ background: "#0891b2", borderColor: "#0891b2" }}
             >
               Giao giáo trình
             </Button>
@@ -1261,16 +1990,8 @@ export default function TeacherAssignments() {
       </Modal>
 
       {/* Analytics Modals */}
-      <ExamAnalyticsModal
-        assignmentId={examAnalyticsId}
-        open={!!examAnalyticsId}
-        onClose={() => setExamAnalyticsId(null)}
-      />
-      <CurriculumAnalyticsModal
-        assignmentId={curriculumAnalyticsId}
-        open={!!curriculumAnalyticsId}
-        onClose={() => setCurriculumAnalyticsId(null)}
-      />
+      <ExamAnalyticsModal assignmentId={examAnalyticsId} open={!!examAnalyticsId} onClose={() => setExamAnalyticsId(null)} />
+      <CurriculumAnalyticsModal assignmentId={curriculumAnalyticsId} open={!!curriculumAnalyticsId} onClose={() => setCurriculumAnalyticsId(null)} />
     </ConfigProvider>
   );
 }

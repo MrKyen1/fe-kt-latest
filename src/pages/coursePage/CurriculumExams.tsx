@@ -1,5 +1,5 @@
-import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button } from "antd";
-import { useParams, useNavigate } from "react-router-dom";
+import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button, Modal, Table, Progress, Tooltip } from "antd";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -9,12 +9,17 @@ import {
   PlayCircle,
   Lock,
   CheckCircle2,
+  History,
+  RotateCcw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { AttemptHistoryModal } from "../../components/AttemptHistoryModal";
 import { learningCmsService } from "../../services/learningCmsService";
 import { studentLearningService } from "../../services/studentLearningService";
 import { useAuth } from "../../contexts/AuthContext";
 import { Curriculum, Exam } from "../../types/backend";
+import { AppImage } from "../../components/AppImagePreview";
+import { formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
 
 const { Title, Text } = Typography;
 
@@ -30,16 +35,19 @@ type ExamEntry = {
 };
 
 type StudentCurriculumRow = {
-  id: string;
-  assignmentStudentId?: string;
+  curriculumId?: string;
+  enrollmentId?: string | null;
   curriculum?: { id: string };
+  // legacy shape fallback
+  id?: string;
+  assignmentStudentId?: string;
   assignment?: { curriculum?: { id: string } };
 };
 
 export default function CurriculumExams() {
   const { curriculumId } = useParams<{ curriculumId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
 
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +58,16 @@ export default function CurriculumExams() {
 
   // Student assignment ID for this curriculum (needed to start attempt)
   const [studentAssignmentId, setStudentAssignmentId] = useState<string | null>(null);
+  const [hasAccess, setHasAccess] = useState(false);
+
+  // ---- History modal ----
+  const [historyTarget, setHistoryTarget] = useState<{
+    open: boolean;
+    title?: string;
+    attemptId?: string | null;
+    examId?: string | null;
+    progress?: any;
+  }>({ open: false });
 
   const isStudent = user?.role === "student";
 
@@ -60,9 +78,134 @@ export default function CurriculumExams() {
     async function load() {
       try {
         setIsLoading(true);
+        setHasAccess(false);
+        setStudentAssignmentId(null);
 
-        // Load curriculum detail from CMS
-        const cur = await learningCmsService.curriculums.get(curriculumId!);
+        let cur: any = null;
+        if (isStudent && hasPermission("learning.attempt")) {
+          const cmsCur = await learningCmsService.curriculums.get(curriculumId!);
+          const studentList: any[] = [];
+          let page = 1;
+          let totalPages = 1;
+          do {
+            const result = await studentLearningService.curriculums.list({ page, limit: 100 });
+            studentList.push(...result.data);
+            totalPages = result.meta?.totalPages ?? 1;
+            page += 1;
+          } while (page <= totalPages);
+
+          // Find if this curriculum is in student's assigned curriculum list
+          const assignedInList = studentList.find((item: any) =>
+            item.curriculumId === curriculumId ||
+            item.curriculum?.id === curriculumId ||
+            (item as any)?.id === curriculumId
+          );
+
+          const studentDetail = assignedInList
+            ? await studentLearningService.curriculums.get(curriculumId!)
+            : null;
+          const studentHasAccess = Boolean(studentDetail);
+          const studentAssignedId =
+            studentDetail?.enrollmentId ||
+            assignedInList?.enrollmentId ||
+            (assignedInList as any)?.id ||
+            null;
+
+          const baseExams = cmsCur?.exams || [];
+          const studentExams = (studentDetail?.exams?.length ? studentDetail.exams : (assignedInList as any)?.exams) || [];
+
+          // Merge exam definitions from CMS with individual student attempts and progress
+          let mergedExams: any[] = [];
+          if (baseExams.length > 0) {
+            mergedExams = baseExams.map((bEntry: any) => {
+              const bExamId = bEntry.examId || bEntry.exam?.id;
+              const matchedStudentExam = studentExams.find(
+                (sEntry: any) => (sEntry.examId || sEntry.exam?.id) === bExamId
+              );
+              return {
+                ...bEntry,
+                ...(matchedStudentExam || {}),
+                exam: {
+                  ...(bEntry.exam || {}),
+                  ...(matchedStudentExam?.exam || {}),
+                },
+              };
+            });
+          } else if (studentExams.length > 0) {
+            mergedExams = studentExams.map((sEntry: any) => ({
+              ...sEntry,
+              examId: sEntry.examId || sEntry.exam?.id,
+              exam: sEntry.exam || {
+                id: sEntry.examId,
+                title: (sEntry as any).title || (sEntry as any).examTitle || "Bài thi",
+              },
+            }));
+          }
+
+          cur = {
+            ...(cmsCur || {}),
+            ...((assignedInList as any)?.curriculum || {}),
+            ...((studentDetail as any)?.curriculum || {}),
+            ...(assignedInList || {}),
+            ...(studentDetail || {}),
+            title:
+              cmsCur?.title ||
+              studentDetail?.curriculum?.title ||
+              assignedInList?.curriculum?.title ||
+              (studentDetail as any)?.title ||
+              (assignedInList as any)?.title ||
+              "Giáo trình",
+            code:
+              cmsCur?.code ||
+              studentDetail?.curriculum?.code ||
+              assignedInList?.curriculum?.code ||
+              (studentDetail as any)?.code ||
+              "",
+            description:
+              cmsCur?.description ||
+              studentDetail?.curriculum?.description ||
+              assignedInList?.curriculum?.description ||
+              (studentDetail as any)?.description ||
+              "",
+            image:
+              cmsCur?.image ||
+              studentDetail?.curriculum?.image ||
+              assignedInList?.curriculum?.image ||
+              (studentDetail as any)?.image,
+            level:
+              cmsCur?.level ||
+              studentDetail?.curriculum?.level ||
+              assignedInList?.curriculum?.level ||
+              (studentDetail as any)?.level,
+            curriculum: {
+              ...(cmsCur || {}),
+              ...(assignedInList?.curriculum || {}),
+              ...(studentDetail?.curriculum || {}),
+            },
+            exams: mergedExams,
+          };
+
+          if (active) {
+            setStudentAssignmentId(studentAssignedId);
+            setHasAccess(studentHasAccess);
+          }
+
+          // Mark this curriculum notification as read/viewed in localStorage for the hybrid dismissal
+          if (user?.id && studentHasAccess) {
+            try {
+              const storageKey = `read_curriculum_notifications_${user.id}`;
+              const raw = localStorage.getItem(storageKey);
+              const readSet = new Set(raw ? JSON.parse(raw) : []);
+              readSet.add(curriculumId);
+              localStorage.setItem(storageKey, JSON.stringify(Array.from(readSet)));
+            } catch (storageErr) {
+              console.error("Failed to update read notification:", storageErr);
+            }
+          }
+        } else {
+          cur = await learningCmsService.curriculums.get(curriculumId!);
+        }
+
         if (active) setCurriculum(cur);
 
         // Load each exam's detail to get the accurate question count.
@@ -82,31 +225,13 @@ export default function CurriculumExams() {
                   (examDetail as any).questions ??
                   (examDetail as any).examQuestions ??
                   [];
-                counts[eid] = Array.isArray(qArr) ? qArr.length : 0;
+                counts[eid] = (examDetail as any).questionCount ?? (Array.isArray(qArr) ? qArr.length : 0);
               } catch {
                 counts[eid] = 0;
               }
             }),
           );
           if (active) setExamQuestionCounts(counts);
-        }
-
-        // If student, also load their assignment for this curriculum so we can startAttempt
-        if (isStudent) {
-          try {
-            const res = await studentLearningService.curriculums.list({ page: 1, limit: 100 });
-            const rows = res.data as StudentCurriculumRow[];
-            const matched = rows.find((row) => {
-              const cId =
-                row.curriculum?.id || row.assignment?.curriculum?.id;
-              return cId === curriculumId;
-            });
-            if (active && matched) {
-              setStudentAssignmentId(matched.assignmentStudentId ?? matched.id);
-            }
-          } catch {
-            // silently ignore — student may not be assigned yet
-          }
         }
 
         if (active) setError(null);
@@ -124,48 +249,106 @@ export default function CurriculumExams() {
     };
   }, [curriculumId, isStudent]);
 
-  const handleStartExam = async (examId: string) => {
-    if (!isStudent) {
-      message.info("Chỉ học sinh mới có thể làm bài thi. Bạn đang xem ở chế độ preview.");
-      return;
-    }
-    if (!studentAssignmentId) {
-      message.warning(
-        "Bạn chưa được giao giáo trình này. Vui lòng liên hệ giáo viên để được phân công.",
-      );
+  const handleStartExam = async (examId: string, restart = false) => {
+    if (!isStudent || !hasPermission("learning.attempt")) {
+      message.info("Tài khoản giáo viên / quản trị viên chỉ có thể xem trước danh sách đề thi. Chỉ học sinh mới có quyền làm bài.");
       return;
     }
     try {
       setStartingExamId(examId);
       const attempt = await studentLearningService.curriculums.startAttempt(
-        studentAssignmentId,
+        curriculumId!,
         examId,
+        restart ? { restart: true } : undefined,
       );
       const attemptId = (attempt as any)?.id;
-      if (!attemptId) throw new Error("Backend không trả về attemptId.");
+      if (!attemptId) {
+        if ((attempt as any)?.mastered && !restart) {
+          const restartAttempt = await studentLearningService.curriculums.startAttempt(
+            curriculumId!,
+            examId,
+            { restart: true },
+          );
+          const rId = (restartAttempt as any)?.id;
+          if (rId) {
+            navigate(`/exam/${rId}`);
+            return;
+          }
+          message.info("Bạn đã hoàn thành xuất sắc 100% bài thi này!");
+          return;
+        }
+        throw new Error("Backend không trả về attemptId.");
+      }
       navigate(`/exam/${attemptId}`);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
+    } catch (err: any) {
+      const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
+      const errorMsg = String(err?.message || "");
+      const is409 = statusCode === 409 || errorMsg.includes("409") || errorMsg.includes("submitted") || errorMsg.includes("đã nộp");
+      
+      if (is409) {
+        message.warning("Bài kiểm tra này đã được nộp.");
+        const matchedEntry = curriculum?.exams?.find((e: any) => (e.examId === examId || e.exam?.id === examId)) as any;
+        const examObj = matchedEntry?.exam;
+        setHistoryTarget({
+          open: true,
+          title: examObj?.title ?? examObj?.code ?? "Bài thi",
+          attemptId: matchedEntry?.lastAttemptId,
+          examId,
+          progress: matchedEntry ? {
+            attemptsCount: matchedEntry?.attemptsCount ?? 1,
+            bestScore: matchedEntry?.bestScore,
+            bestPercentage: matchedEntry?.bestPercentage,
+            lastAttemptId: matchedEntry?.lastAttemptId,
+            status: matchedEntry?.status,
+            completedAt: matchedEntry?.completedAt,
+          } : undefined,
+        });
+      } else if (statusCode === 403 || errorMsg.includes("không thuộc lớp") || errorMsg.includes("cấp quyền") || errorMsg.includes("hồ sơ")) {
+        Modal.warning({
+          title: "Chưa được cấp quyền làm bài",
+          content: (
+            <div className="space-y-2 pt-2 text-slate-600">
+              <p>Bạn chưa được phân công vào lớp học có giáo trình này.</p>
+              <p className="text-xs text-slate-400">Vui lòng liên hệ giáo viên hoặc ban quản trị trung tâm để được thêm vào lớp học tương ứng nhằm mở quyền làm bài và ghi nhận kết quả học tập.</p>
+            </div>
+          ),
+          okText: "Đã hiểu",
+          className: "rounded-2xl",
+        });
+      } else {
+        message.error(err instanceof Error ? err.message : "Không thể bắt đầu bài thi.");
+      }
     } finally {
       setStartingExamId(null);
     }
   };
 
-  const exams: ExamEntry[] = (curriculum?.exams ?? []).sort(
+  const percentColor = (pct?: string | number) => {
+    const n = parseFloat(String(pct ?? "0"));
+    if (n >= 80) return "#10b981";
+    if (n >= 50) return "#f59e0b";
+    return "#ef4444";
+  };
+
+  const exams: ExamEntry[] = (curriculum?.exams ?? []).map((entry: any) => {
+    const isRequired = entry.isRequired ?? entry.curriculumExam?.isRequired ?? false;
+    const orderIndex = entry.orderIndex ?? entry.curriculumExam?.orderIndex ?? 0;
+    return { ...entry, isRequired, orderIndex };
+  }).sort(
     (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0),
   );
 
-  const canDoExam = isStudent && !!studentAssignmentId;
+  const canDoExam = isStudent && hasPermission("learning.attempt") && (!!studentAssignmentId || hasAccess);
 
   return (
     <div className="w-full bg-slate-50 py-16 px-6 md:px-16 min-h-screen">
       <div className="max-w-5xl mx-auto">
         <button
-          onClick={() => navigate("/courses/published-curriculums")}
+          onClick={() => navigate("/courses")}
           className="mb-8 flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-medium transition-colors group"
         >
           <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-          Quay lại danh sách giáo trình
+          Quay lại danh sách khóa học
         </button>
 
         {isLoading ? (
@@ -176,60 +359,75 @@ export default function CurriculumExams() {
           <Alert type="error" showIcon message={error} />
         ) : !curriculum ? null : (
           <>
-            {/* Header */}
-            <div className="bg-white rounded-3xl border border-slate-100 p-8 mb-10 shadow-sm">
-              <div className="flex items-start gap-5">
-                <div className="bg-indigo-100 p-4 rounded-2xl text-indigo-600 shrink-0">
-                  <BookOpen size={36} />
+            {/* Header with cover image */}
+            <div className="bg-white rounded-3xl border border-slate-100 mb-10 shadow-sm overflow-hidden">
+              {curriculum.image && (
+                <div className="w-full h-52 md:h-72 overflow-hidden bg-slate-100 relative">
+                  <AppImage
+                    src={curriculum.image}
+                    alt={curriculum.title}
+                    className="w-full h-52 md:h-72 object-cover"
+                    rootClassName="w-full h-full"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent pointer-events-none" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span className="text-sm font-mono text-slate-400">{curriculum.code}</span>
-                    <Tag color="green" className="rounded-full px-3">
-                      Published
-                    </Tag>
-                    {curriculum.level && (
-                      <Tag color="blue" className="rounded-full px-3">
-                        {curriculum.level.name}
-                      </Tag>
-                    )}
-                  </div>
-                  <Title level={1} className="!text-3xl !font-bold !text-slate-800 !mb-3 !mt-0">
-                    {curriculum.title}
-                  </Title>
-                  {curriculum.description && (
-                    <Text className="text-slate-500 text-base">{curriculum.description}</Text>
+              )}
+              <div className="p-8">
+                <div className="flex items-start gap-5">
+                  {!curriculum.image && (
+                    <div className="bg-indigo-100 p-4 rounded-2xl text-indigo-600 shrink-0">
+                      <BookOpen size={36} />
+                    </div>
                   )}
-
-                  {/* Student assignment status */}
-                  {isStudent && (
-                    <div
-                      className={`mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit ${
-                        canDoExam
-                          ? "bg-green-50 text-green-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {canDoExam ? (
-                        <>
-                          <CheckCircle2 size={16} />
-                          Bạn đã được giao giáo trình này — sẵn sàng làm bài!
-                        </>
-                      ) : (
-                        <>
-                          <Lock size={16} />
-                          Chưa được giao giáo trình — liên hệ giáo viên để được phân công.
-                        </>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="text-sm font-mono text-slate-400">{curriculum.code}</span>
+                      <Tag color="green" className="rounded-full px-3">
+                        Published
+                      </Tag>
+                      {curriculum.level && (
+                        <Tag color="blue" className="rounded-full px-3">
+                          {curriculum.level.name}
+                        </Tag>
                       )}
                     </div>
-                  )}
+                    <Title level={1} className="!text-3xl !font-bold !text-slate-800 !mb-3 !mt-0">
+                      {curriculum.title}
+                    </Title>
+                    {curriculum.description && (
+                      <Text className="text-slate-500 text-base block leading-relaxed">{curriculum.description}</Text>
+                    )}
 
-                  {!isStudent && (
-                    <div className="mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit bg-slate-50 text-slate-500">
-                      <Lock size={16} />
-                      Bạn đang xem ở chế độ preview — chỉ học sinh mới có thể làm bài thi.
-                    </div>
-                  )}
+                    {/* Student assignment status */}
+                    {isStudent && (
+                      <div
+                        className={`mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit ${
+                          canDoExam
+                            ? "bg-green-50 text-green-700"
+                            : "bg-blue-50 text-blue-700"
+                        }`}
+                      >
+                        {canDoExam ? (
+                          <>
+                            <CheckCircle2 size={16} />
+                            Bạn đã được phân công giáo trình này — sẵn sàng làm bài!
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen size={16} />
+                            Giáo trình phát hành công khai — chọn đề thi bên dưới để bắt đầu làm bài.
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {!isStudent && (
+                      <div className="mt-4 flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl inline-flex w-fit bg-slate-50 text-slate-500">
+                        <Lock size={16} />
+                        Bạn đang xem ở chế độ preview (Xem trước) — chỉ học sinh mới có thể làm bài thi.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -257,6 +455,12 @@ export default function CurriculumExams() {
                   const qCount = examQuestionCounts[eid] ?? exam?.examQuestions?.length ?? exam?.questions?.length ?? 0;
                   const isStarting = startingExamId === (exam?.id ?? entry.examId);
 
+                  const attemptsCount = (entry as any).attemptsCount ?? 0;
+                  const bestPctVal = parseFloat((entry as any).bestPercentage ?? "0");
+                  // Ưu tiên mastered từ backend; fallback sang bestPctVal >= 100 hoặc status finished
+                  const isMastered = (entry as any).mastered === true || bestPctVal >= 100 || (entry as any).status === "finished";
+                  const isNeedsRetry = !isMastered && attemptsCount > 0;
+
                   return (
                     <Col xs={24} key={entry.examId}>
                       <motion.div
@@ -270,10 +474,12 @@ export default function CurriculumExams() {
                           <div className="bg-indigo-50 rounded-xl p-3 text-indigo-600 shrink-0 font-bold text-lg w-12 h-12 flex items-center justify-center">
                             {idx + 1}
                           </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-indigo-700 transition-colors">
-                              {exam?.title ?? exam?.code ?? `Bài thi ${idx + 1}`}
-                            </h3>
+                          <div className="min-w-0 flex-1">
+                            <Tooltip title={exam?.title ?? exam?.code ?? `Bài thi ${idx + 1}`} placement="topLeft">
+                              <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-indigo-700 transition-colors line-clamp-1">
+                                {exam?.title ?? exam?.code ?? `Bài thi ${idx + 1}`}
+                              </h3>
+                            </Tooltip>
                             <div className="flex flex-wrap items-center gap-4 text-slate-500 text-sm font-medium">
                               <div className="flex items-center gap-1.5">
                                 <Clock size={15} className="text-indigo-400" />
@@ -288,29 +494,88 @@ export default function CurriculumExams() {
                                   Bắt buộc
                                 </Tag>
                               )}
+                              {isStudent && attemptsCount > 0 && (
+                                <span className="text-slate-400 text-xs">{attemptsCount} lần đã làm</span>
+                              )}
+                              {isStudent && (entry as any).bestPercentage != null && (() => {
+                                const scoreInfo = formatStudentExamScoreDisplay({
+                                  isExamType: (entry as any).exam?.examType === "exam" || (entry as any).isExamType,
+                                  score: (entry as any).bestScore,
+                                  maxScore: (entry as any).maxScore ?? qCount,
+                                  percentage: (entry as any).bestPercentage,
+                                });
+                                return (
+                                  <Tooltip title={scoreInfo.tooltip}>
+                                    <span className="text-xs font-semibold" style={{ color: percentColor((entry as any).bestPercentage) }}>
+                                      Tốt nhất: {scoreInfo.primaryText} ({parseFloat((entry as any).bestPercentage).toFixed(0)}%)
+                                    </span>
+                                  </Tooltip>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
 
-                        <Button
-                          type="primary"
-                          size="large"
-                          icon={<PlayCircle size={18} />}
-                          loading={isStarting}
-                          disabled={isStarting || (!canDoExam && isStudent)}
-                          className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 ${
-                            canDoExam || !isStudent
-                              ? "bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20"
-                              : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                          }`}
-                          onClick={() => handleStartExam(exam?.id ?? entry.examId)}
-                        >
-                          {isStudent
-                            ? canDoExam
-                              ? "Làm bài ngay"
-                              : "Chưa được giao"
-                            : "Xem trước (chỉ HS)"}
-                        </Button>
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                          {isStudent && attemptsCount > 0 && (
+                            <Tooltip title="Xem lịch sử làm bài">
+                              <Button
+                                size="large"
+                                icon={<History size={18} />}
+                                onClick={() => {
+                                  setHistoryTarget({
+                                    open: true,
+                                    title: exam?.title ?? exam?.code ?? `Bài thi`,
+                                    attemptId: (entry as any).lastAttemptId,
+                                    examId: exam?.id ?? entry.examId,
+                                    progress: {
+                                      attemptsCount,
+                                      bestScore: (entry as any).bestScore,
+                                      bestPercentage: (entry as any).bestPercentage,
+                                      lastAttemptId: (entry as any).lastAttemptId,
+                                      status: (entry as any).status,
+                                      completedAt: (entry as any).completedAt,
+                                    },
+                                  });
+                                }}
+                                className="h-12 w-12 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-400"
+                              />
+                            </Tooltip>
+                          )}
+                          <Tooltip title={isStudent && canDoExam && isMastered ? "Làm lại toàn bộ đề" : undefined}>
+                            <Button
+                              type={isStudent && attemptsCount > 0 ? "default" : "primary"}
+                              size="large"
+                              icon={
+                                isStudent && attemptsCount > 0
+                                  ? <RotateCcw size={18} />
+                                  : <PlayCircle size={18} />
+                              }
+                              loading={isStarting}
+                              disabled={isStarting || (!canDoExam && isStudent)}
+                              className={`w-full md:w-auto h-12 px-8 text-base rounded-xl border-none font-semibold flex items-center gap-2 justify-center ${
+                                isStudent && attemptsCount > 0
+                                ? "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800"
+                                : canDoExam || !isStudent
+                                ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                              }`}
+                              onClick={() => {
+                                handleStartExam(exam?.id ?? entry.examId, isMastered);
+                              }}
+                            >
+                              {isStudent
+                                ? canDoExam
+                                  ? isMastered
+                                    ? "Ôn tập lại"
+                                    : isNeedsRetry
+                                    ? "Làm lại câu sai"
+                                    : "Làm bài ngay"
+                                  : "Chưa được giao"
+                                : "Xem trước (chỉ HS)"}
+                            </Button>
+                          </Tooltip>
+                        </div>
                       </motion.div>
                     </Col>
                   );
@@ -320,6 +585,15 @@ export default function CurriculumExams() {
           </>
         )}
       </div>
+
+      <AttemptHistoryModal
+        open={historyTarget.open}
+        onClose={() => setHistoryTarget((prev) => ({ ...prev, open: false }))}
+        title={historyTarget.title}
+        attemptId={historyTarget.attemptId}
+        examId={historyTarget.examId}
+        curriculumExamProgress={historyTarget.progress}
+      />
     </div>
   );
 }

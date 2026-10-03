@@ -4,6 +4,8 @@ export type QuestionType =
   | "multiple_choice"
   | "audio_choice"
   | "image_choice"
+  | "true_false"
+  | "audio_image_choice"
   | "word_ordering"
   | "reading_comprehension"
   | "sentence_rewrite"
@@ -23,6 +25,8 @@ export interface LearningListQuery extends PaginationQuery {
   tagIds?: string | string[];
   type?: QuestionType;
   parentId?: string;
+  specializationId?: string;
+  [key: string]: unknown;
 }
 
 export interface StatusUpdateRequest {
@@ -32,8 +36,9 @@ export interface StatusUpdateRequest {
 
 export interface ExamQuestionMappingRequest {
   questionId: string;
-  orderIndex: number;
-  score: number;
+  orderIndex?: number;
+  // NOTE: `score` bị bỏ — backend v2 chấm cộng dồn (mỗi câu = 1 điểm).
+  // Gửi `score` sẽ bị backend từ chối với 400.
 }
 
 export interface ReorderExamQuestionsRequest {
@@ -58,19 +63,47 @@ export interface ReorderCurriculumExamsRequest {
   }>;
 }
 
-export interface TeacherAssignmentRequest {
-  classId: string;
+// ==================== TEACHER ASSIGNMENT TYPES ====================
+
+/** Giao bài thi cho 1 hoặc nhiều học sinh / lớp - nhiều exam 1 lúc */
+export interface ExamAssignmentRequest {
+  /**
+   * Danh sách exam cần giao. Bỏ trống `examVersionId` = pin bản published mới nhất.
+   * (Thay thế `examIds: string[]` cũ)
+   */
+  exams: Array<{ examId: string; examVersionId?: string }>;
+  /** ID lớp học (tùy chọn nếu đã có studentIds) */
+  classId?: string;
+  /** ID học sinh cụ thể (tùy chọn – bỏ trống = toàn bộ lớp) */
   studentIds?: string[];
+  // NOTE: maxAttempts đã bị xóa (migration 1780000030000). Backend từ chối field này với HTTP 400.
   title?: string;
   instructions?: string;
 }
 
-export interface ExamAssignmentRequest extends TeacherAssignmentRequest {
-  examId: string;
+/** Giao giáo trình trực tiếp cho học sinh (không nhất thiết qua lớp) */
+export interface CurriculumAssignmentRequest {
+  curriculumId: string;
+  /** Bắt buộc phải có ít nhất 1 học sinh */
+  studentIds: string[];
+  /** ID lớp học (tùy chọn) */
+  classId?: string;
+  // NOTE: maxAttempts đã bị xóa (migration 1780000030000). Backend từ chối field này với HTTP 400.
+  title?: string;
+  instructions?: string;
 }
 
-export interface CurriculumAssignmentRequest extends TeacherAssignmentRequest {
+/** Gắn giáo trình vào lớp học (class-curriculum mapping) */
+export interface ClassCurriculumRequest {
+  classId: string;
   curriculumId: string;
+  // NOTE: maxAttempts đã bị xóa (migration 1780000030000). Backend từ chối field này với HTTP 400.
+}
+
+export interface ClassCurriculumQuery extends PaginationQuery {
+  classId?: string;
+  curriculumId?: string;
+  [key: string]: unknown;
 }
 
 export interface TeacherAssignmentQuery extends PaginationQuery {
@@ -79,12 +112,185 @@ export interface TeacherAssignmentQuery extends PaginationQuery {
   curriculumId?: string;
   studentId?: string;
   status?: AssignmentStatus;
+  [key: string]: unknown;
 }
 
 export interface SubmitAttemptRequest {
-  answers: Array<{
+  answers?: Array<{
     questionId: string;
     answer: unknown;
   }>;
 }
 
+// ==================== RANDOM QUESTIONS / BULK ATTACH ====================
+
+/** Một nhóm tiêu chí để random câu hỏi */
+export interface RandomQuestionCriteria {
+  count: number;
+  specializationId?: string;
+  levelId?: string;
+  skillId?: string;
+  topicId?: string;
+  type?: QuestionType;
+  tagId?: string;
+}
+
+export interface RandomQuestionsRequest {
+  criteria: RandomQuestionCriteria[];
+}
+
+export interface BulkAttachItem {
+  questionId: string;
+  orderIndex?: number;
+}
+
+export interface BulkAttachQuestionsRequest {
+  items: BulkAttachItem[];
+}
+
+// ==================== SUBMIT SINGLE ANSWER ====================
+
+export interface SubmitAnswerRequest {
+  answer: unknown;
+}
+
+// ==================== LEADERBOARD ====================
+
+export type LeaderboardScope = "class" | "assignment" | "curriculum" | "center" | "global";
+export type LeaderboardMetric = "mastery" | "accuracy" | "progress";
+export type LeaderboardPeriod = "all_time" | "month" | "week";
+export type LeaderboardSource = "all" | "assigned" | "self_study";
+
+export interface LeaderboardQuery {
+  scope: LeaderboardScope;
+  /** Bắt buộc trừ khi scope=global */
+  scopeId?: string;
+  /** Bắt buộc khi scope=center hoặc global */
+  specializationId?: string;
+  metric?: LeaderboardMetric;
+  period?: LeaderboardPeriod;
+  source?: LeaderboardSource;
+  page?: number;
+  limit?: number;
+}
+
+export interface LeaderboardStudent {
+  id: string;
+  code: string;
+  fullName: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  studentId: string;
+  student: LeaderboardStudent;
+  masteryTotal: number | null;
+  avgAccuracy: number | null;
+  progressGained: number | null;
+  examsCounted: number;
+  lastSubmittedAt: string | null;
+  /** true nếu đây là chính người đang xem */
+  isMe?: boolean;
+}
+
+export interface LeaderboardViewer {
+  rank: number | null;
+  studentId: string;
+  student: LeaderboardStudent;
+  masteryTotal: number | null;
+  avgAccuracy: number | null;
+  progressGained: number | null;
+  examsCounted: number;
+  lastSubmittedAt: string | null;
+  /** accuracy: examsCounted ≥ minExamsRequired; progress: progressGained > 0 */
+  qualified: boolean;
+  /** accuracy: số bài còn thiếu để đủ điều kiện */
+  examsNeeded: number;
+}
+
+export interface LeaderboardData {
+  scope: LeaderboardScope;
+  scopeId: string | null;
+  specializationId: string | null;
+  metric: LeaderboardMetric;
+  period: LeaderboardPeriod;
+  source: LeaderboardSource;
+  windowFrom: string | null;
+  windowTo: string | null;
+  /** Ngưỡng số bài cho bảng accuracy */
+  minExamsRequired: number;
+  generatedAt: string;
+  entries: LeaderboardEntry[];
+  /** null khi người xem là giáo viên/admin */
+  viewer: LeaderboardViewer | null;
+}
+
+// Leaderboard Scopes
+export interface LeaderboardScopeClass {
+  id: string;
+  name: string;
+  specializationId: string;
+  subjectName: string;
+  centerId: string;
+  centerName: string;
+}
+
+export interface LeaderboardScopeCenter {
+  id: string;
+  name: string;
+  subjects: Array<{ id: string; name: string }>;
+}
+
+export interface LeaderboardScopeCurriculum {
+  id: string;
+  title: string;
+  specializationId: string;
+  subjectName: string;
+}
+
+export interface LeaderboardScopeAssignment {
+  id: string;
+  title?: string;
+}
+
+export interface LeaderboardScopeSubject {
+  id: string;
+  name: string;
+}
+
+export interface LeaderboardScopes {
+  classes: LeaderboardScopeClass[];
+  centers: LeaderboardScopeCenter[];
+  curriculums: LeaderboardScopeCurriculum[];
+  assignments: LeaderboardScopeAssignment[];
+  subjects: LeaderboardScopeSubject[];
+}
+
+// Leaderboard Summary (hạng cá nhân trên cả 3 bảng)
+export interface LeaderboardSummaryCard {
+  rank: number | null;
+  value: number | null;
+  examsCounted: number;
+  qualified: boolean;
+  examsNeeded: number;
+}
+
+export interface LeaderboardSummary {
+  scope: LeaderboardScope;
+  scopeId: string | null;
+  specializationId: string | null;
+  period: LeaderboardPeriod;
+  generatedAt: string;
+  mastery: LeaderboardSummaryCard | null;
+  accuracy: LeaderboardSummaryCard | null;
+  /** null khi period=all_time */
+  progress: LeaderboardSummaryCard | null;
+}
+
+export interface LeaderboardSummaryQuery {
+  scope: LeaderboardScope;
+  scopeId?: string;
+  specializationId?: string;
+  period?: LeaderboardPeriod;
+  source?: LeaderboardSource;
+}

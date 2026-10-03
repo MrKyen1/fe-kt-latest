@@ -4,12 +4,21 @@ import {
   useState,
   useEffect,
   ReactNode,
+  useCallback,
 } from "react";
 import { authService } from "../services/authService";
 import { tokenStorage } from "../services/tokenStorage";
 import { subscribeToAuthFailure } from "../services/apiClient";
+import { userService, mapUserResponse } from "../services/userService";
+import { TeacherAuthProfile, StudentAuthProfile } from "../types/backend";
 
-interface User {
+export type PermissionCheckMode = "all" | "any";
+
+export interface PermissionCheckOptions {
+  mode?: PermissionCheckMode;
+}
+
+export interface User {
   id: string;
   code: string;
   username: string;
@@ -21,74 +30,122 @@ interface User {
   avatar?: string;
   role: string;
   permissions: string[];
+  teacher?: TeacherAuthProfile;
+  student?: StudentAuthProfile;
   teacherProfile?: any;
   studentProfile?: any;
+  centerId?: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
   isInitializing: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   hasRole: (roles: string | string[]) => boolean;
-  hasPermission: (permissions: string | string[]) => boolean;
+  hasPermission: (permissions: string | string[], options?: PermissionCheckOptions) => boolean;
+  hasAnyPermission: (permissions: string | string[]) => boolean;
+  refreshProfile: () => Promise<User | null>;
   updateUser: (updatedUser: NonNullable<ReturnType<typeof tokenStorage.getUser>>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>>): User {
-  const code = user.code;
-  let studentProfile = (user as any).studentProfile;
-  let teacherProfile = (user as any).teacherProfile;
+function checkSinglePermission(userPermissions: string[], requiredPerm: string): boolean {
+  if (userPermissions.includes(requiredPerm)) return true;
+  if (requiredPerm.startsWith("learning.") && userPermissions.includes("learning.manage")) return true;
+  return requiredPerm.startsWith("students.") && userPermissions.includes("users.manage");
+}
 
-  if (code === "139384") {
-    studentProfile = {
-      id: "019ec448-71c2-755d-9540-771691e28d3a",
-      classIds: ["019ec447-b15f-712d-a0ef-d35c1ebddaf5"],
-      classes: [{ id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5", name: "Toán 6" }]
-    };
-  } else if (code === "132495") {
-    studentProfile = {
-      id: "019ee804-2614-74a2-9b3f-83fed96cf805",
-      classIds: ["019ee7fe-1348-7338-a198-4fc554482a58"],
-      classes: [{ id: "019ee7fe-1348-7338-a198-4fc554482a58", name: "Tiếng anh 10" }]
-    };
-  } else if (code === "106798") {
-    teacherProfile = {
-      id: "019eef5a-2709-7149-a9ec-9e06648b3a23",
-      classIds: ["019ec447-b15f-712d-a0ef-d35c1ebddaf5"],
-      classes: [{ id: "019ec447-b15f-712d-a0ef-d35c1ebddaf5", name: "Toán 6" }]
-    };
-  } else if (code === "128307") {
-    teacherProfile = {
-      id: "019eea6c-8ea7-774d-abfd-7861c1edbec4",
-      classIds: ["019ee7fe-1348-7338-a198-4fc554482a58"],
-      classes: [{ id: "019ee7fe-1348-7338-a198-4fc554482a58", name: "Tiếng anh 10" }]
-    };
-  }
+function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>>): User {
+  const mapped = mapUserResponse(user);
+  const teacherProfile = (mapped as any).teacherProfile || (user as any).teacherProfile;
+  const studentProfile = (mapped as any).studentProfile || (user as any).studentProfile;
+  const teacher = (user as any).teacher || (mapped as any).teacher;
+  const student = (user as any).student || (mapped as any).student;
+
+  const centerId =
+    (mapped as any).centerId ||
+    teacherProfile?.centerId ||
+    teacherProfile?.classes?.[0]?.centerId ||
+    teacherProfile?.classes?.[0]?.class?.centerId ||
+    teacher?.classes?.[0]?.class?.centerId ||
+    studentProfile?.centerId;
+
+  const roleCode = typeof mapped.role === "object" ? (mapped.role as any)?.code : mapped.role;
+  const dynamicPermissions = (mapped.role as any)?.permissions ?? (mapped as any).permissions ?? [];
+  const permissions = Array.from(new Set<string>(dynamicPermissions));
 
   return {
-    id: user.id,
-    code: user.code,
-    username: user.username || user.code,
-    fullName: user.fullName,
-    phone: user.phone,
-    email: user.email,
-    dateOfBirth: user.dateOfBirth,
-    address: user.address,
-    avatar: user.avatar,
-    role: user.role.code,
-    permissions: user.role.permissions ?? [],
+    id: mapped.id,
+    code: mapped.code,
+    username: mapped.username || mapped.code,
+    fullName: mapped.fullName,
+    phone: mapped.phone,
+    email: mapped.email,
+    dateOfBirth: mapped.dateOfBirth,
+    address: mapped.address,
+    avatar: mapped.avatar,
+    role: roleCode,
+    permissions,
+    teacher,
+    student,
     teacherProfile,
     studentProfile,
+    centerId,
   };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+
+  const fetchAndMergeDetails = useCallback(async (currentUser: User) => {
+    const canFetchUserDetail =
+      currentUser.permissions?.includes("users.read");
+
+    if (canFetchUserDetail) {
+      try {
+        const detail = await userService.get(currentUser.id);
+        const resolvedCenterId =
+          detail.centerId ||
+          currentUser.centerId ||
+          detail.teacherProfile?.centerId ||
+          detail.teacherProfile?.classes?.[0]?.centerId ||
+          (detail.teacherProfile?.classes?.[0] as any)?.class?.centerId;
+        const merged: User = {
+          ...currentUser,
+          centerId: resolvedCenterId,
+          teacherProfile: detail.teacherProfile || currentUser.teacherProfile,
+          studentProfile: detail.studentProfile || currentUser.studentProfile,
+        };
+        setUser(merged);
+        tokenStorage.setUser({
+          ...tokenStorage.getUser(),
+          centerId: resolvedCenterId,
+          teacherProfile: detail.teacherProfile || undefined,
+          studentProfile: detail.studentProfile || undefined,
+        } as any);
+      } catch (err) {
+        // Backend blocks or fails quietly
+        console.warn("User detail fetch in background skipped or failed:", err);
+      }
+    }
+  }, []);
+
+  const refreshProfile = useCallback(async (): Promise<User | null> => {
+    try {
+      const freshUser = await authService.me();
+      const mapped = mapStoredUser(freshUser);
+      setUser(mapped);
+      await fetchAndMergeDetails(mapped);
+      return mapped;
+    } catch (err) {
+      console.warn("Failed to refresh profile:", err);
+      return null;
+    }
+  }, [fetchAndMergeDetails]);
 
   useEffect(() => {
     // Subscribe to automatic logout when refresh token fails
@@ -98,15 +155,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const storedUser = tokenStorage.getUser();
     const hasToken = !!tokenStorage.getAccessToken();
-    
+
     if (hasToken) {
+      // Nếu cả access token lẫn refresh token đều đã hết hạn, xóa session ngay
+      // Tránh việc gửi request /auth/me chết gây ra lỗi 401 trên console mạng
+      if (tokenStorage.isRefreshTokenExpired() && tokenStorage.isAccessTokenExpired()) {
+        tokenStorage.clear();
+        setUser(null);
+        setIsInitializing(false);
+        return unsubscribe;
+      }
+
       if (storedUser) {
-        setUser(mapStoredUser(storedUser));
+        const initial = mapStoredUser(storedUser);
+        setUser(initial);
       }
 
       authService
         .me()
-        .then((freshUser) => setUser(mapStoredUser(freshUser)))
+        .then((freshUser) => {
+          const mapped = mapStoredUser(freshUser);
+          setUser(mapped);
+          fetchAndMergeDetails(mapped);
+        })
         .catch(() => {
           tokenStorage.clear();
           setUser(null);
@@ -117,36 +188,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setIsInitializing(false);
     return unsubscribe;
-  }, []);
+  }, [fetchAndMergeDetails]);
 
-  const login = async (identifier: string, password: string) => {
+  const login = async (identifier: string, password: string): Promise<User> => {
     const session = await authService.login({ identifier, password });
-    setUser(mapStoredUser(session.user));
+    const mapped = mapStoredUser(session.user);
+    setUser(mapped);
+    await fetchAndMergeDetails(mapped);
+    return mapped;
   };
 
   const logout = async () => {
+    const refreshToken = tokenStorage.getRefreshToken();
+    const accessToken = tokenStorage.getAccessToken();
+
     try {
-      await authService.logout();
-    } catch (error) {
-      console.error("Logout failed:", error);
+      // 1. Thu hồi session trên server với fail-safe timeout 1.5s
+      // Gọi khi token credentials còn nguyên vẹn trong storage để request hợp lệ
+      if (refreshToken) {
+        await Promise.race([
+          authService.logout(refreshToken, accessToken),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      }
+    } catch {
+      // Bỏ qua lỗi server/mạng để đảm bảo client luôn logout thành công
     } finally {
+      // 2. Dọn dẹp sạch sẽ toàn bộ local state và credentials
       tokenStorage.clear();
       setUser(null);
     }
   };
 
-  const hasRole = (roles: string | string[]) => {
+  const hasRole = useCallback((roles: string | string[]) => {
     if (!user) return false;
     const roleList = Array.isArray(roles) ? roles : [roles];
     return roleList.includes(user.role);
-  };
+  }, [user]);
 
-  const hasPermission = (permissions: string | string[]) => {
+  const hasPermission = useCallback((
+    permissions: string | string[],
+    options?: PermissionCheckOptions
+  ) => {
     if (!user) return false;
     const permissionList = Array.isArray(permissions) ? permissions : [permissions];
     if (permissionList.length === 0) return true;
-    return permissionList.every((permission) => user.permissions.includes(permission));
-  };
+    const mode = options?.mode || "all";
+    if (mode === "any") {
+      return permissionList.some((permission) =>
+        checkSinglePermission(user.permissions, permission)
+      );
+    }
+    return permissionList.every((permission) =>
+      checkSinglePermission(user.permissions, permission)
+    );
+  }, [user]);
+
+  const hasAnyPermission = useCallback((permissions: string | string[]) => {
+    return hasPermission(permissions, { mode: "any" });
+  }, [hasPermission]);
 
   const updateUser = (updatedUser: Parameters<typeof mapStoredUser>[0]) => {
     setUser(mapStoredUser(updatedUser));
@@ -162,6 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         hasRole,
         hasPermission,
+        hasAnyPermission,
+        refreshProfile,
         updateUser,
       }}
     >

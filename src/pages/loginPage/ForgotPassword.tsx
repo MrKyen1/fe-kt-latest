@@ -1,12 +1,15 @@
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, App } from "antd";
 import { UserOutlined, LockOutlined, KeyOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { authService } from "../../services/authService";
 import { tokenStorage } from "../../services/tokenStorage";
+import loginImg from "../../assets/login/login.png";
+import logoImg from "../../assets/logo/logo.png";
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleFinish = async (values: any) => {
@@ -50,7 +53,7 @@ const ForgotPassword = () => {
       {/* ===== LEFT: IMAGE (2/3) ===== */}
       <div className="hidden md:flex w-2/3 items-center justify-center bg-gray-50">
         <img
-          src="src/assets/login/login.png"
+          src={loginImg}
           alt="Login Illustration"
           className="w-[80%] max-w-xl"
         />
@@ -62,7 +65,7 @@ const ForgotPassword = () => {
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <img
-              src="/src/assets/logo/logo.png"
+              src={logoImg}
               alt="Logo"
               className="h-14 object-contain"
             />

@@ -6,7 +6,8 @@ import {
   DragEndEvent,
 } from "@dnd-kit/core";
 import { motion } from "framer-motion";
-import { ExamQuestion } from "../../types";
+import { ExamQuestion, ExamMedia } from "../../types";
+import { AppImage } from "../../components/AppImagePreview";
 
 const UNASSIGNED_ZONE_ID = "choices";
 
@@ -46,7 +47,7 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
       {...(!disabled ? listeners : {})}
       {...(!disabled ? attributes : {})}
       whileDrag={disabled ? undefined : { scale: 1.05 }}
-      className={`px-4 py-2 bg-white dark:bg-slate-700 border rounded-xl shadow-sm text-sm font-semibold text-slate-700 dark:text-slate-200 hover:shadow-md transition ${
+      className={`px-4 py-2 bg-white border rounded-xl shadow-sm text-sm font-semibold text-slate-700 hover:shadow-md transition ${
         disabled ? "cursor-not-allowed opacity-70" : "cursor-grab"
       }`}
     >
@@ -55,15 +56,24 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
   );
 };
 
+const isUuidOrId = (text?: string, id?: string) => {
+  if (!text) return true;
+  const trimmed = text.trim();
+  if (id && (trimmed === id || trimmed === id.trim())) return true;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+};
+
 const DropZone: React.FC<{
   id: string;
   label: string;
+  media?: ExamMedia;
   matchedId?: string;
   matchedLabel?: string;
   isCorrect?: boolean;
   showFeedback?: boolean;
-}> = ({ id, label, matchedId, matchedLabel, isCorrect, showFeedback }) => {
+}> = ({ id, label, media, matchedId, matchedLabel, isCorrect, showFeedback }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const displayLabel = media && isUuidOrId(label, id) ? "" : label;
 
   return (
     <div
@@ -71,22 +81,41 @@ const DropZone: React.FC<{
       className={`p-3 rounded-2xl border min-h-[72px] flex items-center justify-between gap-3 transition ${
         showFeedback
           ? isCorrect
-            ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
+            ? "border-emerald-400 bg-emerald-50"
             : matchedId
-              ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20"
+              ? "border-rose-400 bg-rose-50"
               : "border-slate-200"
-          : "border-slate-200 dark:border-slate-600"
+          : "border-slate-200"
       } ${isOver ? "ring-2 ring-emerald-500/60" : ""}`}
     >
-      <span className="font-medium text-slate-700 dark:text-slate-200">
-        {label}
-      </span>
+      <div className="flex items-center gap-3 min-w-0">
+        {media && (
+          media.type === "image" ? (
+            <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-white flex items-center justify-center">
+              <AppImage
+                src={media.url}
+                alt={displayLabel || "Hình ảnh ghép đôi"}
+                className="w-full h-full object-cover"
+                maskText="Xem ảnh"
+              />
+            </div>
+          ) : media.type === "audio" ? (
+            <div className="shrink-0">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio src={media.url} controls className="h-7 max-w-[200px]" />
+            </div>
+          ) : null
+        )}
+        {displayLabel ? (
+          <span className="font-medium text-slate-700 text-sm">{displayLabel}</span>
+        ) : null}
+      </div>
 
-      <div className="flex items-center gap-3 min-w-[120px] justify-end">
+      <div className="flex items-center gap-3 min-w-[120px] justify-end shrink-0">
         {matchedId && matchedLabel ? (
           <DraggableItem id={matchedId} label={matchedLabel} disabled={showFeedback} />
         ) : (
-          <span className="text-slate-400 dark:text-slate-500 text-sm">
+          <span className="text-slate-400 text-sm">
             Thả đáp án vào đây
           </span>
         )}
@@ -105,9 +134,11 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
   const leftItemsList = useMemo(() => {
     return (question.leftItems || []).map((item) => {
       if (typeof item === "string") {
-        return { id: item, text: item };
+        return { id: item, text: item, media: undefined };
       }
-      return item as { id: string; text: string };
+      const rawText = item.text || "";
+      const text = item.media && isUuidOrId(rawText, item.id) ? "" : rawText;
+      return { id: item.id, text, media: item.media };
     });
   }, [question.leftItems]);
 
@@ -116,7 +147,9 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
       if (typeof item === "string") {
         return { id: item, text: item };
       }
-      return item as { id: string; text: string };
+      const rawText = item.text || "";
+      const text = (item as any).media && isUuidOrId(rawText, item.id) ? "" : rawText;
+      return { id: item.id, text };
     });
   }, [question.rightItems]);
 
@@ -171,13 +204,21 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
             {leftItemsList.map((item) => {
               const matched = value[item.id];
               const matchedItem = rightItemsList.find((r) => r.id === matched);
-              const isCorrect = correctAnswer && correctAnswer[item.text] === (matchedItem?.text || "");
+              let isCorrect = false;
+              if (correctAnswer) {
+                if (correctAnswer[item.id] !== undefined) {
+                  isCorrect = correctAnswer[item.id] === matched;
+                } else if (correctAnswer[item.text] !== undefined) {
+                  isCorrect = correctAnswer[item.text] === (matchedItem?.text || "");
+                }
+              }
 
               return (
                 <DropZone
                   key={item.id}
                   id={item.id}
                   label={item.text}
+                  media={item.media}
                   matchedId={matched}
                   matchedLabel={matchedItem?.text}
                   isCorrect={isCorrect}
@@ -194,7 +235,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
 
             <div
               ref={setChoicesRef}
-              className={`space-y-3 p-4 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 min-h-[220px] transition ${
+              className={`space-y-3 p-4 rounded-3xl border border-slate-200 bg-slate-50 min-h-[220px] transition ${
                 isOverChoices ? "ring-2 ring-emerald-500/60" : ""
               }`}
             >

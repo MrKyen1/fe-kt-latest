@@ -13,7 +13,6 @@ interface StudentFormValues {
   startDate?: dayjs.Dayjs;
   endDate?: dayjs.Dayjs;
 }
-import StudentRanking from "../StudentRanking";
 
 import dayjs from "dayjs";
 import CenterManagement from "./centerManagement";

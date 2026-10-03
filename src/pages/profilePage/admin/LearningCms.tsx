@@ -1,104 +1,168 @@
-import { useEffect, useState, useRef } from "react";
+// ============================================================
+// LearningCms — Main Orchestrator
+// ============================================================
+// This file owns:
+//   • All state (data, UI, form instances, modals)
+//   • All async handlers (CRUD, reorder, version history)
+//   • Composition of sub-components and modals
+//
+// It does NOT contain:
+//   • Inline column definitions (→ tab components)
+//   • Inline modal JSX (→ modal components)
+//   • Constants / static data (→ constants.ts)
+//   • Pure render helpers (→ sub-components)
+// ============================================================
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
+  Badge,
   Button,
-  Card,
-  Col,
   ConfigProvider,
   Divider,
-  Empty,
   Form,
-  Input,
-  InputNumber,
   Modal,
-  Row,
   Select,
   Space,
   Spin,
-  Table,
-  Tag,
   Tabs,
-  Upload,
-  message,
-  Checkbox,
-  List,
-  Typography,
-  Switch,
+  Tag,
   Tooltip,
-  Badge,
+  Typography,
+  message,
 } from "antd";
-
 import {
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
   BookOutlined,
   FileTextOutlined,
+  OrderedListOutlined,
   PictureOutlined,
   QuestionCircleOutlined,
-  OrderedListOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  SoundOutlined,
   ReadOutlined,
-  UploadOutlined,
-  EyeOutlined,
-  SendOutlined,
-  SearchOutlined,
 } from "@ant-design/icons";
+import { BookOpenIcon, Pencil, Trash2 } from "lucide-react";
 
 import { learningCmsService } from "../../../services/learningCmsService";
-import { resolveMediaUrl } from "../../../services/apiClient";
+import { academicService } from "../../../services/academicService";
+import { useAuth } from "../../../contexts/AuthContext";
+import { Can } from "../../../components/Can";
+import { getErrorMessage } from "../../../services/apiClient";
+import { formatTextForBackend } from "../../../utils/textFormatters";
 
-const { Title, Text, Paragraph } = Typography;
+// ── Constants ────────────────────────────────────────────────
+import {
+  CHOICE_TYPES,
+  LIST_LIMIT,
+  QUESTION_TYPE_COLORS,
+  QUESTION_TYPE_LABELS,
+} from "./learningCms/constants";
 
-// ==================== QUESTION TYPES ====================
-const QUESTION_TYPES = [
-  { value: "multiple_choice", label: "Trắc nghiệm (Multiple Choice)" },
-  { value: "audio_choice", label: "Nghe & Chọn (Audio Choice)" },
-  { value: "image_choice", label: "Ảnh & Chọn (Image Choice)" },
-  { value: "word_ordering", label: "Sắp xếp từ (Word Ordering)" },
-  { value: "reading_comprehension", label: "Đọc hiểu (Reading Comprehension)" },
-  { value: "sentence_rewrite", label: "Viết lại câu (Sentence Rewrite)" },
-  { value: "hint_rewrite", label: "Gợi ý viết lại (Hint Rewrite)" },
-  { value: "error_correction", label: "Sửa lỗi (Error Correction)" },
-  { value: "matching", label: "Ghép đôi (Matching)" },
-];
+// ── Tab components ───────────────────────────────────────────
+import TaxonomyTab from "./learningCms/components/TaxonomyTab";
+import MediaTab from "./learningCms/components/MediaTab";
+import PassagesTab from "./learningCms/components/PassagesTab";
+import QuestionsTab from "./learningCms/components/QuestionsTab";
+import { invalidateQuestionDetailCache } from "./learningCms/components/QuestionPopoverContent";
+import ExamsTab from "./learningCms/components/ExamsTab";
+import CurriculumsTab from "./learningCms/components/CurriculumsTab";
 
-const QUESTION_TYPE_LABELS: Record<string, string> = {
-  multiple_choice: "Trắc nghiệm",
-  audio_choice: "Nghe & Chọn",
-  image_choice: "Ảnh & Chọn",
-  word_ordering: "Sắp xếp từ",
-  reading_comprehension: "Đọc hiểu",
-  sentence_rewrite: "Viết lại câu",
-  hint_rewrite: "Gợi ý viết lại",
-  error_correction: "Sửa lỗi",
-  matching: "Ghép đôi",
+// ── Modal components ─────────────────────────────────────────
+import TaxonomyModal from "./learningCms/components/modals/TaxonomyModal";
+import MediaUploadModal from "./learningCms/components/modals/MediaUploadModal";
+import PassageFormModal from "./learningCms/components/modals/PassageFormModal";
+import QuestionFormModal from "./learningCms/components/modals/QuestionFormModal";
+import ExamFormModal from "./learningCms/components/modals/ExamFormModal";
+import CurriculumFormModal from "./learningCms/components/modals/CurriculumFormModal";
+import ExamVersionsModal from "./learningCms/components/modals/ExamVersionsModal";
+import QuestionVersionsModal from "./learningCms/components/modals/QuestionVersionsModal";
+import ManageQuestionsModal from "./learningCms/components/modals/ManageQuestionsModal";
+import ManageExamsModal from "./learningCms/components/modals/ManageExamsModal";
+import MediaPreviewModal from "./learningCms/components/modals/MediaPreviewModal";
+import { useAppImagePreview } from "../../../components/AppImagePreview";
+
+const { Title, Text } = Typography;
+
+// ── Ant Design theme ─────────────────────────────────────────
+
+const ANT_THEME = {
+  token: {
+    borderRadius: 12,
+    colorPrimary: "#4f46e5",
+    fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+  },
+  components: {
+    Table: {
+      headerBg: "#f8fafc",
+      headerColor: "#475569",
+      rowHoverBg: "#f1f5f9",
+    },
+  },
 };
 
-const QUESTION_TYPE_COLORS: Record<string, string> = {
-  multiple_choice: "blue",
-  audio_choice: "cyan",
-  image_choice: "geekblue",
-  word_ordering: "purple",
-  reading_comprehension: "magenta",
-  sentence_rewrite: "orange",
-  hint_rewrite: "gold",
-  error_correction: "red",
-  matching: "lime",
-};
+// ── Helpers ───────────────────────────────────────────────────
 
-// Choice-based types that use the options[] array
-const CHOICE_TYPES = ["multiple_choice", "audio_choice", "image_choice", "reading_comprehension"];
+/**
+ * Returns the Ant Design tag colour for a given status string.
+ * Extracted so it can be used by multiple sub-components if needed.
+ */
+export function statusTag(status: string) {
+  if (status === "published")
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
+  if (status === "archived")
+    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
+  return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
+}
+
+/**
+ * Returns the correct error message string from an Axios-style error or API error.
+ * Prioritizes backend response message (even if array of validation errors),
+ * then backend error, then network/client error message, and finally fallback.
+ */
+const extractErrorMsg = getErrorMessage;
+
+// ============================================================
+// Main Component
+// ============================================================
 
 export default function LearningCms() {
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("taxonomy");
-  const [taxTab, setTaxTab] = useState("levels");
+  const { user, hasPermission } = useAuth();
+  const [subjectsLoaded, setSubjectsLoaded] = useState(false);
 
-  // ================= DATA STATES =================
+  // ── Global loading ─────────────────────────────────────────
+  const [loading, setLoading] = useState(false);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const rolePrefix = user?.role === "teacher" ? "teacher" : "admin";
+
+  const currentSubPath = useMemo(() => {
+    const cmsPath = location.pathname.split("/cms")[1] || "";
+    const parts = cmsPath.split("/").filter(Boolean);
+    let subjectId: string | undefined = undefined;
+    let tab = "taxonomy";
+    let taxTab = "levels";
+
+    if (parts[0] === "subjects" && parts[1]) {
+      subjectId = parts[1];
+      tab = parts[2] || "taxonomy";
+      if (tab === "taxonomy") {
+        taxTab = parts[3] || "levels";
+      }
+    } else {
+      tab = parts[0] || "taxonomy";
+      if (tab === "taxonomy") {
+        taxTab = parts[1] || "levels";
+      }
+    }
+
+    return { subjectId, tab, taxTab };
+  }, [location.pathname]);
+
+  const activeTab = currentSubPath.tab;
+  const taxTab = currentSubPath.taxTab;
+  const urlSubjectId = currentSubPath.subjectId;
+
+  // ── Data states ────────────────────────────────────────────
   const [levels, setLevels] = useState<any[]>([]);
   const [skills, setSkills] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
@@ -108,8 +172,55 @@ export default function LearningCms() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
+  const [specializations, setSpecializations] = useState<any[]>([]);
 
-  // ================= TAXONOMY SEARCH/FILTER STATES =================
+  const selectedSpecializationId = useMemo(() => {
+    if (urlSubjectId && specializations.some((s) => s.id === urlSubjectId)) {
+      return urlSubjectId;
+    }
+    return specializations[0]?.id || undefined;
+  }, [urlSubjectId, specializations]);
+
+  const subjectOptions = useMemo(() => {
+    return specializations.map((spec) => ({
+      value: spec.id,
+      label: spec.name,
+      code: spec.code,
+      searchValue: `${spec.name} ${spec.code || ""}`,
+    }));
+  }, [specializations]);
+
+  const handleSubjectChange = (newSubjectId: string) => {
+    navigate(`/${rolePrefix}/cms/subjects/${newSubjectId}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`);
+  };
+
+  const setActiveTab = (tab: string) => {
+    const sId = selectedSpecializationId || (specializations[0]?.id ?? "");
+    if (sId) {
+      if (tab === "taxonomy") {
+        navigate(`/${rolePrefix}/cms/subjects/${sId}/taxonomy/${taxTab}`);
+      } else {
+        navigate(`/${rolePrefix}/cms/subjects/${sId}/${tab}`);
+      }
+    } else {
+      if (tab === "taxonomy") {
+        navigate(`/${rolePrefix}/cms/taxonomy/${taxTab}`);
+      } else {
+        navigate(`/${rolePrefix}/cms/${tab}`);
+      }
+    }
+  };
+
+  const setTaxTab = (subTab: string) => {
+    const sId = selectedSpecializationId || (specializations[0]?.id ?? "");
+    if (sId) {
+      navigate(`/${rolePrefix}/cms/subjects/${sId}/taxonomy/${subTab}`);
+    } else {
+      navigate(`/${rolePrefix}/cms/taxonomy/${subTab}`);
+    }
+  };
+
+  // ── Taxonomy search / filter ───────────────────────────────
   const [taxSearch, setTaxSearch] = useState("");
   const [debouncedTaxSearch, setDebouncedTaxSearch] = useState("");
   const [taxLoading, setTaxLoading] = useState(false);
@@ -118,40 +229,77 @@ export default function LearningCms() {
   const [filteredTopics, setFilteredTopics] = useState<any[]>([]);
   const [filteredTags, setFilteredTags] = useState<any[]>([]);
 
-  // Refs for tracking search synchronization
+  // Refs for search synchronisation
   const prevTabRef = useRef(taxTab);
   const isInitialMount = useRef(true);
   const lastFetchedSearchRef = useRef("");
 
-  // ================= MODAL STATES =================
+  // ── Modal visibility ───────────────────────────────────────
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<any>(null);
+  const { showPreview, previewElement } = useAppImagePreview();
+
+  const handlePreviewAsset = (a: any) => {
+    if (!a) return;
+    const isImg = a.type === "image" || a.mimeType?.startsWith("image");
+    if (isImg && a.url) {
+      showPreview(a.url);
+    } else {
+      setPreviewAsset(a);
+      setPreviewVisible(true);
+    }
+  };
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const [passageModalOpen, setPassageModalOpen] = useState(false);
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
   const [examModalOpen, setExamModalOpen] = useState(false);
+  const [examSubmitting, setExamSubmitting] = useState(false);
+  const [examVersionsModalOpen, setExamVersionsModalOpen] = useState(false);
+  const [questionVersionsModalOpen, setQuestionVersionsModalOpen] = useState(false);
   const [curriculumModalOpen, setCurriculumModalOpen] = useState(false);
   const [manageQuestionsOpen, setManageQuestionsOpen] = useState(false);
   const [manageExamsOpen, setManageExamsOpen] = useState(false);
 
-  // Editing/Selected Items
+  // ── Editing / selected state ───────────────────────────────
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingExamInitialCurriculumId, setEditingExamInitialCurriculumId] = useState<string | undefined>(undefined);
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [selectedCurriculum, setSelectedCurriculum] = useState<any>(null);
   const [currentQuestionType, setCurrentQuestionType] = useState<string>("multiple_choice");
+  const [isDuplicatingQuestion, setIsDuplicatingQuestion] = useState(false);
 
-  // ================= FORMS =================
+  // ── Version history ────────────────────────────────────────
+  const [examVersions, setExamVersions] = useState<any[]>([]);
+  const [viewingExam, setViewingExam] = useState<any>(null);
+  const [questionVersions, setQuestionVersions] = useState<any[]>([]);
+  const [viewingQuestion, setViewingQuestion] = useState<any>(null);
+
+  // ── Exam-question filter state (lifted for ManageQuestionsModal) ──
+  const [examQSearch, setExamQSearch] = useState("");
+  const [examQTypeFilter, setExamQTypeFilter] = useState<string | undefined>(undefined);
+  const [examQSkillFilter, setExamQSkillFilter] = useState<string | undefined>(undefined);
+  const [examQLevelFilter, setExamQLevelFilter] = useState<string | undefined>(undefined);
+  const [examQTopicFilter, setExamQTopicFilter] = useState<string | undefined>(undefined);
+  const [examQTagFilter, setExamQTagFilter] = useState<string | undefined>(undefined);
+
+  // Cache of fully-fetched question details (for hover popover in ManageQuestionsModal)
+  const [questionDetails, setQuestionDetails] = useState<Record<string, any>>({});
+
+  // ── Media upload state ─────────────────────────────────────
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [mediaAlt, setMediaAlt] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  // ── Form instances ─────────────────────────────────────────
   const [taxForm] = Form.useForm();
   const [passageForm] = Form.useForm();
   const [questionForm] = Form.useForm();
   const [examForm] = Form.useForm();
   const [curriculumForm] = Form.useForm();
 
-  // Media file state
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [mediaAlt, setMediaAlt] = useState("");
-  const [uploadLoading, setUploadLoading] = useState(false);
+  // ── Taxonomy service router ────────────────────────────────
 
-  // ================= TAXONOMY SERVICES =================
   const getTaxService = (type: string) => {
     switch (type) {
       case "levels": return learningCmsService.levels;
@@ -161,77 +309,183 @@ export default function LearningCms() {
     }
   };
 
+  const getTaxName = (tab: string): string => {
+    switch (tab) {
+      case "levels": return "Cấp độ";
+      case "skills": return "Kỹ năng";
+      case "topics": return "Chủ đề";
+      default: return "Thẻ gắn";
+    }
+  };
+
+  const getTaxData = () => {
+    switch (taxTab) {
+      case "levels": return filteredLevels;
+      case "skills": return filteredSkills;
+      case "topics": return filteredTopics;
+      default: return filteredTags;
+    }
+  };
+
+  const getSearchPlaceholder = (): string => {
+    switch (taxTab) {
+      case "levels": return "Tìm kiếm Level (mã, tên)...";
+      case "skills": return "Tìm kiếm kỹ năng (mã, tên)...";
+      case "topics": return "Tìm kiếm chủ đề (mã, tên)...";
+      default: return "Tìm kiếm thẻ gắn (mã, tên)...";
+    }
+  };
+
+  // ── Media helpers ──────────────────────────────────────────
+
+  const getFilteredMedia = () => {
+    if (currentQuestionType === "image_choice")
+      return media.filter((m) => m.type === "image" || m.mimeType?.startsWith("image"));
+    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice")
+      return media.filter((m) => m.type === "audio" || m.mimeType?.startsWith("audio"));
+    return media;
+  };
+
+  const getAvailableRoles = () => {
+    if (currentQuestionType === "image_choice")
+      return [{ value: "prompt_image", label: "Hình ảnh đề bài" }];
+    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice")
+      return [{ value: "prompt_audio", label: "Âm thanh đề bài" }];
+    return [
+      { value: "prompt_audio", label: "Âm thanh đề bài" },
+      { value: "prompt_image", label: "Hình ảnh đề bài" },
+    ];
+  };
+
+  // ── Filter reset ───────────────────────────────────────────
+
+  const resetExamQFilters = () => {
+    setExamQSearch("");
+    setExamQTypeFilter(undefined);
+    setExamQSkillFilter(undefined);
+    setExamQLevelFilter(undefined);
+    setExamQTopicFilter(undefined);
+    setExamQTagFilter(undefined);
+  };
+
+  // ── Taxonomy columns (built with closures over state) ──────
+
+  const taxColumns = [
+    {
+      title: "Tên danh mục",
+      dataIndex: "name",
+      render: (val: string, record: any) => (
+        <div>
+          <div className="font-semibold text-slate-800">{val}</div>
+          <div className="text-xs text-slate-400 font-mono">{record.code}</div>
+          {record.rank !== undefined && (
+            <div className="text-xs text-indigo-500 mt-0.5">Thứ tự: {record.rank}</div>
+          )}
+        </div>
+      ),
+    },
+    taxTab === "topics" ? {
+      title: "Chủ đề cha",
+      dataIndex: "parentId",
+      render: (val: string) => {
+        const parent = topics.find((t) => t.id === val);
+        return parent
+          ? <Tag color="blue" className="rounded">{parent.name}</Tag>
+          : <span className="text-slate-400">—</span>;
+      },
+    } : null,
+    {
+      title: "Thao tác",
+      align: "right" as const,
+      render: (_: any, record: any) => (
+        <Space size="small">
+          <Can perform="learning.write">
+            <Button type="text" size="small"
+              icon={<Pencil size={14} className="text-slate-400 hover:text-indigo-600" />}
+              onClick={() => handleTaxEdit(record)}
+            />
+          </Can>
+          <Can perform="learning.delete">
+            <Button type="text" size="small" danger
+              icon={<Trash2 size={14} className="text-slate-400 hover:text-rose-600" />}
+              onClick={() => handleTaxDelete(record)}
+            />
+          </Can>
+        </Space>
+      ),
+    },
+  ].filter(Boolean) as any[];
+
+  // ============================================================
+  // DATA LOADING
+  // ============================================================
+
   const loadTaxonomyData = async (tab: string, searchVal: string) => {
     try {
       setTaxLoading(true);
       lastFetchedSearchRef.current = searchVal;
       const res = await getTaxService(tab).list({
-        limit: 100,
+        specializationId: tab !== "tags" ? selectedSpecializationId : undefined,
+        limit: LIST_LIMIT,
         search: searchVal || undefined,
         sortBy: "name",
         sortOrder: "ASC",
       });
-      const data = res.data || [];
-      
+      const data = res.data ?? [];
+
       switch (tab) {
-        case "levels":
-          setFilteredLevels(data);
-          break;
-        case "skills":
-          setFilteredSkills(data);
-          break;
-        case "topics":
-          setFilteredTopics(data);
-          break;
-        case "tags":
-          setFilteredTags(data);
-          break;
+        case "levels": setFilteredLevels(data); break;
+        case "skills": setFilteredSkills(data); break;
+        case "topics": setFilteredTopics(data); break;
+        case "tags": setFilteredTags(data); break;
       }
-    } catch (err) {
-      message.error("Tải dữ liệu danh mục thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải dữ liệu danh mục thất bại"));
     } finally {
       setTaxLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
   const loadAllData = async () => {
     try {
       setLoading(true);
+
       const results = await Promise.allSettled([
-        learningCmsService.levels.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 0
-        learningCmsService.skills.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 1
-        learningCmsService.topics.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),        // 2
-        learningCmsService.tags.list({ limit: 100, sortBy: "name", sortOrder: "ASC" }),          // 3
-        learningCmsService.mediaAssets.list({ limit: 100 }),   // 4
-        learningCmsService.readingPassages.list({ limit: 100, sortBy: "title", sortOrder: "ASC" }), // 5
-        learningCmsService.questions.list({ limit: 100 }),     // 6
-        learningCmsService.exams.list({ limit: 100 }),         // 7
-        learningCmsService.curriculums.list({ limit: 100 }),   // 8
+        learningCmsService.levels.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
+        learningCmsService.skills.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
+        learningCmsService.topics.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
+        learningCmsService.tags.list({ limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
+        learningCmsService.mediaAssets.list({ limit: LIST_LIMIT }),
+        learningCmsService.readingPassages.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "title", sortOrder: "ASC" }),
+        learningCmsService.questions.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT }),
+        learningCmsService.exams.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT }),
+        learningCmsService.curriculums.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT }),
       ]);
 
-      const get = (i: number) => results[i].status === "fulfilled" ? (results[i] as PromiseFulfilledResult<any>).value : null;
-      const failedApis: string[] = [];
-      const apiNames = ["Levels", "Skills", "Topics", "Tags", "Media Assets", "Reading Passages", "Questions", "Exams", "Curriculums"];
-      results.forEach((r, i) => { if (r.status === "rejected") { failedApis.push(apiNames[i]); console.error(`API ${apiNames[i]} failed:`, (r as PromiseRejectedResult).reason); } });
-      if (failedApis.length > 0) {
-        message.warning(`Một số API bị lỗi: ${failedApis.join(", ")}. Vui lòng kiểm tra backend.`);
+      const get = (i: number) =>
+        results[i].status === "fulfilled"
+          ? (results[i] as PromiseFulfilledResult<any>).value
+          : null;
+
+      // Surface any API failures as a warning
+      const API_NAMES = ["Levels", "Skills", "Topics", "Tags", "Media Assets", "Reading Passages", "Questions", "Exams", "Curriculums"];
+      const failed = results
+        .map((r, i) => (r.status === "rejected" ? API_NAMES[i] : null))
+        .filter(Boolean);
+      if (failed.length) {
+        message.warning(`Một số API bị lỗi: ${failed.join(", ")}. Vui lòng kiểm tra backend.`);
       }
 
-      const levelsData = get(0)?.data || [];
-      const skillsData = get(1)?.data || [];
-      const topicsData = get(2)?.data || [];
-      const tagsData = get(3)?.data || [];
+      const levelsData = get(0)?.data ?? [];
+      const skillsData = get(1)?.data ?? [];
+      const topicsData = get(2)?.data ?? [];
+      const tagsData = get(3)?.data ?? [];
 
       setLevels(levelsData);
       setSkills(skillsData);
       setTopics(topicsData);
       setTags(tagsData);
 
-      // Initialize filtered data
       if (!taxSearch) {
         setFilteredLevels(levelsData);
         setFilteredSkills(skillsData);
@@ -243,72 +497,105 @@ export default function LearningCms() {
         if (taxTab !== "skills") setFilteredSkills(skillsData);
         if (taxTab !== "topics") setFilteredTopics(topicsData);
         if (taxTab !== "tags") setFilteredTags(tagsData);
-        
         loadTaxonomyData(taxTab, taxSearch);
       }
 
-      setMedia(get(4)?.data || []);
-      setPassages(get(5)?.data || []);
-      setQuestions(get(6)?.data || []);
+      setMedia(get(4)?.data ?? []);
+      setPassages(get(5)?.data ?? []);
+      setQuestions(get(6)?.data ?? []);
 
-      // Exam list API does NOT include `questions` array – fetch full details for each
-      // exam so the question count is available in the table view.
-      const examListData: any[] = get(7)?.data || [];
-      if (examListData.length > 0) {
-        const examDetails = await Promise.allSettled(
-          examListData.map((e: any) => learningCmsService.exams.get(e.id))
+      // Fetch full exam details to get question counts
+      const examList: any[] = get(7)?.data ?? [];
+      if (examList.length > 0) {
+        const detailResults = await Promise.allSettled(
+          examList.map((e) => learningCmsService.exams.get(e.id)),
         );
-        const fullExams = examDetails.map((r, i) =>
-          r.status === "fulfilled" ? r.value : examListData[i]
+        const fullExams = detailResults.map((r, i) =>
+          r.status === "fulfilled" ? r.value : examList[i],
         );
         setExams(fullExams);
       } else {
         setExams([]);
       }
 
-      setCurriculums(get(8)?.data || []);
-    } catch (err) {
-      message.error("Tải dữ liệu CMS thất bại");
+      // Fetch full curriculum details to get exams and level
+      const curriculumList: any[] = get(8)?.data ?? [];
+      if (curriculumList.length > 0) {
+        const detailResults = await Promise.allSettled(
+          curriculumList.map((c) => learningCmsService.curriculums.get(c.id)),
+        );
+        const fullCurriculums = detailResults.map((r, i) =>
+          r.status === "fulfilled" ? r.value : curriculumList[i],
+        );
+        setCurriculums(fullCurriculums);
+      } else {
+        setCurriculums([]);
+      }
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải dữ liệu CMS thất bại"));
     } finally {
       setLoading(false);
     }
   };
 
-  // Debounce effect for taxonomy search
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedTaxSearch(taxSearch);
-    }, 400);
+  // ── Effects ────────────────────────────────────────────────
 
-    return () => {
-      clearTimeout(handler);
+  useEffect(() => {
+    const fetchSpecs = async () => {
+      try {
+        let specs: any[] = [];
+        if (user?.role === "teacher" && user?.teacherProfile?.specializations?.length) {
+          specs = user.teacherProfile.specializations;
+        } else if (hasPermission("specializations.read")) {
+          try {
+            specs = await academicService.specializations.list({ isActive: true });
+          } catch (err: any) {
+            if (user?.teacherProfile?.specializations?.length) {
+              specs = user.teacherProfile.specializations;
+            } else {
+              throw err;
+            }
+          }
+        }
+        setSpecializations(specs ?? []);
+        if (specs?.length > 0 && !urlSubjectId) {
+          navigate(`/${rolePrefix}/cms/subjects/${specs[0].id}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`, { replace: true });
+        }
+      } catch (error: any) {
+        message.error(extractErrorMsg(error, "Tải danh sách môn học thất bại"));
+      } finally {
+        setSubjectsLoaded(true);
+      }
     };
+    fetchSpecs();
+  }, [user]);
+
+  useEffect(() => {
+    if (subjectsLoaded) loadAllData();
+  }, [selectedSpecializationId, subjectsLoaded]);
+
+  // Debounce taxonomy search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedTaxSearch(taxSearch), 400);
+    return () => clearTimeout(timer);
   }, [taxSearch]);
 
-  // Synchronize tab changes and execute taxonomy search query
+  // Sync tab changes + execute search
   useEffect(() => {
-    // If the tab changed, reset the search input immediately and load the new tab unfiltered
     if (prevTabRef.current !== taxTab) {
       prevTabRef.current = taxTab;
       setTaxSearch("");
       loadTaxonomyData(taxTab, "");
       return;
     }
-
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-
-    // Avoid duplicate requests if the search query hasn't changed from what's currently loaded
-    if (debouncedTaxSearch === lastFetchedSearchRef.current) {
-      return;
-    }
-
+    if (isInitialMount.current) { isInitialMount.current = false; return; }
+    if (debouncedTaxSearch === lastFetchedSearchRef.current) return;
     loadTaxonomyData(taxTab, debouncedTaxSearch);
   }, [taxTab, debouncedTaxSearch]);
 
-  // ================= TAXONOMY CRUD =================
+  // ============================================================
+  // TAXONOMY CRUD
+  // ============================================================
 
   const handleTaxCreate = () => {
     setEditingItem(null);
@@ -334,8 +621,8 @@ export default function LearningCms() {
           await getTaxService(taxTab).remove(record.id);
           message.success("Xóa thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          message.error(extractErrorMsg(error, "Xóa thất bại"));
         }
       },
     });
@@ -347,22 +634,51 @@ export default function LearningCms() {
         await getTaxService(taxTab).update(editingItem.id, values);
         message.success("Cập nhật thành công");
       } else {
-        await getTaxService(taxTab).create(values);
+        const payload = taxTab !== "tags"
+          ? { ...values, specializationId: selectedSpecializationId }
+          : values;
+        await getTaxService(taxTab).create(payload);
         message.success("Tạo mới thành công");
       }
       loadAllData();
       setTaxModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      const err = error?.response?.data ?? error;
+      if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const itemId = err.details?.id;
+        const taxName = getTaxName(taxTab);
+        if (itemId) {
+          Modal.confirm({
+            title: `Khôi phục ${taxName}`,
+            content: `"${values.name}" đã tồn tại nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại không?`,
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                await getTaxService(taxTab).reactivate(itemId);
+                await getTaxService(taxTab).update(itemId, values);
+                message.success(`Khôi phục và cập nhật ${taxName.toLowerCase()} thành công`);
+                loadAllData();
+                setTaxModalOpen(false);
+                taxForm.resetFields();
+              } catch (reactivateErr: any) {
+                message.error(extractErrorMsg(reactivateErr, "Khôi phục thất bại"));
+              }
+            },
+          });
+          return;
+        }
+      }
+      message.error(extractErrorMsg(error));
     }
   };
 
-  // ================= MEDIA ASSETS CRUD =================
+  // ============================================================
+  // MEDIA CRUD
+  // ============================================================
+
   const handleMediaUpload = async () => {
-    if (!uploadFile) {
-      message.warning("Vui lòng chọn tệp để tải lên!");
-      return;
-    }
+    if (!uploadFile) { message.warning("Vui lòng chọn tệp để tải lên!"); return; }
     try {
       setUploadLoading(true);
       await learningCmsService.mediaAssets.upload(uploadFile, mediaAlt);
@@ -371,33 +687,41 @@ export default function LearningCms() {
       setMediaAlt("");
       setMediaModalOpen(false);
       loadAllData();
-    } catch {
-      message.error("Tải lên tệp thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải lên tệp thất bại"));
     } finally {
       setUploadLoading(false);
     }
+  };
+
+  const handleUploadQuestionMedia = async (file: File, altText?: string) => {
+    const asset = await learningCmsService.mediaAssets.upload(file, altText);
+    setMedia((prev) => [asset, ...prev]);
+    return asset;
   };
 
   const handleMediaDelete = (record: any) => {
     Modal.confirm({
       title: "Xóa tệp phương tiện",
       content: "Bạn có chắc chắn muốn xóa tệp này?",
-      okText: "Xóa",
-      cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.mediaAssets.remove(record.id);
           message.success("Xóa tệp thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          message.error(extractErrorMsg(error, "Xóa thất bại"));
         }
       },
     });
   };
 
-  // ================= READING PASSAGES CRUD =================
+  // ============================================================
+  // READING PASSAGES CRUD
+  // ============================================================
+
   const handlePassageCreate = () => {
     setEditingItem(null);
     passageForm.resetFields();
@@ -407,10 +731,8 @@ export default function LearningCms() {
   const handlePassageEdit = (record: any) => {
     setEditingItem(record);
     passageForm.setFieldsValue({
-      title: record.title,
-      content: record.content,
-      source: record.source,
-      levelId: record.levelId,
+      title: record.title, content: record.content,
+      source: record.source, levelId: record.levelId,
     });
     setPassageModalOpen(true);
   };
@@ -419,16 +741,15 @@ export default function LearningCms() {
     Modal.confirm({
       title: "Xóa bài đọc",
       content: `Xóa bài đọc "${record.title}"?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.readingPassages.remove(record.id);
           message.success("Xóa thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          message.error(extractErrorMsg(error, "Xóa thất bại"));
         }
       },
     });
@@ -440,19 +761,23 @@ export default function LearningCms() {
         await learningCmsService.readingPassages.update(editingItem.id, values);
         message.success("Cập nhật bài đọc thành công");
       } else {
-        await learningCmsService.readingPassages.create(values);
+        await learningCmsService.readingPassages.create({ ...values, specializationId: selectedSpecializationId });
         message.success("Tạo bài đọc thành công");
       }
       loadAllData();
       setPassageModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error));
     }
   };
 
-  // ================= QUESTIONS CRUD =================
+  // ============================================================
+  // QUESTIONS CRUD
+  // ============================================================
+
   const handleQuestionCreate = () => {
     setEditingItem(null);
+    setIsDuplicatingQuestion(false);
     setCurrentQuestionType("multiple_choice");
     questionForm.resetFields();
     questionForm.setFieldsValue({
@@ -464,237 +789,684 @@ export default function LearningCms() {
         { label: "C", content: "", isCorrect: false, orderIndex: 2 },
         { label: "D", content: "", isCorrect: false, orderIndex: 3 },
       ],
+      mediaIds: [],
     });
     setQuestionModalOpen(true);
   };
 
-  const handleQuestionEdit = (record: any) => {
-    setEditingItem(record);
-    setCurrentQuestionType(record.type);
+  const handleQuestionEdit = async (record: any) => {
+    try {
+      const fullRecord = await learningCmsService.questions.get(record.id);
+      setEditingItem(fullRecord);
+      setIsDuplicatingQuestion(false);
+      setCurrentQuestionType(fullRecord.type);
 
-    // Flatten detail fields to the Form root level
-    const detailFields: any = {};
-    if (record.detail) {
-      Object.assign(detailFields, record.detail);
-      
-      // Convert arrays back to space/newline-separated strings for inputs
-      if (record.type === "word_ordering" && Array.isArray(record.detail.correctTokens)) {
-        detailFields.correctTokens = record.detail.correctTokens.join(" ");
+      const detailFields: any = {};
+      if (fullRecord.detail) {
+        Object.assign(detailFields, fullRecord.detail);
+        if (fullRecord.type === "word_ordering" && Array.isArray(fullRecord.detail.correctTokens)) {
+          detailFields.correctTokens = fullRecord.detail.correctTokens.join(" ");
+        }
+        if ((fullRecord.type === "sentence_rewrite" || fullRecord.type === "hint_rewrite")
+          && Array.isArray(fullRecord.detail.acceptedAnswers)) {
+          detailFields.acceptedAnswers = fullRecord.detail.acceptedAnswers.join("\n");
+        }
+        if (fullRecord.type === "matching" && Array.isArray(fullRecord.detail.pairs)) {
+          detailFields.pairs = fullRecord.detail.pairs.map((p: any) => ({
+            leftText: p.leftText ?? "",
+            rightText: p.rightText ?? "",
+            leftMediaId: p.leftMediaId || p.leftMedia?.id,
+            leftMediaVal: (p.leftMediaId || p.leftMedia) ? {
+              mediaId: p.leftMediaId || p.leftMedia?.id,
+              previewUrl: p.leftMedia?.url,
+              fileName: p.leftMedia?.name,
+              fileType: p.leftMedia?.type ?? (p.leftMedia?.mimeType?.startsWith("image") ? "image" : "audio"),
+            } : undefined,
+            rightMediaId: p.rightMediaId || p.rightMedia?.id,
+            orderIndex: p.orderIndex,
+          }));
+        }
       }
-      if ((record.type === "sentence_rewrite" || record.type === "hint_rewrite") && Array.isArray(record.detail.acceptedAnswers)) {
-        detailFields.acceptedAnswers = record.detail.acceptedAnswers.join("\n");
-      }
+
+      const mediaIds = (fullRecord.media ?? []).map((m: any) => ({
+        mediaId: m.mediaId ?? m.media?.id,
+        role: m.role,
+        orderIndex: m.orderIndex,
+      }));
+
+      const resolveEditablePrompt = (rec: any) => {
+        if (rec.type === "error_correction" && rec.detail?.incorrectSentence) {
+          return rec.detail.incorrectSentence;
+        }
+        if (
+          (rec.type === "sentence_rewrite" || rec.type === "hint_rewrite") &&
+          rec.detail?.sourceSentence
+        ) {
+          const p = (rec.prompt ?? "").trim();
+          const s = String(rec.detail.sourceSentence).trim();
+          if (!p) return s;
+          if (s && p !== s && !p.includes(s)) return `${p}\n${s}`;
+        }
+        return rec.prompt;
+      };
+
+      setQuestionModalOpen(true);
+      questionForm.setFieldsValue({
+        type: fullRecord.type,
+        prompt: resolveEditablePrompt(fullRecord),
+        instruction: fullRecord.instruction,
+        explanation: fullRecord.explanation,
+        difficultyLevelId: fullRecord.difficultyLevelId,
+        skillId: fullRecord.skillId,
+        topicId: fullRecord.topicId,
+        tagIds: (fullRecord.tags ?? []).map((t: any) => t.id),
+        options: (fullRecord.options ?? []).map((o: any) => ({
+          ...o,
+          mediaId: o.mediaId || o.media?.id,
+          mediaVal: (o.mediaId || o.media) ? {
+            mediaId: o.mediaId || o.media?.id,
+            previewUrl: o.media?.url,
+            fileName: o.media?.name,
+            fileType: "image",
+          } : undefined,
+        })),
+        mediaIds,
+        ...detailFields,
+      });
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể tải chi tiết câu hỏi"));
     }
+  };
 
-    questionForm.setFieldsValue({
-      type: record.type,
-      prompt: record.prompt,
-      instruction: record.instruction,
-      explanation: record.explanation,
-      difficultyLevelId: record.difficultyLevelId,
-      skillId: record.skillId,
-      topicId: record.topicId,
-      tagIds: record.tagIds || [],
-      options: record.options || [],
-      ...detailFields,
-    });
-    setQuestionModalOpen(true);
+  const handleQuestionDuplicate = async (record: any) => {
+    try {
+      const hide = message.loading("Đang sao chép dữ liệu câu hỏi...", 0);
+      const cloneData = await learningCmsService.questions.duplicate(record.id);
+      hide();
+
+      setEditingItem(null);
+      setIsDuplicatingQuestion(true);
+      setCurrentQuestionType(cloneData.type);
+
+      const detailFields: any = {};
+      if (cloneData.detail) {
+        Object.assign(detailFields, cloneData.detail);
+        if (cloneData.type === "word_ordering" && Array.isArray((cloneData.detail as any).correctTokens)) {
+          detailFields.correctTokens = (cloneData.detail as any).correctTokens.join(" ");
+        }
+        if (
+          (cloneData.type === "sentence_rewrite" || cloneData.type === "hint_rewrite") &&
+          Array.isArray((cloneData.detail as any).acceptedAnswers)
+        ) {
+          detailFields.acceptedAnswers = (cloneData.detail as any).acceptedAnswers.join("\n");
+        }
+        if (cloneData.type === "matching" && Array.isArray((cloneData.detail as any)?.pairs)) {
+          detailFields.pairs = (cloneData.detail as any).pairs.map((p: any) => ({
+            leftText: p.leftText ?? "",
+            rightText: p.rightText ?? "",
+            leftMediaId: p.leftMediaId || p.leftMedia?.id,
+            leftMediaVal: (p.leftMediaId || p.leftMedia) ? {
+              mediaId: p.leftMediaId || p.leftMedia?.id,
+              previewUrl: p.leftMedia?.url,
+              fileName: p.leftMedia?.name,
+              fileType: p.leftMedia?.type ?? (p.leftMedia?.mimeType?.startsWith("image") ? "image" : "audio"),
+            } : undefined,
+            rightMediaId: p.rightMediaId || p.rightMedia?.id,
+            orderIndex: p.orderIndex,
+          }));
+        }
+      }
+
+      const mediaIds = (cloneData.mediaIds ?? []).map((m: any) => ({
+        mediaId: m.mediaId ?? m.media?.id,
+        role: m.role,
+        orderIndex: m.orderIndex,
+      }));
+
+      questionForm.resetFields();
+      const clonePrompt = (() => {
+        if (cloneData.type === "error_correction" && (cloneData.detail as any)?.incorrectSentence) {
+          return (cloneData.detail as any).incorrectSentence;
+        }
+        if (
+          (cloneData.type === "sentence_rewrite" || cloneData.type === "hint_rewrite") &&
+          (cloneData.detail as any)?.sourceSentence
+        ) {
+          const p = (cloneData.prompt ?? "").trim();
+          const s = String((cloneData.detail as any).sourceSentence).trim();
+          if (!p) return s;
+          if (s && p !== s && !p.includes(s)) return `${p}\n${s}`;
+        }
+        return cloneData.prompt;
+      })();
+      questionForm.setFieldsValue({
+        type: cloneData.type,
+        prompt: clonePrompt,
+        instruction: cloneData.instruction,
+        explanation: cloneData.explanation,
+        difficultyLevelId: cloneData.difficultyLevelId,
+        skillId: cloneData.skillId,
+        topicId: cloneData.topicId,
+        tagIds: cloneData.tagIds ?? [],
+        options: (cloneData.options ?? []).map((o: any) => ({
+          ...o,
+          mediaId: o.mediaId || o.media?.id,
+          mediaVal: (o.mediaId || o.media) ? {
+            mediaId: o.mediaId || o.media?.id,
+            previewUrl: o.media?.url,
+            fileName: o.media?.name,
+            fileType: "image",
+          } : undefined,
+        })),
+        mediaIds,
+        ...detailFields,
+      });
+
+      setQuestionModalOpen(true);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể nhân bản câu hỏi"));
+    }
   };
 
   const handleQuestionDelete = (record: any) => {
     Modal.confirm({
       title: "Xóa câu hỏi",
       content: "Bạn có chắc chắn muốn xóa câu hỏi này?",
-      okText: "Xóa",
-      cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.questions.remove(record.id);
           message.success("Xóa thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          message.error(extractErrorMsg(error, "Xóa thất bại"));
         }
       },
     });
   };
 
   const handleQuestionSubmit = async (values: any) => {
+    const qType = values.type;
+
+    if (CHOICE_TYPES.includes(qType)) {
+      const options = values.options ?? [];
+      if (options.length < 2) {
+        message.error({ content: "Câu hỏi trắc nghiệm phải có ít nhất 2 phương án trả lời!", key: "question-form-validation-error" });
+        questionForm.scrollToField(["options"], { behavior: "smooth", block: "center" });
+        return;
+      }
+      const hasCorrect = options.some((o: any) => o.isCorrect);
+      if (!hasCorrect) {
+        message.error({ content: "Vui lòng chọn ít nhất một đáp án đúng cho câu hỏi!", key: "question-form-validation-error" });
+        questionForm.scrollToField(["options", 0, "isCorrect"], { behavior: "smooth", block: "center", focus: true });
+        return;
+      }
+      if (qType === "true_false") {
+        if (options.length !== 2) {
+          message.error({ content: "Câu hỏi Đúng / Sai phải có chính xác 2 đáp án!", key: "question-form-validation-error" });
+          return;
+        }
+        const correctCount = options.filter((o: any) => o.isCorrect).length;
+        if (correctCount !== 1) {
+          message.error({ content: "Câu hỏi Đúng / Sai phải có đúng 1 đáp án chính xác!", key: "question-form-validation-error" });
+          return;
+        }
+      }
+      if (qType === "audio_image_choice") {
+        const hasMissingImage = options.some((o: any) => !o.mediaId);
+        if (hasMissingImage) {
+          message.error({ content: "Tất cả các đáp án của câu hỏi Nghe & Chọn ảnh phải được gắn hình ảnh!", key: "question-form-validation-error" });
+          return;
+        }
+      }
+    }
+
+    if (qType === "matching") {
+      const pairs = values.pairs ?? [];
+      if (pairs.length < 2) {
+        message.error({ content: "Câu hỏi ghép đôi phải có ít nhất 2 cặp ghép!", key: "question-form-validation-error" });
+        return;
+      }
+      const invalidPair = pairs.some(
+        (p: any) => (!p.leftText?.trim() && !p.leftMediaId && !p.leftMediaVal) || !p.rightText?.trim()
+      );
+      if (invalidPair) {
+        message.error({
+          content: "Mỗi cặp ghép đôi phải có nội dung hoặc hình ảnh/âm thanh ở vế trái và đáp án ở vế phải!",
+          key: "question-form-validation-error",
+        });
+        return;
+      }
+    }
+
     try {
-      const qType = values.type;
-      // Build payload based on question type
       const payload: any = {
         type: qType,
-        prompt: values.prompt,
-        instruction: values.instruction,
-        explanation: values.explanation,
+        prompt: formatTextForBackend(values.prompt),
+        instruction: values.instruction !== undefined ? formatTextForBackend(values.instruction) : (editingItem?.instruction ? formatTextForBackend(editingItem.instruction) : undefined),
+        explanation: values.explanation !== undefined ? formatTextForBackend(values.explanation) : (editingItem?.explanation ? formatTextForBackend(editingItem.explanation) : undefined),
         difficultyLevelId: values.difficultyLevelId,
         skillId: values.skillId,
         topicId: values.topicId,
-        tagIds: values.tagIds || [],
-        status: editingItem?.status || "draft",
+        tagIds: values.tagIds ?? [],
+        status: editingItem?.status ?? "draft",
+        mediaIds: (values.mediaIds ?? [])
+          .filter((m: any) => m?.mediaId)
+          .map((m: any, idx: number) => ({
+            mediaId: m.mediaId,
+            role: m.role || (qType === "image_choice" ? "prompt_image" : (qType === "audio_choice" || qType === "audio_image_choice") ? "prompt_audio" : "prompt_image"),
+            orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
+          })),
       };
 
+      // Đảm bảo loại câu hỏi hình ảnh / âm thanh luôn chuẩn hóa vai trò media
+      if (qType === "image_choice" && payload.mediaIds.length > 0) {
+        if (!payload.mediaIds.some((m: any) => m.role === "prompt_image")) {
+          payload.mediaIds[0].role = "prompt_image";
+        }
+      }
+      if ((qType === "audio_choice" || qType === "audio_image_choice") && payload.mediaIds.length > 0) {
+        if (!payload.mediaIds.some((m: any) => m.role === "prompt_audio")) {
+          payload.mediaIds[0].role = "prompt_audio";
+        }
+      }
+
       if (CHOICE_TYPES.includes(qType)) {
-        payload.options = (values.options || []).map((o: any, i: number) => ({
+        payload.options = (values.options ?? []).map((o: any, i: number) => ({
           label: String.fromCharCode(65 + i),
-          content: o.content,
+          content: formatTextForBackend(o.content ?? ""),
           isCorrect: !!o.isCorrect,
           orderIndex: i,
-          explanation: o.explanation,
+          explanation: o.explanation ? formatTextForBackend(o.explanation) : undefined,
+          ...(o.mediaId ? { mediaId: o.mediaId } : {}),
         }));
         payload.detail = {};
-        if (qType === "reading_comprehension") {
-          payload.detail = { passageId: values.passageId };
-        }
+        if (qType === "reading_comprehension") payload.detail = { passageId: values.passageId };
       } else if (qType === "word_ordering") {
         payload.options = [];
-        payload.detail = {
-          correctTokens: (values.correctTokens || "").split(" ").filter(Boolean),
-          caseSensitive: !!values.caseSensitive,
-          allowPunctuationVariants: !!values.allowPunctuationVariants,
-        };
+        payload.detail = { correctTokens: (values.correctTokens ?? "").split(" ").filter(Boolean), caseSensitive: !!values.caseSensitive, allowPunctuationVariants: !!values.allowPunctuationVariants };
       } else if (qType === "sentence_rewrite") {
         payload.options = [];
-        payload.detail = {
-          sourceSentence: values.sourceSentence,
-          acceptedAnswers: (values.acceptedAnswers || "").split("\n").filter(Boolean),
-          gradingMode: values.gradingMode || "normalized",
-        };
+        payload.detail = { sourceSentence: formatTextForBackend(values.prompt), acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").map((s: string) => s.trim()).filter(Boolean), gradingMode: values.gradingMode ?? "normalized" };
       } else if (qType === "hint_rewrite") {
         payload.options = [];
-        payload.detail = {
-          sourceSentence: values.sourceSentence,
-          hintWord: values.hintWord,
-          acceptedAnswers: (values.acceptedAnswers || "").split("\n").filter(Boolean),
-          mustUseHint: !!values.mustUseHint,
-          gradingMode: values.gradingMode || "normalized",
-        };
+        payload.detail = { sourceSentence: formatTextForBackend(values.prompt), hintWord: values.hintWord ? String(values.hintWord).trim() : undefined, acceptedAnswers: (values.acceptedAnswers ?? "").split("\n").map((s: string) => s.trim()).filter(Boolean), mustUseHint: !!values.mustUseHint, gradingMode: values.gradingMode ?? "normalized" };
       } else if (qType === "error_correction") {
         payload.options = [];
-        payload.detail = {
-          incorrectSentence: values.incorrectSentence,
-          correctSentence: values.correctSentence,
-          errorSpans: [],
-        };
+        payload.detail = { incorrectSentence: formatTextForBackend(values.prompt), correctSentence: formatTextForBackend(values.correctSentence ?? ""), errorSpans: [] };
       } else if (qType === "matching") {
         payload.options = [];
         payload.detail = {
-          shuffleLeft: !!values.shuffleLeft,
-          shuffleRight: !!values.shuffleRight,
-          pairs: (values.pairs || []).map((p: any, i: number) => ({
-            leftText: p.leftText,
-            rightText: p.rightText,
+          shuffleLeft: values.shuffleLeft !== false,
+          shuffleRight: values.shuffleRight !== false,
+          pairs: (values.pairs ?? []).map((p: any, i: number) => ({
+            leftText: formatTextForBackend(p.leftText ?? ""),
+            rightText: formatTextForBackend(p.rightText ?? ""),
+            leftMediaId: p.leftMediaId || p.leftMediaVal?.mediaId || undefined,
+            rightMediaId: p.rightMediaId || undefined,
             orderIndex: i,
           })),
         };
       }
 
       if (editingItem) {
-        await learningCmsService.questions.update(editingItem.id, payload);
+        const { type, status, ...updatePayload } = payload;
+        await learningCmsService.questions.update(editingItem.id, {
+          ...updatePayload,
+          expectedUpdatedAt: editingItem.updatedAt,
+        });
+        invalidateQuestionDetailCache(editingItem.id);
+        setQuestionDetails((prev) => {
+          const next = { ...prev };
+          delete next[editingItem.id];
+          return next;
+        });
         message.success("Cập nhật câu hỏi thành công");
       } else {
-        await learningCmsService.questions.create(payload);
-        message.success("Tạo câu hỏi thành công");
+        await learningCmsService.questions.create({ ...payload, specializationId: selectedSpecializationId });
+        message.success(isDuplicatingQuestion ? "Nhân bản câu hỏi thành công" : "Tạo câu hỏi thành công");
       }
       loadAllData();
+      setIsDuplicatingQuestion(false);
       setQuestionModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error));
     }
   };
 
-  const handleToggleQuestionStatus = async (record: any) => {
-    const nextStatus = record.status === "published" ? "draft" : "published";
+  const handleViewQuestionVersions = async (record: any) => {
     try {
-      await learningCmsService.questions.updateStatus(record.id, {
-        status: nextStatus,
-        expectedUpdatedAt: record.updatedAt,
-      });
-      message.success(`Chuyển trạng thái câu hỏi sang ${nextStatus === "published" ? "Đã duyệt" : "Bản nháp"}`);
-      loadAllData();
-    } catch {
-      message.error("Đổi trạng thái thất bại");
+      setLoading(true);
+      const data = await learningCmsService.questions.listVersions(record.id);
+      setQuestionVersions(data ?? []);
+      setViewingQuestion(record);
+      setQuestionVersionsModalOpen(true);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể tải lịch sử phiên bản của câu hỏi"));
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ================= EXAMS CRUD =================
+  // ============================================================
+  // EXAMS CRUD
+  // ============================================================
+
   const handleExamCreate = () => {
     setEditingItem(null);
+    setEditingExamInitialCurriculumId(undefined);
     examForm.resetFields();
     setExamModalOpen(true);
   };
 
-  const handleExamEdit = (record: any) => {
+  const handleExamEdit = async (record: any) => {
     setEditingItem(record);
+
+    // 1. Kiểm tra nhanh trong danh sách curriculums đã tải
+    const currentCurriculum = curriculums.find((c: any) =>
+      (c.exams || []).some((ce: any) => ce.examId === record.id || ce.id === record.id || ce.exam?.id === record.id)
+    );
+    let currId = currentCurriculum?.id || undefined;
+    setEditingExamInitialCurriculumId(currId);
+
     examForm.setFieldsValue({
       code: record.code,
       title: record.title,
-      timeLimitSeconds: record.timeLimitSeconds,
+      examType: record.examType ?? "practice",
+      timeLimitMinutes: record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) : undefined,
+      curriculumId: currId,
       description: record.description,
     });
     setExamModalOpen(true);
+
+    // 2. Nếu chưa tìm thấy (ví dụ đề thi được gắn khi còn ở trạng thái nháp), kiểm tra chi tiết các giáo trình
+    if (!currId && curriculums.length > 0) {
+      try {
+        const details = await Promise.all(
+          curriculums.map((c) =>
+            learningCmsService.curriculums.get(c.id).catch(() => null)
+          )
+        );
+        for (const detail of details) {
+          if (!detail) continue;
+          const examsInCurr = (detail as any).exams || [];
+          if (examsInCurr.some((ce: any) => ce.examId === record.id || ce.id === record.id || ce.exam?.id === record.id)) {
+            currId = detail.id;
+            setEditingExamInitialCurriculumId(currId);
+            examForm.setFieldValue("curriculumId", currId);
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi khi kiểm tra giáo trình của đề thi:", err);
+      }
+    }
   };
 
   const handleExamDelete = (record: any) => {
     Modal.confirm({
       title: "Xóa đề thi",
       content: `Xóa đề thi "${record.title}"?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.exams.remove(record.id);
           message.success("Xóa đề thi thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          message.error(extractErrorMsg(error, "Xóa thất bại"));
         }
       },
     });
   };
 
   const handleExamSubmit = async (values: any) => {
+    if (examSubmitting) return;
     try {
+      setExamSubmitting(true);
+      const isExam = values.examType === "exam";
+      const timeLimitSeconds = isExam && values.timeLimitMinutes ? values.timeLimitMinutes * 60 : undefined;
+      const { timeLimitMinutes, curriculumId, ...rest } = values;
+
       if (editingItem) {
         await learningCmsService.exams.update(editingItem.id, {
           title: values.title,
-          timeLimitSeconds: values.timeLimitSeconds,
+          examType: values.examType,
+          timeLimitSeconds,
           description: values.description,
         });
-        message.success("Cập nhật đề thi thành công");
+
+        const newCurriculumId = curriculumId || undefined;
+        if (newCurriculumId !== editingExamInitialCurriculumId) {
+          // 1. Nếu trước đó đã thuộc giáo trình cũ -> gỡ khỏi giáo trình cũ
+          if (editingExamInitialCurriculumId) {
+            try {
+              await learningCmsService.curriculums.removeExam(editingExamInitialCurriculumId, editingItem.id);
+            } catch (removeErr: any) {
+              console.error("Lỗi khi gỡ đề thi khỏi giáo trình cũ:", removeErr);
+            }
+          }
+
+          // 2. Nếu người dùng chọn giáo trình mới -> gắn vào giáo trình mới
+          if (newCurriculumId) {
+            try {
+              const currDetail = await learningCmsService.curriculums.get(newCurriculumId);
+              const currExams = (currDetail as any)?.exams ?? [];
+              const maxOrderIndex = currExams.reduce(
+                (max: number, item: any) => Math.max(max, Number(item.orderIndex) || 0),
+                -1
+              );
+              const nextOrderIndex = maxOrderIndex + 1;
+
+              await learningCmsService.curriculums.attachExam(newCurriculumId, {
+                examId: editingItem.id,
+                orderIndex: nextOrderIndex,
+                isRequired: true,
+              });
+              message.success("Cập nhật đề thi và gắn vào giáo trình thành công!");
+            } catch (attachErr: any) {
+              console.error("Lỗi khi gắn đề thi vào giáo trình mới:", attachErr);
+              Modal.warning({
+                title: "Đã cập nhật đề thi",
+                content: `Đề thi "${values.title || editingItem.title}" đã được lưu, nhưng chưa thể gắn vào giáo trình mới (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình lại.`,
+              });
+            }
+          } else {
+            message.success("Cập nhật đề thi và đã gỡ khỏi giáo trình cũ");
+          }
+        } else {
+          message.success("Cập nhật đề thi thành công");
+        }
       } else {
-        await learningCmsService.exams.create({
-          ...values,
+        const newExam = await learningCmsService.exams.create({
+          ...rest,
+          examType: values.examType ?? "practice",
+          timeLimitSeconds,
+          specializationId: selectedSpecializationId,
           status: "draft",
         });
-        message.success("Tạo đề thi thành công");
+
+        if (curriculumId) {
+          try {
+            // Lấy thông tin mới nhất của giáo trình để tính orderIndex tiếp theo không bị trùng lặp
+            const currDetail = await learningCmsService.curriculums.get(curriculumId);
+            const currExams = (currDetail as any)?.exams ?? [];
+            const maxOrderIndex = currExams.reduce(
+              (max: number, item: any) => Math.max(max, Number(item.orderIndex) || 0),
+              -1
+            );
+            const nextOrderIndex = maxOrderIndex + 1;
+
+            await learningCmsService.curriculums.attachExam(curriculumId, {
+              examId: newExam.id,
+              orderIndex: nextOrderIndex,
+              isRequired: true,
+            });
+
+            message.success("Tạo đề thi và gắn vào giáo trình thành công!");
+          } catch (attachErr: any) {
+            console.error("Lỗi khi tự động gắn đề thi vào giáo trình:", attachErr);
+            Modal.warning({
+              title: "Đã tạo đề thi thành công",
+              content: `Đề thi "${newExam.title}" đã được lưu vào hệ thống, nhưng chưa thể tự động gắn vào giáo trình (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình gắn đề này.`,
+            });
+          }
+        } else {
+          message.success("Tạo đề thi thành công");
+        }
       }
       loadAllData();
       setExamModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error));
+    } finally {
+      setExamSubmitting(false);
     }
   };
 
   const handleToggleExamStatus = async (record: any) => {
     const nextStatus = record.status === "published" ? "draft" : "published";
     try {
-      await learningCmsService.exams.updateStatus(record.id, {
-        status: nextStatus,
-        expectedUpdatedAt: record.updatedAt,
-      });
+      await learningCmsService.exams.updateStatus(record.id, { status: nextStatus, expectedUpdatedAt: record.updatedAt });
       message.success(`Chuyển trạng thái sang ${nextStatus === "published" ? "Đang phát hành" : "Nháp"}`);
       loadAllData();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Đổi trạng thái thất bại";
-      message.error(msg);
+      message.error(extractErrorMsg(err, "Đổi trạng thái thất bại"));
     }
   };
 
-  // ================= CURRICULUMS CRUD =================
+  const handleRepublishExam = async (record: any) => {
+    try {
+      await learningCmsService.exams.updateStatus(record.id, { status: "published", expectedUpdatedAt: record.updatedAt });
+      message.success("Xuất bản phiên bản mới thành công!");
+      loadAllData();
+    } catch (err: any) {
+      message.error(extractErrorMsg(err, "Xuất bản thất bại"));
+    }
+  };
+
+  const handleViewExamVersions = async (record: any) => {
+    try {
+      setLoading(true);
+      const data = await learningCmsService.exams.listVersions(record.id);
+      setExamVersions(data ?? []);
+      setViewingExam(record);
+      setExamVersionsModalOpen(true);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Không thể tải lịch sử phiên bản của đề thi"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Exam question management ───────────────────────────────
+
+  const handleOpenQuestions = async (exam: any) => {
+    resetExamQFilters();
+    try {
+      const full = await learningCmsService.exams.get(exam.id);
+      setSelectedExam(full);
+    } catch {
+      setSelectedExam(exam);
+    }
+    setManageQuestionsOpen(true);
+
+    // Prefetch question details for hover popover
+    const publishedQs = questions.filter((q) => q.status === "published");
+    const idsToFetch = publishedQs.map((q) => q.id).filter((id) => !questionDetails[id]);
+    if (idsToFetch.length > 0) {
+      Promise.allSettled(idsToFetch.map((id) => learningCmsService.questions.get(id))).then((results) => {
+        const updates: Record<string, any> = {};
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") updates[idsToFetch[i]] = r.value;
+        });
+        if (Object.keys(updates).length > 0) {
+          setQuestionDetails((prev) => ({ ...prev, ...updates }));
+        }
+      });
+    }
+  };
+
+  const handleAddQuestionToExam = async (questionId: string) => {
+    if (!selectedExam) return;
+    try {
+      const orderIndex = (selectedExam.questions ?? []).length;
+      await learningCmsService.exams.attachQuestion(selectedExam.id, { questionId, orderIndex });
+      message.success("Thêm câu hỏi thành công");
+      const updated = await learningCmsService.exams.get(selectedExam.id);
+      setSelectedExam(updated);
+      loadAllData();
+    } catch (err: any) {
+      message.error(extractErrorMsg(err, "Thêm câu hỏi thất bại"));
+    }
+  };
+
+  const handleBulkAttachQuestionsToExam = async (items: { questionId: string; orderIndex?: number }[]) => {
+    if (!selectedExam) return;
+    try {
+      await learningCmsService.exams.bulkAttachQuestions(selectedExam.id, { items });
+      message.success(`Đã thêm ${items.length} câu hỏi vào đề thi`);
+      const updated = await learningCmsService.exams.get(selectedExam.id);
+      setSelectedExam(updated);
+      loadAllData();
+    } catch (err: any) {
+      message.error(extractErrorMsg(err, "Gắn câu hỏi hàng loạt thất bại"));
+      throw err;
+    }
+  };
+
+  const handleRemoveQuestionFromExam = async (questionId: string) => {
+    if (!selectedExam) return;
+    try {
+      await learningCmsService.exams.removeQuestion(selectedExam.id, questionId);
+      message.success("Gỡ câu hỏi thành công");
+      const updated = await learningCmsService.exams.get(selectedExam.id);
+      setSelectedExam(updated);
+      loadAllData();
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Gỡ câu hỏi thất bại"));
+    }
+  };
+
+  const handleReorderExamQuestions = async (index: number, direction: "up" | "down") => {
+    if (!selectedExam) return;
+    const items = [...(selectedExam.questions ?? [])];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+    [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
+    try {
+      await learningCmsService.exams.reorderQuestions(selectedExam.id, {
+        items: items.map((q: any, i: number) => ({ questionId: q.questionId, orderIndex: i })),
+      });
+      message.success("Sắp xếp lại thành công");
+      const updated = await learningCmsService.exams.get(selectedExam.id);
+      setSelectedExam(updated);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Sắp xếp lại thất bại"));
+    }
+  };
+
+  // ── Exam republish from ManageQuestionsModal ───────────────
+
+  const handleRepublishFromManageModal = async () => {
+    if (!selectedExam) return;
+    try {
+      await learningCmsService.exams.updateStatus(selectedExam.id, { status: "published", expectedUpdatedAt: selectedExam.updatedAt });
+      message.success("Xuất bản phiên bản mới thành công!");
+      const updated = await learningCmsService.exams.get(selectedExam.id);
+      setSelectedExam(updated);
+      loadAllData();
+    } catch (err: any) {
+      message.error(extractErrorMsg(err, "Xuất bản thất bại"));
+    }
+  };
+
+  // ============================================================
+  // CURRICULUMS CRUD
+  // ============================================================
+
   const handleCurriculumCreate = () => {
     setEditingItem(null);
     curriculumForm.resetFields();
@@ -708,6 +1480,7 @@ export default function LearningCms() {
       title: record.title,
       levelId: record.levelId,
       description: record.description,
+      image: record.image || null,
     });
     setCurriculumModalOpen(true);
   };
@@ -716,16 +1489,15 @@ export default function LearningCms() {
     Modal.confirm({
       title: "Xóa giáo trình",
       content: `Xóa giáo trình "${record.title}"?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
+      okText: "Xóa", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.curriculums.remove(record.id);
           message.success("Xóa giáo trình thành công");
           loadAllData();
-        } catch {
-          message.error("Xóa thất bại");
+        } catch (error: any) {
+          message.error(extractErrorMsg(error, "Xóa thất bại"));
         }
       },
     });
@@ -738,100 +1510,38 @@ export default function LearningCms() {
           title: values.title,
           levelId: values.levelId,
           description: values.description,
+          image: values.image || null,
         });
         message.success("Cập nhật giáo trình thành công");
       } else {
         await learningCmsService.curriculums.create({
           ...values,
+          image: values.image || undefined,
+          specializationId: selectedSpecializationId,
           status: "draft",
         });
         message.success("Tạo giáo trình thành công");
       }
       loadAllData();
       setCurriculumModalOpen(false);
-    } catch {
-      message.error("Thao tác thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error));
     }
   };
 
   const handleToggleCurriculumStatus = async (record: any) => {
     const nextStatus = record.status === "published" ? "draft" : "published";
     try {
-      await learningCmsService.curriculums.updateStatus(record.id, {
-        status: nextStatus,
-        expectedUpdatedAt: record.updatedAt,
-      });
+      await learningCmsService.curriculums.updateStatus(record.id, { status: nextStatus, expectedUpdatedAt: record.updatedAt });
       message.success(`Chuyển trạng thái sang ${nextStatus === "published" ? "Đang phát hành" : "Nháp"}`);
       loadAllData();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Đổi trạng thái thất bại";
-      message.error(msg);
+      message.error(extractErrorMsg(err, "Đổi trạng thái thất bại"));
     }
   };
 
-  // ================= RELATIONSHIP MAPPING HANDLERS =================
-  const handleOpenQuestions = async (exam: any) => {
-    try {
-      const full = await learningCmsService.exams.get(exam.id);
-      setSelectedExam(full);
-    } catch {
-      setSelectedExam(exam);
-    }
-    setManageQuestionsOpen(true);
-  };
+  // ── Curriculum exam management ─────────────────────────────
 
-  const handleAddQuestionToExam = async (questionId: string) => {
-    if (!selectedExam) return;
-    try {
-      const currentQuestions = selectedExam.questions || [];
-      const orderIndex = currentQuestions.length;
-      await learningCmsService.exams.attachQuestion(selectedExam.id, {
-        questionId,
-        score: 1,
-        orderIndex,
-      });
-      message.success("Thêm câu hỏi thành công");
-      const updatedExam = await learningCmsService.exams.get(selectedExam.id);
-      setSelectedExam(updatedExam);
-      loadAllData();
-    } catch (err: any) {
-      const msg = err?.message || "Thêm câu hỏi thất bại";
-      message.error(msg);
-    }
-  };
-
-  const handleRemoveQuestionFromExam = async (questionId: string) => {
-    if (!selectedExam) return;
-    try {
-      await learningCmsService.exams.removeQuestion(selectedExam.id, questionId);
-      message.success("Gỡ câu hỏi thành công");
-      const updatedExam = await learningCmsService.exams.get(selectedExam.id);
-      setSelectedExam(updatedExam);
-      loadAllData();
-    } catch {
-      message.error("Gỡ câu hỏi thất bại");
-    }
-  };
-
-  const handleReorderExamQuestions = async (index: number, direction: "up" | "down") => {
-    if (!selectedExam) return;
-    const items = [...(selectedExam.questions || [])];
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= items.length) return;
-    [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
-    try {
-      await learningCmsService.exams.reorderQuestions(selectedExam.id, {
-        items: items.map((q: any, i: number) => ({ questionId: q.questionId, orderIndex: i })),
-      });
-      message.success("Sắp xếp lại thành công");
-      const updatedExam = await learningCmsService.exams.get(selectedExam.id);
-      setSelectedExam(updatedExam);
-    } catch {
-      message.error("Sắp xếp lại thất bại");
-    }
-  };
-
-  // Curriculum to Exams Mapping
   const handleOpenExams = async (curr: any) => {
     try {
       const full = await learningCmsService.curriculums.get(curr.id);
@@ -845,20 +1555,14 @@ export default function LearningCms() {
   const handleAddExamToCurriculum = async (examId: string) => {
     if (!selectedCurriculum) return;
     try {
-      const currentExams = selectedCurriculum.exams || [];
-      const orderIndex = currentExams.length;
-      await learningCmsService.curriculums.attachExam(selectedCurriculum.id, {
-        examId,
-        isRequired: true,
-        orderIndex,
-      });
+      const orderIndex = (selectedCurriculum.exams ?? []).length;
+      await learningCmsService.curriculums.attachExam(selectedCurriculum.id, { examId, isRequired: true, orderIndex });
       message.success("Thêm đề thi thành công");
-      const updatedCurr = await learningCmsService.curriculums.get(selectedCurriculum.id);
-      setSelectedCurriculum(updatedCurr);
+      const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
+      setSelectedCurriculum(updated);
       loadAllData();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Thêm đề thi thất bại. Đề thi phải ở trạng thái Đã phát hành.";
-      message.error(msg);
+      message.error(extractErrorMsg(err, "Thêm đề thi thất bại. Đề thi phải ở trạng thái Đã phát hành."));
     }
   };
 
@@ -867,17 +1571,17 @@ export default function LearningCms() {
     try {
       await learningCmsService.curriculums.removeExam(selectedCurriculum.id, examId);
       message.success("Gỡ đề thi thành công");
-      const updatedCurr = await learningCmsService.curriculums.get(selectedCurriculum.id);
-      setSelectedCurriculum(updatedCurr);
+      const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
+      setSelectedCurriculum(updated);
       loadAllData();
-    } catch {
-      message.error("Gỡ đề thi thất bại");
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Gỡ đề thi thất bại"));
     }
   };
 
   const handleReorderCurriculumExams = async (index: number, direction: "up" | "down") => {
     if (!selectedCurriculum) return;
-    const items = [...(selectedCurriculum.exams || [])];
+    const items = [...(selectedCurriculum.exams ?? [])];
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= items.length) return;
     [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
@@ -886,1492 +1590,347 @@ export default function LearningCms() {
         items: items.map((e: any, i: number) => ({ examId: e.examId, orderIndex: i })),
       });
       message.success("Sắp xếp lại thành công");
-      const updatedCurr = await learningCmsService.curriculums.get(selectedCurriculum.id);
-      setSelectedCurriculum(updatedCurr);
-    } catch {
-      message.error("Sắp xếp lại thất bại");
+      const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
+      setSelectedCurriculum(updated);
+      loadAllData();
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Sắp xếp lại thất bại"));
     }
   };
 
-  // ================= RENDERING HELPERS =================
-  const getTaxData = () => {
-    switch (taxTab) {
-      case "levels": return filteredLevels;
-      case "skills": return filteredSkills;
-      case "topics": return filteredTopics;
-      case "tags": default: return filteredTags;
-    }
-  };
+  // ============================================================
+  // RENDER
+  // ============================================================
 
-  const getSearchPlaceholder = () => {
-    switch (taxTab) {
-      case "levels": return "Tìm kiếm Level (mã, tên)...";
-      case "skills": return "Tìm kiếm kỹ năng (mã, tên)...";
-      case "topics": return "Tìm kiếm chủ đề (mã, tên)...";
-      case "tags": return "Tìm kiếm thẻ gắn (mã, tên)...";
-      default: return "Tìm kiếm...";
-    }
-  };
-
-  const statusTag = (status: string) => {
-    if (status === "published") return <Tag color="success" className="rounded-full border-none text-xs font-semibold">✓ Đã duyệt</Tag>;
-    if (status === "archived") return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
-    return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
-  };
-
-  const taxColumns = [
+  const tabItems = [
     {
-      title: "Tên danh mục",
-      dataIndex: "name",
-      render: (val: string, record: any) => (
-        <div>
-          <div className="font-semibold text-slate-800">{val}</div>
-          <div className="text-xs text-slate-400 font-mono">{record.code}</div>
-          {record.rank !== undefined && (
-            <div className="text-xs text-indigo-500 mt-0.5">Thứ tự: {record.rank}</div>
-          )}
-        </div>
+      key: "taxonomy",
+      label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><OrderedListOutlined /> Taxonomy</span>,
+      children: (
+        <TaxonomyTab
+          taxTab={taxTab}
+          onTaxTabChange={setTaxTab}
+          taxSearch={taxSearch}
+          onTaxSearchChange={setTaxSearch}
+          searchPlaceholder={getSearchPlaceholder()}
+          columns={taxColumns}
+          dataSource={getTaxData()}
+          loading={taxLoading}
+          onCreateClick={handleTaxCreate}
+        />
       ),
     },
     {
-      title: "Mô tả",
-      dataIndex: "description",
-      render: (val: string) => <span className="text-slate-500 text-sm">{val || "—"}</span>,
-    },
-    taxTab === "topics" ? {
-      title: "Chủ đề cha",
-      dataIndex: "parentId",
-      render: (val: string) => {
-        const parent = topics.find((t) => t.id === val);
-        return parent ? <Tag color="blue" className="rounded">{parent.name}</Tag> : <span className="text-slate-400">—</span>;
-      },
-    } : null,
-    {
-      title: "Thao tác",
-      align: "right" as const,
-      render: (_: any, record: any) => (
-        <Space size="small">
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => handleTaxEdit(record)}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-            onClick={() => handleTaxDelete(record)}
-          />
-        </Space>
+      key: "media",
+      label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><PictureOutlined /> Media Assets</span>,
+      children: (
+        <MediaTab
+          media={media}
+          onUploadClick={() => { setUploadFile(null); setMediaAlt(""); setMediaModalOpen(true); }}
+          onDeleteClick={handleMediaDelete}
+          onPreviewClick={handlePreviewAsset}
+        />
       ),
     },
-  ].filter(Boolean) as any[];
+    {
+      key: "passages",
+      label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><ReadOutlined /> Bài đọc</span>,
+      children: (
+        <PassagesTab
+          passages={passages}
+          onCreateClick={handlePassageCreate}
+          onEditClick={handlePassageEdit}
+          onDeleteClick={handlePassageDelete}
+        />
+      ),
+    },
+    {
+      key: "questions",
+      label: (
+        <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
+          <QuestionCircleOutlined /> Câu hỏi
+          <Badge count={questions.length} color="indigo" style={{ marginLeft: 4 }} />
+        </span>
+      ),
+      children: (
+        <QuestionsTab
+          questions={questions}
+          skills={skills}
+          levels={levels}
+          topics={topics}
+          tags={tags}
+          questionDetails={questionDetails}
+          onCreateClick={handleQuestionCreate}
+          onEditClick={handleQuestionEdit}
+          onDuplicateClick={handleQuestionDuplicate}
+          onDeleteClick={handleQuestionDelete}
+          onViewVersions={handleViewQuestionVersions}
+        />
+      ),
+    },
+    {
+      key: "exams",
+      label: (
+        <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
+          <BookOutlined /> Đề thi
+          <Badge count={exams.length} color="blue" style={{ marginLeft: 4 }} />
+        </span>
+      ),
+      children: (
+        <ExamsTab
+          exams={exams}
+          onCreateClick={handleExamCreate}
+          onEditClick={handleExamEdit}
+          onDeleteClick={handleExamDelete}
+          onToggleStatus={handleToggleExamStatus}
+          onRepublish={handleRepublishExam}
+          onConfigQuestions={handleOpenQuestions}
+          onViewVersions={handleViewExamVersions}
+        />
+      ),
+    },
+    {
+      key: "curriculums",
+      label: (
+        <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
+          <FileTextOutlined /> Giáo trình
+          <Badge count={curriculums.length} color="purple" style={{ marginLeft: 4 }} />
+        </span>
+      ),
+      children: (
+        <CurriculumsTab
+          curriculums={curriculums}
+          exams={exams}
+          onCreateClick={handleCurriculumCreate}
+          onEditClick={handleCurriculumEdit}
+          onDeleteClick={handleCurriculumDelete}
+          onToggleStatus={handleToggleCurriculumStatus}
+          onConfigExams={handleOpenExams}
+        />
+      ),
+    },
+  ];
 
-  // ==================== QUESTION TYPE-SPECIFIC FORM FIELDS ====================
-  const renderQuestionDetailFields = () => {
-    const type = currentQuestionType;
-
-    if (CHOICE_TYPES.includes(type)) {
-      return (
-        <>
-          {type === "reading_comprehension" && (
-            <Form.Item name="passageId" label="Bài đọc liên quan" rules={[{ required: true, message: "Chọn bài đọc!" }]}>
-              <Select placeholder="Chọn bài đọc..." className="rounded-xl">
-                {passages.map((p) => (
-                  <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-          )}
-          <Form.List name="options">
-            {(fields, { add, remove }) => (
-              <div className="space-y-2 mb-4">
-                <div className="flex justify-between items-center">
-                  <Text className="text-sm font-semibold text-slate-700">Phương án trả lời</Text>
-                  <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => add({ content: "", isCorrect: false })}>
-                    Thêm đáp án
-                  </Button>
-                </div>
-                {fields.map(({ key, name, ...restField }, idx) => (
-                  <div key={key} className="flex gap-2 items-start bg-slate-50 p-2 rounded-xl">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-700 flex-shrink-0 mt-1">
-                      {String.fromCharCode(65 + idx)}
-                    </div>
-                    <div className="flex-1">
-                      <Form.Item
-                        {...restField}
-                        name={[name, "content"]}
-                        rules={[{ required: true, message: "Nhập nội dung!" }]}
-                        className="mb-1"
-                      >
-                        <Input placeholder="Nội dung đáp án" className="rounded-lg" />
-                      </Form.Item>
-                      <Form.Item
-                        {...restField}
-                        name={[name, "explanation"]}
-                        className="mb-0"
-                      >
-                        <Input placeholder="Giải thích đáp án này (tuỳ chọn)" className="rounded-lg text-xs" size="small" />
-                      </Form.Item>
-                    </div>
-                    <Form.Item
-                      {...restField}
-                      name={[name, "isCorrect"]}
-                      valuePropName="checked"
-                      className="mb-0 mt-1"
-                    >
-                      <Checkbox className="text-emerald-600 font-semibold">Đúng</Checkbox>
-                    </Form.Item>
-                    {fields.length > 2 && (
-                      <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} className="mt-1" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Form.List>
-        </>
-      );
-    }
-
-    if (type === "word_ordering") {
-      return (
-        <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-          <Text className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sắp xếp từ</Text>
-          <Form.Item name="correctTokens" label="Các từ theo thứ tự đúng (cách nhau bởi dấu cách)" rules={[{ required: true }]}>
-            <Input placeholder="Ví dụ: I am a student" className="rounded-xl font-mono" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="caseSensitive" valuePropName="checked" label="Phân biệt hoa thường">
-                <Switch />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="allowPunctuationVariants" valuePropName="checked" label="Chấp nhận biến thể dấu câu">
-                <Switch />
-              </Form.Item>
-            </Col>
-          </Row>
-        </div>
-      );
-    }
-
-    if (type === "sentence_rewrite") {
-      return (
-        <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-          <Text className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình viết lại câu</Text>
-          <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="Câu gốc để học sinh viết lại..." rows={2} className="rounded-xl" />
-          </Form.Item>
-          <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="It is not warm enough to swim.&#10;Swimming is impossible due to the cold." rows={3} className="rounded-xl font-mono" />
-          </Form.Item>
-          <Form.Item name="gradingMode" label="Chế độ chấm điểm">
-            <Select className="rounded-xl">
-              <Select.Option value="normalized">Normalized (bỏ qua hoa thường & dấu cách)</Select.Option>
-              <Select.Option value="exact">Exact (chính xác tuyệt đối)</Select.Option>
-            </Select>
-          </Form.Item>
-        </div>
-      );
-    }
-
-    if (type === "hint_rewrite") {
-      return (
-        <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-          <Text className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình viết lại có gợi ý</Text>
-          <Form.Item name="sourceSentence" label="Câu nguồn" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="Câu gốc..." rows={2} className="rounded-xl" />
-          </Form.Item>
-          <Form.Item name="hintWord" label="Từ gợi ý (hint word)" rules={[{ required: true }]}>
-            <Input placeholder="Ví dụ: since" className="rounded-xl font-mono" />
-          </Form.Item>
-          <Form.Item name="acceptedAnswers" label="Đáp án chấp nhận (mỗi dòng một đáp án)" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="She has learned English since 2020." rows={3} className="rounded-xl font-mono" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="mustUseHint" valuePropName="checked" label="Bắt buộc dùng từ gợi ý">
-                <Switch />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="gradingMode" label="Chế độ chấm">
-                <Select className="rounded-xl">
-                  <Select.Option value="normalized">Normalized</Select.Option>
-                  <Select.Option value="exact">Exact</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-        </div>
-      );
-    }
-
-    if (type === "error_correction") {
-      return (
-        <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-          <Text className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình sửa lỗi</Text>
-          <Form.Item name="incorrectSentence" label="Câu sai" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="Câu có lỗi ngữ pháp..." rows={2} className="rounded-xl" />
-          </Form.Item>
-          <Form.Item name="correctSentence" label="Câu đúng" rules={[{ required: true }]}>
-            <Input.TextArea placeholder="Câu đã sửa đúng..." rows={2} className="rounded-xl" />
-          </Form.Item>
-        </div>
-      );
-    }
-
-    if (type === "matching") {
-      return (
-        <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-          <Text className="text-sm font-semibold text-slate-700 block">⚙️ Cấu hình ghép đôi</Text>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="shuffleLeft" valuePropName="checked" label="Xáo trộn cột trái">
-                <Switch defaultChecked />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="shuffleRight" valuePropName="checked" label="Xáo trộn cột phải">
-                <Switch defaultChecked />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.List name="pairs">
-            {(fields, { add, remove }) => (
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Text className="text-xs font-semibold text-slate-600">Các cặp ghép đôi</Text>
-                  <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => add({ leftText: "", rightText: "" })}>
-                    Thêm cặp
-                  </Button>
-                </div>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Space key={key} style={{ display: "flex" }} align="baseline">
-                    <Form.Item {...restField} name={[name, "leftText"]} rules={[{ required: true }]}>
-                      <Input placeholder="Cột trái" className="rounded-lg w-36" />
-                    </Form.Item>
-                    <span className="text-slate-400">↔</span>
-                    <Form.Item {...restField} name={[name, "rightText"]} rules={[{ required: true }]}>
-                      <Input placeholder="Cột phải" className="rounded-lg w-36" />
-                    </Form.Item>
-                    <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => remove(name)} />
-                  </Space>
-                ))}
-              </div>
-            )}
-          </Form.List>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  // ==================== MAIN RENDER ====================
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          borderRadius: 12,
-          colorPrimary: "#4f46e5",
-          fontFamily: "Inter, system-ui, -apple-system, sans-serif",
-        },
-        components: {
-          Table: {
-            headerBg: "#f8fafc",
-            headerColor: "#475569",
-            rowHoverBg: "#f1f5f9",
-          },
-        },
-      }}
-    >
+    <ConfigProvider theme={ANT_THEME}>
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
         <Spin spinning={loading} size="large">
           <div className="max-w-[1500px] mx-auto space-y-6">
-            {/* HEADER */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
-              <div>
-                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
+
+            {/* ── Page header ──────────────────────────────── */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white border border-slate-200/80 p-6 rounded-3xl shadow-sm">
+              <div className="flex-1 min-w-0">
+                <Title level={2} className="!mb-1 !text-slate-900 font-extrabold tracking-tight">
                   Learning CMS Dashboard
                 </Title>
-                <Text className="text-slate-400 text-sm">
-                  Quản lý ngân hàng câu hỏi, bài đọc, đề kiểm tra và giáo trình giảng dạy
+                <Text className="text-slate-500 text-sm leading-relaxed block max-w-3xl">
+                  Quản lý ngân hàng câu hỏi, bài đọc, đề kiểm tra và giáo trình giảng dạy theo từng môn học
                 </Text>
               </div>
-              <div className="flex gap-3 flex-wrap">
-                <Badge count={questions.filter((q) => q.status === "draft").length} overflowCount={99} color="orange">
-                  <div className="bg-orange-50 text-orange-700 px-4 py-2 rounded-xl text-sm font-semibold">
-                    Câu hỏi chờ duyệt
-                  </div>
-                </Badge>
-                <Badge count={exams.filter((e) => e.status === "draft").length} overflowCount={99} color="blue">
-                  <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold">
-                    Đề thi nháp
-                  </div>
-                </Badge>
-              </div>
+
+
             </div>
 
-            {/* TAB SECTION */}
+            {/* ── Tab section ───────────────────────────────── */}
             <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+              {/* Subject selector + quick stats */}
+              <div className="flex flex-wrap items-center gap-4">
+                {specializations.length > 0 && (
+                  <div className="flex items-center gap-3 bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
+                    <div className="flex items-center gap-2.5 px-2">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-xs">
+                        <BookOpenIcon className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 whitespace-nowrap">
+                        Môn học:
+                      </span>
+                    </div>
+                    <Select
+                      value={selectedSpecializationId}
+                      onChange={handleSubjectChange}
+                      size="large"
+                      showSearch
+                      allowClear={false}
+                      filterOption={(input, option) =>
+                        (option?.searchValue ?? "").toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={subjectOptions}
+                      optionRender={(option) => (
+                        <div className="flex items-center justify-between gap-3 py-0.5">
+                          <span className="font-bold text-slate-800 text-sm">{option.data.label}</span>
+                          {option.data.code && (
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">
+                              {option.data.code}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      placeholder="Tìm & chọn môn học..."
+                      className="min-w-[240px] sm:min-w-[280px] font-semibold text-sm [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-slate-200 [&_.ant-select-selector]:!bg-white [&_.ant-select-selector]:!shadow-xs hover:[&_.ant-select-selector]:!border-indigo-400 [&_.ant-select-selector]:!h-10 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center"
+                      popupMatchSelectWidth={false}
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-3 items-center">
+                  <Badge count={exams.filter((e) => e.status === "draft").length} overflowCount={99} color="blue">
+                    <div className="bg-blue-50/80 border border-blue-100 text-blue-700 px-3.5 py-2 rounded-xl text-xs font-bold">
+                      Đề thi nháp
+                    </div>
+                  </Badge>
+                </div>
+              </div>
               <Tabs
                 activeKey={activeTab}
                 onChange={setActiveTab}
                 size="large"
-                items={[
-                  {
-                    key: "taxonomy",
-                    label: (
-                      <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                        <OrderedListOutlined /> Taxonomy
-                      </span>
-                    ),
-                    children: (
-                      <div className="space-y-4 pt-4">
-                        <div className="flex justify-between items-center flex-wrap gap-3">
-                          <Tabs
-                            type="card"
-                            activeKey={taxTab}
-                            onChange={setTaxTab}
-                            className="!mb-0"
-                            items={[
-                              { key: "levels", label: "🎯 Level" },
-                              { key: "skills", label: "💡 Kỹ năng" },
-                              { key: "topics", label: "📂 Chủ đề" },
-                              { key: "tags", label: "🏷️ Thẻ gắn" },
-                            ]}
-                          />
-                          <div className="flex items-center gap-3">
-                            <Input
-                              placeholder={getSearchPlaceholder()}
-                              allowClear
-                              prefix={<SearchOutlined className="text-slate-400" />}
-                              value={taxSearch}
-                              onChange={(e) => setTaxSearch(e.target.value)}
-                              className="rounded-xl w-64 shadow-sm border-slate-200"
-                            />
-                            <Button
-                              type="primary"
-                              icon={<PlusOutlined />}
-                              onClick={handleTaxCreate}
-                              className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                            >
-                              Tạo mới
-                            </Button>
-                          </div>
-                        </div>
-
-                        <Table
-                          rowKey="id"
-                          loading={taxLoading}
-                          dataSource={getTaxData()}
-                          columns={taxColumns}
-                          pagination={{ pageSize: 15, showSizeChanger: false }}
-                          locale={{ emptyText: "Không tìm thấy danh mục nào" }}
-                          className="border border-slate-100 rounded-2xl overflow-hidden"
-                        />
-                      </div>
-                    ),
-                  },
-                  {
-                    key: "media",
-                    label: (
-                      <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                        <PictureOutlined /> Media Assets
-                      </span>
-                    ),
-                    children: (
-                      <div className="space-y-4 pt-4">
-                        <div className="flex justify-between items-center">
-                          <Text className="text-slate-500">
-                            Thư viện hình ảnh, tệp tin âm thanh hoặc video cho câu hỏi ({media.length} tệp)
-                          </Text>
-                          <Button
-                            type="primary"
-                            icon={<UploadOutlined />}
-                            onClick={() => {
-                              setUploadFile(null);
-                              setMediaAlt("");
-                              setMediaModalOpen(true);
-                            }}
-                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                          >
-                            Tải lên tệp
-                          </Button>
-                        </div>
-
-                        <Row gutter={[16, 16]}>
-                          {media.map((asset) => (
-                            <Col xs={12} sm={8} md={6} lg={4} key={asset.id}>
-                              <Card
-                                hoverable
-                                className="overflow-hidden border-slate-100 rounded-2xl relative group"
-                                cover={
-                                  <div className="h-32 bg-slate-50 flex items-center justify-center overflow-hidden">
-                                    {asset.type === "image" || asset.mimeType?.startsWith("image") ? (
-                                      <img
-                                        src={resolveMediaUrl(asset.url)}
-                                        alt={asset.altText}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    ) : asset.type === "audio" || asset.mimeType?.startsWith("audio") ? (
-                                      <div className="text-4xl text-slate-400 flex flex-col items-center gap-1">
-                                        <SoundOutlined />
-                                        <span className="text-xs text-slate-400">Audio</span>
-                                      </div>
-                                    ) : (
-                                      <div className="text-4xl text-slate-400">📹</div>
-                                    )}
-                                  </div>
-                                }
-                              >
-                                <Card.Meta
-                                  title={
-                                    <span className="text-xs font-semibold block truncate">
-                                      {asset.altText || "Tệp không tên"}
-                                    </span>
-                                  }
-                                  description={
-                                    <div className="flex justify-between items-center mt-1">
-                                      <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 uppercase">
-                                        {asset.type || "File"}
-                                      </span>
-                                      <Space size={2}>
-                                        <Tooltip title="Xem ID">
-                                          <Button
-                                            type="text"
-                                            size="small"
-                                            icon={<EyeOutlined />}
-                                            onClick={() => {
-                                              navigator.clipboard.writeText(asset.id);
-                                              message.success("Đã copy ID");
-                                            }}
-                                          />
-                                        </Tooltip>
-                                        <Button
-                                          type="text"
-                                          size="small"
-                                          danger
-                                          icon={<DeleteOutlined />}
-                                          onClick={() => handleMediaDelete(asset)}
-                                        />
-                                      </Space>
-                                    </div>
-                                  }
-                                />
-                              </Card>
-                            </Col>
-                          ))}
-
-                          {media.length === 0 && (
-                            <Col span={24}>
-                              <Empty description="Thư viện tệp trống" />
-                            </Col>
-                          )}
-                        </Row>
-                      </div>
-                    ),
-                  },
-                  {
-                    key: "passages",
-                    label: (
-                      <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                        <ReadOutlined /> Bài đọc
-                      </span>
-                    ),
-                    children: (
-                      <div className="space-y-4 pt-4">
-                        <div className="flex justify-between items-center">
-                          <Text className="text-slate-500">Danh sách bài đọc cho phần Đọc hiểu ({passages.length} bài)</Text>
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            onClick={handlePassageCreate}
-                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                          >
-                            Tạo bài đọc mới
-                          </Button>
-                        </div>
-
-                        <Table
-                          rowKey="id"
-                          dataSource={passages}
-                          columns={[
-                            {
-                              title: "Tiêu đề",
-                              dataIndex: "title",
-                              render: (val: string, record: any) => (
-                                <div>
-                                  <div className="font-semibold text-slate-800">{val}</div>
-                                  <div className="text-xs text-slate-400">
-                                    {record.source ? `📚 ${record.source}` : "—"} •{" "}
-                                    {record.level ? `🎯 ${record.level.name}` : "Chưa chọn level"}
-                                  </div>
-                                </div>
-                              ),
-                            },
-                            {
-                              title: "Xem trước nội dung",
-                              dataIndex: "content",
-                              render: (val: string) => (
-                                <Paragraph className="text-xs text-slate-500 max-w-lg mb-0 line-clamp-2">
-                                  {val}
-                                </Paragraph>
-                              ),
-                            },
-                            {
-                              title: "Thao tác",
-                              align: "right" as const,
-                              render: (_: any, record: any) => (
-                                <Space size="small">
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-                                    onClick={() => handlePassageEdit(record)}
-                                  />
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    danger
-                                    icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-                                    onClick={() => handlePassageDelete(record)}
-                                  />
-                                </Space>
-                              ),
-                            },
-                          ]}
-                          pagination={{ pageSize: 8 }}
-                        />
-                      </div>
-                    ),
-                  },
-                  {
-                    key: "questions",
-                    label: (
-                      <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                        <QuestionCircleOutlined /> Câu hỏi
-                        <Badge count={questions.length} color="indigo" style={{ marginLeft: 4 }} />
-                      </span>
-                    ),
-                    children: (
-                      <div className="space-y-4 pt-4">
-                        <div className="flex justify-between items-center">
-                          <Text className="text-slate-500">
-                            Ngân hàng câu hỏi — {questions.filter((q) => q.status === "published").length}/{questions.length} đã duyệt
-                          </Text>
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            onClick={handleQuestionCreate}
-                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                          >
-                            Tạo câu hỏi mới
-                          </Button>
-                        </div>
-
-                        <Table
-                          rowKey="id"
-                          dataSource={questions}
-                          columns={[
-                            {
-                              title: "Đề bài",
-                              dataIndex: "prompt",
-                              render: (val: string, record: any) => (
-                                <div>
-                                  <div
-                                    className="font-semibold text-slate-800 text-sm line-clamp-2"
-                                    dangerouslySetInnerHTML={{ __html: val }}
-                                  />
-                                  <Tag
-                                    color={QUESTION_TYPE_COLORS[record.type] || "default"}
-                                    className="rounded border-none text-[10px] mt-1.5 font-bold uppercase"
-                                  >
-                                    {QUESTION_TYPE_LABELS[record.type] || record.type}
-                                  </Tag>
-                                </div>
-                              ),
-                            },
-                            {
-                              title: "Phân loại",
-                              render: (_: any, record: any) => {
-                                const skill = skills.find((s) => s.id === record.skillId);
-                                const level = levels.find((l) => l.id === record.difficultyLevelId);
-                                return (
-                                  <div className="text-xs text-slate-500 space-y-0.5">
-                                    {skill && <div>💡 {skill.name}</div>}
-                                    {level && <div>🎯 {level.name}</div>}
-                                  </div>
-                                );
-                              },
-                            },
-                            {
-                              title: "Trạng thái",
-                              dataIndex: "status",
-                              render: (val: string) => statusTag(val),
-                            },
-                            {
-                              title: "Thao tác",
-                              align: "right" as const,
-                              render: (_: any, record: any) => (
-                                <Space size="small">
-                                  <Tooltip title={record.status === "published" ? "Chuyển về Nháp" : "Duyệt & Phát hành"}>
-                                    <Button
-                                      type="text"
-                                      size="small"
-                                      icon={record.status === "published" ? <CloseCircleOutlined className="text-orange-400" /> : <CheckCircleOutlined className="text-emerald-500" />}
-                                      onClick={() => handleToggleQuestionStatus(record)}
-                                    />
-                                  </Tooltip>
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-                                    onClick={() => handleQuestionEdit(record)}
-                                  />
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    danger
-                                    icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-                                    onClick={() => handleQuestionDelete(record)}
-                                  />
-                                </Space>
-                              ),
-                            },
-                          ]}
-                          pagination={{ pageSize: 10 }}
-                        />
-                      </div>
-                    ),
-                  },
-                  {
-                    key: "exams",
-                    label: (
-                      <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                        <BookOutlined /> Đề thi
-                        <Badge count={exams.length} color="blue" style={{ marginLeft: 4 }} />
-                      </span>
-                    ),
-                    children: (
-                      <div className="space-y-4 pt-4">
-                        <div className="flex justify-between items-center">
-                          <Text className="text-slate-500">
-                            Quản lý đề thi — {exams.filter((e) => e.status === "published").length}/{exams.length} đang phát hành
-                          </Text>
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            onClick={handleExamCreate}
-                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                          >
-                            Tạo đề thi mới
-                          </Button>
-                        </div>
-
-                        <Table
-                          rowKey="id"
-                          dataSource={exams}
-                          columns={[
-                            {
-                              title: "Đề thi",
-                              dataIndex: "title",
-                              render: (val: string, record: any) => (
-                                <div>
-                                  <div className="font-bold text-slate-800">{val}</div>
-                                  <div className="text-xs text-slate-400 font-mono mt-0.5">
-                                    {record.code} • ⏱ {record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) + " phút" : "Không giới hạn"}
-                                  </div>
-                                </div>
-                              ),
-                            },
-                            {
-                              title: "Câu hỏi",
-                              render: (_: any, record: any) => {
-                                const count = record.questions?.length || 0;
-                                return (
-                                  <div className="text-center">
-                                    <div className="font-bold text-lg text-slate-700">{count}</div>
-                                    <div className="text-xs text-slate-400">câu</div>
-                                  </div>
-                                );
-                              },
-                            },
-                            {
-                              title: "Trạng thái",
-                              dataIndex: "status",
-                              render: (val: string, record: any) => (
-                                <Tooltip title={val === "published" ? "Click để chuyển về Nháp" : "Click để Phát hành"}>
-                                  <Tag
-                                    color={val === "published" ? "success" : "default"}
-                                    onClick={() => handleToggleExamStatus(record)}
-                                    className="cursor-pointer rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
-                                  >
-                                    {val === "published" ? "✓ Đang phát hành" : "Nháp"}
-                                  </Tag>
-                                </Tooltip>
-                              ),
-                            },
-                            {
-                              title: "Thao tác",
-                              align: "right" as const,
-                              render: (_: any, record: any) => (
-                                <Space size="small">
-                                  <Button
-                                    type="dashed"
-                                    size="small"
-                                    onClick={() => handleOpenQuestions(record)}
-                                    className="text-xs font-semibold border-indigo-200 text-indigo-600 rounded-lg hover:border-indigo-500"
-                                  >
-                                    Cấu hình câu hỏi
-                                  </Button>
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-                                    onClick={() => handleExamEdit(record)}
-                                  />
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    danger
-                                    icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-                                    onClick={() => handleExamDelete(record)}
-                                  />
-                                </Space>
-                              ),
-                            },
-                          ]}
-                        />
-                      </div>
-                    ),
-                  },
-                  {
-                    key: "curriculums",
-                    label: (
-                      <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
-                        <FileTextOutlined /> Giáo trình
-                        <Badge count={curriculums.length} color="purple" style={{ marginLeft: 4 }} />
-                      </span>
-                    ),
-                    children: (
-                      <div className="space-y-4 pt-4">
-                        <div className="flex justify-between items-center">
-                          <Text className="text-slate-500">
-                            Giáo trình đào tạo — {curriculums.filter((c) => c.status === "published").length}/{curriculums.length} đang phát hành
-                          </Text>
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            onClick={handleCurriculumCreate}
-                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                          >
-                            Tạo giáo trình mới
-                          </Button>
-                        </div>
-
-                        <Table
-                          rowKey="id"
-                          dataSource={curriculums}
-                          columns={[
-                            {
-                              title: "Giáo trình",
-                              dataIndex: "title",
-                              render: (val: string, record: any) => (
-                                <div>
-                                  <div className="font-bold text-slate-800">{val}</div>
-                                  <div className="text-xs text-slate-400 font-mono mt-0.5">
-                                    {record.code}
-                                    {record.level && ` • 🎯 ${record.level.name}`}
-                                  </div>
-                                </div>
-                              ),
-                            },
-                            {
-                              title: "Đề thi",
-                              render: (_: any, record: any) => {
-                                const count = record.exams?.length || 0;
-                                const required = (record.exams || []).filter((e: any) => e.isRequired).length;
-                                return (
-                                  <div className="text-center">
-                                    <div className="font-bold text-lg text-slate-700">{count}</div>
-                                    <div className="text-xs text-slate-400">{required} bắt buộc</div>
-                                  </div>
-                                );
-                              },
-                            },
-                            {
-                              title: "Trạng thái",
-                              dataIndex: "status",
-                              render: (val: string, record: any) => (
-                                <Tooltip title={val === "published" ? "Click để chuyển về Nháp" : "Click để Phát hành (cần ít nhất 1 đề thi đã phát hành)"}>
-                                  <Tag
-                                    color={val === "published" ? "success" : "default"}
-                                    onClick={() => handleToggleCurriculumStatus(record)}
-                                    className="cursor-pointer rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
-                                  >
-                                    {val === "published" ? "✓ Đang phát hành" : "Nháp"}
-                                  </Tag>
-                                </Tooltip>
-                              ),
-                            },
-                            {
-                              title: "Thao tác",
-                              align: "right" as const,
-                              render: (_: any, record: any) => (
-                                <Space size="small">
-                                  <Button
-                                    type="dashed"
-                                    size="small"
-                                    onClick={() => handleOpenExams(record)}
-                                    className="text-xs font-semibold border-purple-200 text-purple-600 rounded-lg hover:border-purple-500"
-                                  >
-                                    Cấu hình đề thi
-                                  </Button>
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-                                    onClick={() => handleCurriculumEdit(record)}
-                                  />
-                                  <Button
-                                    type="text"
-                                    size="small"
-                                    danger
-                                    icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-                                    onClick={() => handleCurriculumDelete(record)}
-                                  />
-                                </Space>
-                              ),
-                            },
-                          ]}
-                        />
-                      </div>
-                    ),
-                  },
-                ]}
+                items={tabItems}
               />
             </div>
 
-            {/* ========== MODALS ========== */}
+            {/* ── Modals ────────────────────────────────────── */}
 
-            {/* CREATE/EDIT TAXONOMY MODAL */}
-            <Modal
-              title={
-                <div className="flex items-center gap-2">
-                  <OrderedListOutlined className="text-indigo-600" />
-                  {editingItem ? "Chỉnh sửa danh mục" : `Tạo mới ${taxTab === "levels" ? "Level" : taxTab === "skills" ? "Kỹ năng" : taxTab === "topics" ? "Chủ đề" : "Thẻ gắn"}`}
-                </div>
-              }
+            <TaxonomyModal
               open={taxModalOpen}
               onCancel={() => setTaxModalOpen(false)}
-              onOk={() => taxForm.submit()}
-              className="rounded-2xl"
-              okText="Lưu lại"
-              cancelText="Hủy"
-            >
-              <Form form={taxForm} layout="vertical" onFinish={handleTaxSubmit} className="pt-2">
-                <Form.Item name="code" label="Mã" rules={[{ required: true, message: "Nhập mã!" }]}>
-                  <Input
-                    placeholder="Mã không dấu, viết liền (vd: beginner_a1)"
-                    disabled={!!editingItem}
-                    className="rounded-xl font-mono"
-                  />
-                </Form.Item>
-                <Form.Item name="name" label="Tên" rules={[{ required: true, message: "Nhập tên!" }]}>
-                  <Input placeholder="Tên hiển thị" className="rounded-xl" />
-                </Form.Item>
-                {taxTab === "levels" && (
-                  <Form.Item name="rank" label="Thứ tự (Rank)">
-                    <InputNumber style={{ width: "100%" }} min={0} placeholder="Thứ tự sắp xếp" className="rounded-xl" />
-                  </Form.Item>
-                )}
-                {taxTab === "topics" && (
-                  <Form.Item name="parentId" label="Chủ đề cha (nếu có)">
-                    <Select placeholder="Chọn chủ đề cha..." className="rounded-xl" allowClear>
-                      {topics.filter((t) => t.id !== editingItem?.id).map((t) => (
-                        <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                )}
-                <Form.Item name="description" label="Mô tả">
-                  <Input.TextArea placeholder="Mô tả chi tiết..." rows={3} className="rounded-xl" />
-                </Form.Item>
-              </Form>
-            </Modal>
+              form={taxForm}
+              onFinish={handleTaxSubmit}
+              taxTab={taxTab}
+              isEditing={!!editingItem}
+              topics={topics}
+              editingItem={editingItem}
+            />
 
-            {/* MEDIA UPLOAD MODAL */}
-            <Modal
-              title={
-                <div className="flex items-center gap-2">
-                  <UploadOutlined className="text-indigo-600" />
-                  Tải lên tệp phương tiện
-                </div>
-              }
+            <MediaUploadModal
               open={mediaModalOpen}
               onCancel={() => setMediaModalOpen(false)}
-              onOk={handleMediaUpload}
+              onUpload={handleMediaUpload}
               confirmLoading={uploadLoading}
-              className="rounded-2xl"
-              okText="Tải lên"
-              cancelText="Hủy"
-            >
-              <div className="space-y-4 pt-2">
-                <Upload
-                  beforeUpload={(file) => {
-                    setUploadFile(file);
-                    return false;
-                  }}
-                  maxCount={1}
-                  onRemove={() => setUploadFile(null)}
-                  accept="image/*,audio/*,video/*"
-                >
-                  <Button icon={<UploadOutlined />} className="rounded-xl">Chọn tệp (ảnh, âm thanh, video)</Button>
-                </Upload>
-                {uploadFile && (
-                  <div className="bg-indigo-50 px-3 py-2 rounded-lg text-xs text-indigo-700">
-                    📎 Đã chọn: <strong>{uploadFile.name}</strong> ({(uploadFile.size / 1024).toFixed(1)} KB)
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <Text className="text-xs text-slate-500">Mô tả văn bản thay thế (Alt Text)</Text>
-                  <Input
-                    placeholder="Mô tả ngắn gọn nội dung tệp..."
-                    value={mediaAlt}
-                    onChange={(e) => setMediaAlt(e.target.value)}
-                    className="rounded-xl"
-                  />
-                </div>
-              </div>
-            </Modal>
+              uploadFile={uploadFile}
+              onFileChange={setUploadFile}
+              mediaAlt={mediaAlt}
+              onAltChange={setMediaAlt}
+            />
 
-            {/* READING PASSAGE MODAL */}
-            <Modal
-              title={
-                <div className="flex items-center gap-2">
-                  <ReadOutlined className="text-indigo-600" />
-                  {editingItem ? "Cập nhật Bài đọc" : "Tạo Bài đọc mới"}
-                </div>
-              }
+            <PassageFormModal
               open={passageModalOpen}
               onCancel={() => setPassageModalOpen(false)}
-              onOk={() => passageForm.submit()}
-              width={680}
-              className="rounded-2xl"
-              okText="Lưu lại"
-              cancelText="Hủy"
-            >
-              <Form form={passageForm} layout="vertical" onFinish={handlePassageSubmit} className="pt-2">
-                <Form.Item name="title" label="Tiêu đề bài đọc" rules={[{ required: true, message: "Nhập tiêu đề!" }]}>
-                  <Input placeholder="Tiêu đề..." className="rounded-xl" />
-                </Form.Item>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="source" label="Nguồn tài liệu">
-                      <Input placeholder="Nguồn trích dẫn..." className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="levelId" label="Level (Độ khó)">
-                      <Select placeholder="Chọn level..." className="rounded-xl" allowClear>
-                        {levels.map((l) => (
-                          <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Form.Item name="content" label="Nội dung bài đọc" rules={[{ required: true, message: "Nhập nội dung!" }]}>
-                  <Input.TextArea placeholder="Nhập văn bản bài đọc chi tiết..." rows={10} className="rounded-xl" />
-                </Form.Item>
-              </Form>
-            </Modal>
+              form={passageForm}
+              onFinish={handlePassageSubmit}
+              isEditing={!!editingItem}
+              levels={levels}
+            />
 
-            {/* CREATE/EDIT QUESTION MODAL */}
-            <Modal
-              title={
-                <div className="flex items-center gap-2">
-                  <QuestionCircleOutlined className="text-indigo-600" />
-                  {editingItem ? "Cập nhật câu hỏi" : "Tạo câu hỏi mới"}
-                </div>
-              }
+            <QuestionFormModal
               open={questionModalOpen}
-              onCancel={() => setQuestionModalOpen(false)}
-              onOk={() => questionForm.submit()}
-              width={800}
-              className="rounded-2xl"
-              okText="Lưu lại"
-              cancelText="Hủy"
-            >
-              <Form form={questionForm} layout="vertical" onFinish={handleQuestionSubmit} className="pt-2">
-                {/* Type and Classification */}
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="type" label="Loại câu hỏi" rules={[{ required: true }]}>
-                      <Select
-                        className="rounded-xl"
-                        onChange={(val) => {
-                          setCurrentQuestionType(val);
-                          // Reset type-specific fields
-                          questionForm.setFieldsValue({ options: [], pairs: [], correctTokens: "", acceptedAnswers: "", passageId: undefined });
-                          if (CHOICE_TYPES.includes(val)) {
-                            questionForm.setFieldsValue({
-                              options: [
-                                { label: "A", content: "", isCorrect: false },
-                                { label: "B", content: "", isCorrect: false },
-                              ],
-                            });
-                          }
-                        }}
-                      >
-                        {QUESTION_TYPES.map((qt) => (
-                          <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="difficultyLevelId" label="Level độ khó">
-                      <Select className="rounded-xl" placeholder="Chọn level" allowClear>
-                        {levels.map((l) => (
-                          <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
+              onCancel={() => {
+                setQuestionModalOpen(false);
+                setIsDuplicatingQuestion(false);
+              }}
+              form={questionForm}
+              onFinish={handleQuestionSubmit}
+              isEditing={!!editingItem}
+              isDuplicating={isDuplicatingQuestion}
+              currentType={currentQuestionType}
+              onTypeChange={setCurrentQuestionType}
+              levels={levels}
+              skills={skills}
+              topics={topics}
+              tags={tags}
+              passages={passages}
+              filteredMedia={getFilteredMedia()}
+              allMedia={media}
+              availableRoles={getAvailableRoles()}
+              onPreviewAsset={handlePreviewAsset}
+              onUploadMedia={handleUploadQuestionMedia}
+            />
 
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="skillId" label="Kỹ năng">
-                      <Select className="rounded-xl" placeholder="Chọn kỹ năng" allowClear>
-                        {skills.map((s) => (
-                          <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="topicId" label="Chủ đề">
-                      <Select className="rounded-xl" placeholder="Chọn chủ đề" allowClear>
-                        {topics.map((t) => (
-                          <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Form.Item name="tagIds" label="Thẻ gắn">
-                  <Select mode="multiple" className="rounded-xl" placeholder="Chọn các thẻ..." allowClear>
-                    {tags.map((t) => (
-                      <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-
-                <Divider className="my-3" />
-
-                <Form.Item name="prompt" label="Nội dung câu hỏi (Đề bài)" rules={[{ required: true }]}>
-                  <Input.TextArea placeholder="Câu hỏi hiển thị cho học sinh..." rows={3} className="rounded-xl" />
-                </Form.Item>
-
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="instruction" label="Hướng dẫn làm bài">
-                      <Input placeholder="Ví dụ: Chọn câu trả lời đúng nhất" className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="explanation" label="Giải thích đáp án">
-                      <Input placeholder="Lý do đáp án đúng..." className="rounded-xl" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Divider className="my-3" />
-
-                {/* Type-specific fields */}
-                {renderQuestionDetailFields()}
-              </Form>
-            </Modal>
-
-            {/* CREATE/EDIT EXAM MODAL */}
-            <Modal
-              title={
-                <div className="flex items-center gap-2">
-                  <BookOutlined className="text-indigo-600" />
-                  {editingItem ? "Cập nhật Đề thi" : "Tạo Đề thi mới"}
-                </div>
-              }
+            <ExamFormModal
               open={examModalOpen}
               onCancel={() => setExamModalOpen(false)}
-              onOk={() => examForm.submit()}
-              className="rounded-2xl"
-              okText="Lưu lại"
-              cancelText="Hủy"
-            >
-              <Form form={examForm} layout="vertical" onFinish={handleExamSubmit} className="pt-2">
-                <Form.Item name="code" label="Mã đề thi" rules={[{ required: !editingItem }]}>
-                  <Input placeholder="Ví dụ: EXAM_A1_001" disabled={!!editingItem} className="rounded-xl font-mono" />
-                </Form.Item>
-                <Form.Item name="title" label="Tiêu đề đề thi" rules={[{ required: true }]}>
-                  <Input placeholder="Ví dụ: Đề kiểm tra giữa kỳ 1" className="rounded-xl" />
-                </Form.Item>
-                <Form.Item name="timeLimitSeconds" label="Thời gian làm bài (giây)" rules={[{ required: true }]}>
-                  <InputNumber
-                    style={{ width: "100%" }}
-                    min={0}
-                    placeholder="Ví dụ: 2700 (= 45 phút)"
-                    className="rounded-xl"
-                  />
-                </Form.Item>
-                <Form.Item name="description" label="Mô tả chi tiết">
-                  <Input.TextArea placeholder="Mô tả đề thi..." rows={3} className="rounded-xl" />
-                </Form.Item>
-                {!editingItem && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                    💡 Đề thi sẽ được tạo ở trạng thái <strong>Nháp</strong>. Sau khi thêm câu hỏi (đã duyệt), bạn có thể Phát hành đề thi.
-                  </div>
-                )}
-              </Form>
-            </Modal>
+              form={examForm}
+              onFinish={handleExamSubmit}
+              isEditing={!!editingItem}
+              curriculums={curriculums}
+              confirmLoading={examSubmitting}
+            />
 
-            {/* CREATE/EDIT CURRICULUM MODAL */}
-            <Modal
-              title={
-                <div className="flex items-center gap-2">
-                  <FileTextOutlined className="text-purple-600" />
-                  {editingItem ? "Cập nhật Giáo trình" : "Tạo Giáo trình mới"}
-                </div>
-              }
+            <CurriculumFormModal
               open={curriculumModalOpen}
               onCancel={() => setCurriculumModalOpen(false)}
-              onOk={() => curriculumForm.submit()}
-              className="rounded-2xl"
-              okText="Lưu lại"
-              cancelText="Hủy"
-            >
-              <Form form={curriculumForm} layout="vertical" onFinish={handleCurriculumSubmit} className="pt-2">
-                <Form.Item name="code" label="Mã giáo trình" rules={[{ required: !editingItem }]}>
-                  <Input placeholder="Ví dụ: CURR_A1" disabled={!!editingItem} className="rounded-xl font-mono" />
-                </Form.Item>
-                <Form.Item name="title" label="Tiêu đề giáo trình" rules={[{ required: true }]}>
-                  <Input placeholder="Ví dụ: Tiếng Anh nâng cao lớp 6" className="rounded-xl" />
-                </Form.Item>
-                <Form.Item name="levelId" label="Level (Độ tuổi / Cấp độ)">
-                  <Select className="rounded-xl" placeholder="Chọn level" allowClear>
-                    {levels.map((l) => (
-                      <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                <Form.Item name="description" label="Mô tả giáo trình">
-                  <Input.TextArea placeholder="Mô tả giáo trình..." rows={3} className="rounded-xl" />
-                </Form.Item>
-                {!editingItem && (
-                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-700">
-                    💡 Giáo trình sẽ được tạo ở trạng thái <strong>Nháp</strong>. Sau khi thêm đề thi (đã phát hành), bạn có thể Phát hành giáo trình.
-                  </div>
-                )}
-              </Form>
-            </Modal>
+              form={curriculumForm}
+              onFinish={handleCurriculumSubmit}
+              isEditing={!!editingItem}
+              levels={levels}
+            />
 
-            {/* MANAGE QUESTIONS IN EXAM MODAL */}
-            <Modal
-              title={
-                <div>
-                  <div className="font-bold text-slate-800">Cấu hình câu hỏi cho đề thi</div>
-                  <div className="text-sm text-slate-400 font-normal mt-0.5">{selectedExam?.title}</div>
-                </div>
-              }
+            <ExamVersionsModal
+              open={examVersionsModalOpen}
+              viewingExam={viewingExam}
+              examVersions={examVersions}
+              onCancel={() => { setExamVersionsModalOpen(false); setViewingExam(null); }}
+              onRefresh={(updatedExam, versions) => { setViewingExam(updatedExam); setExamVersions(versions); }}
+              onLoadAllData={loadAllData}
+            />
+
+            <QuestionVersionsModal
+              open={questionVersionsModalOpen}
+              viewingQuestion={viewingQuestion}
+              questionVersions={questionVersions}
+              onCancel={() => { setQuestionVersionsModalOpen(false); setViewingQuestion(null); }}
+            />
+
+            <ManageQuestionsModal
               open={manageQuestionsOpen}
-              onCancel={() => {
-                setManageQuestionsOpen(false);
-                setSelectedExam(null);
-              }}
-              width={1000}
-              footer={
-                <div className="flex justify-between items-center">
-                  <div className="text-xs text-slate-400">
-                    ⚠️ Chỉ câu hỏi đã được <strong>Duyệt (published)</strong> mới có thể thêm vào đề thi
-                  </div>
-                  <Button type="primary" onClick={() => { setManageQuestionsOpen(false); setSelectedExam(null); }}>
-                    Hoàn tất
-                  </Button>
-                </div>
-              }
-              className="rounded-2xl"
-            >
-              <Row gutter={24} className="pt-2">
-                {/* Left column: Current exam questions */}
-                <Col span={12}>
-                  <Card
-                    title={
-                      <div className="flex items-center justify-between">
-                        <span>Câu hỏi trong đề thi</span>
-                        <Badge count={selectedExam?.questions?.length || 0} color="indigo" />
-                      </div>
-                    }
-                    className="rounded-2xl border-slate-100 shadow-sm"
-                    size="small"
-                  >
-                    <List
-                      dataSource={selectedExam?.questions || []}
-                      renderItem={(eq: any, index: number) => {
-                        const q = questions.find((q) => q.id === eq.questionId);
-                        return (
-                          <List.Item
-                            actions={[
-                              <Button
-                                type="text"
-                                size="small"
-                                disabled={index === 0}
-                                icon={<ArrowUpOutlined />}
-                                onClick={() => handleReorderExamQuestions(index, "up")}
-                              />,
-                              <Button
-                                type="text"
-                                size="small"
-                                disabled={index === (selectedExam?.questions || []).length - 1}
-                                icon={<ArrowDownOutlined />}
-                                onClick={() => handleReorderExamQuestions(index, "down")}
-                              />,
-                              <Button
-                                type="text"
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => handleRemoveQuestionFromExam(eq.questionId)}
-                              />,
-                            ]}
-                          >
-                            <List.Item.Meta
-                              avatar={
-                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">
-                                  {index + 1}
-                                </div>
-                              }
-                              title={
-                                <div className="text-xs font-semibold line-clamp-1">
-                                  {q?.prompt || "(Câu hỏi không tìm thấy)"}
-                                </div>
-                              }
-                              description={
-                                <div className="flex gap-2">
-                                  <span className="text-[10px] text-slate-400">Điểm: {eq.score}</span>
-                                  {q && <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">{QUESTION_TYPE_LABELS[q.type]}</Tag>}
-                                </div>
-                              }
-                            />
-                          </List.Item>
-                        );
-                      }}
-                      locale={{ emptyText: <Empty description="Đề thi chưa có câu hỏi nào" imageStyle={{ height: 40 }} /> }}
-                    />
-                  </Card>
-                </Col>
+              selectedExam={selectedExam}
+              onCancel={() => { setManageQuestionsOpen(false); setSelectedExam(null); }}
+              onDone={() => { setManageQuestionsOpen(false); setSelectedExam(null); }}
+              allQuestions={questions}
+              questionDetails={questionDetails}
+              skills={skills}
+              levels={levels}
+              topics={topics}
+              tags={tags}
+              examQSearch={examQSearch}
+              onExamQSearch={setExamQSearch}
+              examQTypeFilter={examQTypeFilter}
+              onExamQTypeFilter={setExamQTypeFilter}
+              examQSkillFilter={examQSkillFilter}
+              onExamQSkillFilter={setExamQSkillFilter}
+              examQLevelFilter={examQLevelFilter}
+              onExamQLevelFilter={setExamQLevelFilter}
+              examQTopicFilter={examQTopicFilter}
+              onExamQTopicFilter={setExamQTopicFilter}
+              examQTagFilter={examQTagFilter}
+              onExamQTagFilter={setExamQTagFilter}
+              onResetFilters={resetExamQFilters}
+              onAddQuestion={handleAddQuestionToExam}
+              onRemoveQuestion={handleRemoveQuestionFromExam}
+              onReorder={handleReorderExamQuestions}
+              onRepublish={handleRepublishFromManageModal}
+              onBulkAttach={handleBulkAttachQuestionsToExam}
+            />
 
-                {/* Right column: Available published questions */}
-                <Col span={12}>
-                  <Card
-                    title={
-                      <div className="flex items-center justify-between">
-                        <span>Ngân hàng câu hỏi (đã duyệt)</span>
-                        <Badge
-                          count={questions.filter((q) => q.status === "published" && !(selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id)).length}
-                          color="green"
-                        />
-                      </div>
-                    }
-                    className="rounded-2xl border-slate-100 shadow-sm"
-                    size="small"
-                  >
-                    <List
-                      dataSource={questions.filter(
-                        (q) =>
-                          q.status === "published" &&
-                          !(selectedExam?.questions || []).some((eq: any) => eq.questionId === q.id),
-                      )}
-                      renderItem={(q: any) => (
-                        <List.Item
-                          actions={[
-                            <Button
-                              type="dashed"
-                              size="small"
-                              icon={<PlusOutlined />}
-                              onClick={() => handleAddQuestionToExam(q.id)}
-                            >
-                              Thêm
-                            </Button>,
-                          ]}
-                        >
-                          <List.Item.Meta
-                            title={<div className="text-xs font-semibold line-clamp-1">{q.prompt}</div>}
-                            description={
-                              <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">
-                                {QUESTION_TYPE_LABELS[q.type]}
-                              </Tag>
-                            }
-                          />
-                        </List.Item>
-                      )}
-                      locale={{ emptyText: <Empty description="Không có câu hỏi đã duyệt" imageStyle={{ height: 40 }} /> }}
-                    />
-                  </Card>
-                </Col>
-              </Row>
-            </Modal>
-
-            {/* MANAGE EXAMS IN CURRICULUM MODAL */}
-            <Modal
-              title={
-                <div>
-                  <div className="font-bold text-slate-800">Cấu hình đề thi cho giáo trình</div>
-                  <div className="text-sm text-slate-400 font-normal mt-0.5">{selectedCurriculum?.title}</div>
-                </div>
-              }
+            <ManageExamsModal
               open={manageExamsOpen}
-              onCancel={() => {
-                setManageExamsOpen(false);
-                setSelectedCurriculum(null);
-              }}
-              width={1000}
-              footer={
-                <div className="flex justify-between items-center">
-                  <div className="text-xs text-slate-400">
-                    ⚠️ Chỉ đề thi đang <strong>Phát hành (published)</strong> mới có thể thêm vào giáo trình
-                  </div>
-                  <Button type="primary" onClick={() => { setManageExamsOpen(false); setSelectedCurriculum(null); }}>
-                    Hoàn tất
-                  </Button>
-                </div>
-              }
-              className="rounded-2xl"
-            >
-              <Row gutter={24} className="pt-2">
-                {/* Left column: Current curriculum exams */}
-                <Col span={12}>
-                  <Card
-                    title={
-                      <div className="flex items-center justify-between">
-                        <span>Đề thi trong giáo trình</span>
-                        <Badge count={selectedCurriculum?.exams?.length || 0} color="purple" />
-                      </div>
-                    }
-                    className="rounded-2xl border-slate-100 shadow-sm"
-                    size="small"
-                  >
-                    <List
-                      dataSource={selectedCurriculum?.exams || []}
-                      renderItem={(ce: any, index: number) => {
-                        const e = exams.find((exam) => exam.id === ce.examId);
-                        return (
-                          <List.Item
-                            actions={[
-                              <Button
-                                type="text"
-                                size="small"
-                                disabled={index === 0}
-                                icon={<ArrowUpOutlined />}
-                                onClick={() => handleReorderCurriculumExams(index, "up")}
-                              />,
-                              <Button
-                                type="text"
-                                size="small"
-                                disabled={index === (selectedCurriculum?.exams || []).length - 1}
-                                icon={<ArrowDownOutlined />}
-                                onClick={() => handleReorderCurriculumExams(index, "down")}
-                              />,
-                              <Button
-                                type="text"
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                onClick={() => handleRemoveExamFromCurriculum(ce.examId)}
-                              />,
-                            ]}
-                          >
-                            <List.Item.Meta
-                              avatar={
-                                <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center text-xs font-bold text-purple-700">
-                                  {index + 1}
-                                </div>
-                              }
-                              title={<div className="text-xs font-semibold line-clamp-1">{e?.title || "(Đề thi không tìm thấy)"}</div>}
-                              description={
-                                <div className="flex gap-2">
-                                  <Tag color={ce.isRequired ? "red" : "default"} className="text-[9px] border-none">
-                                    {ce.isRequired ? "Bắt buộc" : "Tuỳ chọn"}
-                                  </Tag>
-                                  {e && <span className="text-[10px] text-slate-400">{e.questions?.length || 0} câu</span>}
-                                </div>
-                              }
-                            />
-                          </List.Item>
-                        );
-                      }}
-                      locale={{ emptyText: <Empty description="Giáo trình chưa có đề thi nào" imageStyle={{ height: 40 }} /> }}
-                    />
-                  </Card>
-                </Col>
+              selectedCurriculum={selectedCurriculum}
+              onCancel={() => { setManageExamsOpen(false); setSelectedCurriculum(null); }}
+              onDone={() => { setManageExamsOpen(false); setSelectedCurriculum(null); }}
+              allExams={exams}
+              onAddExam={handleAddExamToCurriculum}
+              onRemoveExam={handleRemoveExamFromCurriculum}
+              onReorder={handleReorderCurriculumExams}
+            />
 
-                {/* Right column: Available published exams */}
-                <Col span={12}>
-                  <Card
-                    title={
-                      <div className="flex items-center justify-between">
-                        <span>Đề thi khả dụng (đã phát hành)</span>
-                        <Badge
-                          count={exams.filter((e) => e.status === "published" && !(selectedCurriculum?.exams || []).some((ce: any) => ce.examId === e.id)).length}
-                          color="green"
-                        />
-                      </div>
-                    }
-                    className="rounded-2xl border-slate-100 shadow-sm"
-                    size="small"
-                  >
-                    <List
-                      dataSource={exams.filter(
-                        (e) =>
-                          e.status === "published" &&
-                          !(selectedCurriculum?.exams || []).some((ce: any) => ce.examId === e.id),
-                      )}
-                      renderItem={(e: any) => (
-                        <List.Item
-                          actions={[
-                            <Button
-                              type="dashed"
-                              size="small"
-                              icon={<PlusOutlined />}
-                              onClick={() => handleAddExamToCurriculum(e.id)}
-                            >
-                              Thêm
-                            </Button>,
-                          ]}
-                        >
-                          <List.Item.Meta
-                            title={<div className="text-xs font-semibold line-clamp-1">{e.title}</div>}
-                            description={
-                              <span className="text-[10px] text-slate-400">
-                                {e.questions?.length || 0} câu • ⏱ {e.timeLimitSeconds ? Math.round(e.timeLimitSeconds / 60) + " phút" : "Không giới hạn"}
-                              </span>
-                            }
-                          />
-                        </List.Item>
-                      )}
-                      locale={{ emptyText: <Empty description="Không có đề thi đã phát hành" imageStyle={{ height: 40 }} /> }}
-                    />
-                  </Card>
-                </Col>
-              </Row>
-            </Modal>
+            <MediaPreviewModal
+              open={previewVisible}
+              asset={previewAsset}
+              onCancel={() => { setPreviewVisible(false); setPreviewAsset(null); }}
+            />
+
+            {/* LIGHTBOX PREVIEW ELEMENT */}
+            {previewElement}
+
           </div>
         </Spin>
       </div>

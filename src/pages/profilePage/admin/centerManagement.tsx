@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   Avatar,
   Button,
@@ -22,7 +23,13 @@ import {
   Tooltip,
   Typography,
   message,
+  Upload,
+  Image,
+  Segmented,
+  Pagination,
 } from "antd";
+import type { UploadFile } from "antd";
+import { SafeSelect } from "../../../components/SafeSelect";
 
 import {
   BookOutlined,
@@ -30,6 +37,7 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  EyeOutlined,
   HomeOutlined,
   KeyOutlined,
   PlusOutlined,
@@ -39,16 +47,35 @@ import {
   MailOutlined,
   PhoneOutlined,
   EnvironmentOutlined,
+  UploadOutlined,
+  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 
 import { userService } from "../../../services/userService";
-import { rbacService } from "../../../services/rbacService";
 import { authService } from "../../../services/authService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { academicService } from "../../../services/academicService";
+import { learningCmsService } from "../../../services/learningCmsService";
+import { teacherLearningService } from "../../../services/teacherLearningService";
+import { resolveMediaUrl, getErrorMessage } from "../../../services/apiClient";
+import { SecureImage } from "../../../components/SecureImage";
+import { useAppImagePreview } from "../../../components/AppImagePreview";
+import {
+  Building2,
+  Image as LucideImageIcon,
+  GraduationCap,
+  BookOpen as LucideBookOpen,
+  MapPin,
+  Info as LucideInfo,
+  AlertTriangle,
+} from "lucide-react";
 import dayjs from "dayjs";
 
 const { Title, Text, Paragraph } = Typography;
+
+const DEFAULT_STUDENT_PASSWORD = import.meta.env.VITE_DEFAULT_STUDENT_PASSWORD || "12345678";
+const DEFAULT_TEACHER_PASSWORD = import.meta.env.VITE_DEFAULT_TEACHER_PASSWORD || "Demo@123456";
+const CLASSES_PAGE_SIZE = 6;
 
 interface TeacherFormValues {
   code: string;
@@ -61,11 +88,17 @@ interface TeacherFormValues {
   startDate?: dayjs.Dayjs;
   endDate?: dayjs.Dayjs;
   address?: string;
+  citizenId?: string;
   yearsOfExperience?: number;
   description: string;
-  centerId?: string;
+  centerIds?: string[];
   classIds: string[];
   specializationIds: string[];
+  bankAccountNumber?: string;
+  bankName?: string;
+  insuranceStartDate?: dayjs.Dayjs;
+  employmentType?: string;
+  degrees?: any[];
 }
 
 interface StudentFormValues {
@@ -75,50 +108,154 @@ interface StudentFormValues {
   phone?: string;
   roleId: string;
   password?: string;
-  dateOfBirth?: dayjs.Dayjs;
+  birthYear?: number;
   startDate?: dayjs.Dayjs;
   endDate?: dayjs.Dayjs;
   address?: string;
+  citizenId?: string;
   centerId?: string;
   classIds: string[];
+  parentFullName?: string;
 }
 
 export default function CenterManagement() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const isTeacher = user?.role === "teacher";
+  const basePath = isTeacher ? "/teacher/centers" : "/admin/dashboard/centers";
 
   // ================= DATA STATE =================
   const [centers, setCenters] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [admins, setAdmins] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
+  const [studentRoleId, setStudentRoleId] = useState("");
   const [specializations, setSpecializations] = useState<any[]>([]);
+  const [curriculums, setCurriculums] = useState<any[]>([]);
+  const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
+
+  // Teacher center scoping
+  const teacherCenterIds = useMemo(() => {
+    if (!isTeacher || !user) return [];
+    const fromProfile = [
+      user.centerId,
+      user.teacherProfile?.centerId,
+      ...(user.teacherProfile?.centerIds || []),
+    ].filter(Boolean);
+
+    const teacherClassIds = (user.teacherProfile?.classes || user.teacherProfile?.classIds || []).map((c: any) =>
+      typeof c === "string" ? c : c?.id
+    );
+
+    const fromClasses = classes
+      .filter((c) => teacherClassIds.includes(c.id))
+      .map((c) => c.centerId)
+      .filter(Boolean);
+
+    const fromTeachers = teachers
+      .filter((t) => t.id === user.id)
+      .flatMap((t) => [t.centerId, ...(t.centerIds || [])])
+      .filter(Boolean);
+
+    return Array.from(new Set([...fromProfile, ...fromClasses, ...fromTeachers]));
+  }, [isTeacher, user, classes, teachers]);
+
+  const visibleCenters = useMemo(() => {
+    if (!isTeacher) return centers;
+    if (teacherCenterIds.length === 0) return centers;
+    return centers.filter((c) => teacherCenterIds.includes(c.id));
+  }, [isTeacher, centers, teacherCenterIds]);
 
   // ================= UI STATE =================
+  const location = useLocation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [selectedCenterId, setSelectedCenterId] = useState<string | null>(null);
+  const [selectedCenterIdState, setSelectedCenterIdState] = useState<string | null>(null);
+
+  const centerSubPathInfo = useMemo(() => {
+    const parts = location.pathname.split("/centers/")[1] || "";
+    const segments = parts.split("/").filter(Boolean);
+    const centerId = segments[0] || null;
+    const defaultSubTab = isTeacher ? "students" : "teachers";
+    const subTab = segments[1] || defaultSubTab;
+    const validTabs = isTeacher
+      ? ["teachers", "students", "specializations"]
+      : ["teachers", "students", "specializations", "admins"];
+    const activeSubTab = validTabs.includes(subTab) ? subTab : defaultSubTab;
+    return { centerId, activeSubTab };
+  }, [location.pathname, isTeacher]);
+
+  const selectedCenterId = centerSubPathInfo.centerId || selectedCenterIdState;
+  const activeSubTab = centerSubPathInfo.activeSubTab;
+
+  const setSelectedCenterId = (id: string | null) => {
+    setSelectedCenterIdState(id);
+    if (id) {
+      navigate(`${basePath}/${id}/${activeSubTab}`, {
+        replace: true,
+        preventScrollReset: true,
+        state: { preventScroll: true },
+      });
+    } else {
+      navigate(isTeacher ? "/teacher/centers" : "/admin/dashboard", {
+        replace: true,
+        preventScrollReset: true,
+        state: { preventScroll: true },
+      });
+    }
+  };
+
+  const handleSubTabChange = (key: string) => {
+    if (selectedCenterId) {
+      navigate(`${basePath}/${selectedCenterId}/${key}`, {
+        replace: true,
+        preventScrollReset: true,
+        state: { preventScroll: true },
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isTeacher && visibleCenters.length > 0) {
+      if (!selectedCenterId || !visibleCenters.some((c) => c.id === selectedCenterId)) {
+        setSelectedCenterId(visibleCenters[0].id);
+      }
+    }
+  }, [isTeacher, visibleCenters, selectedCenterId]);
+
+  const [subImagesFileList, setSubImagesFileList] = useState<UploadFile[]>([]);
 
   // Search state
   const [centerSearch, setCenterSearch] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   // ================= MODAL STATE =================
   const [centerModalOpen, setCenterModalOpen] = useState(false);
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [teacherModalOpen, setTeacherModalOpen] = useState(false);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   const [specializationModalOpen, setSpecializationModalOpen] = useState(false);
+  const { showPreview, previewElement } = useAppImagePreview();
 
   // Dynamic filter state for modal inputs
   const [selectedModalCenterId, setSelectedModalCenterId] = useState<string | undefined>(undefined);
+  const [selectedTeacherCenterIds, setSelectedTeacherCenterIds] = useState<string[]>([]);
+  const [classPage, setClassPage] = useState<number>(1);
+  const [showAllCenterImages, setShowAllCenterImages] = useState<boolean>(false);
 
   // ================= FORMS =================
   const [centerForm] = Form.useForm();
   const [classForm] = Form.useForm();
   const [teacherForm] = Form.useForm<TeacherFormValues>();
   const [studentForm] = Form.useForm<StudentFormValues>();
+  const [adminForm] = Form.useForm();
   const [specializationForm] = Form.useForm();
 
   // ================= EDIT/DELETE STATE =================
@@ -126,6 +263,7 @@ export default function CenterManagement() {
   const [editingClass, setEditingClass] = useState<any>(null);
   const [editingTeacher, setEditingTeacher] = useState<any>(null);
   const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [editingAdmin, setEditingAdmin] = useState<any>(null);
   const [editingSpecialization, setEditingSpecialization] = useState<any>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<any>(null);
   const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(null);
@@ -145,40 +283,113 @@ export default function CenterManagement() {
         inactiveTeachers,
         activeStudents,
         inactiveStudents,
+        activeAdmins,
+        inactiveAdmins,
         rolesData,
-        specializationsData
+        studentRoleData,
+        specializationsData,
+        curriculumsData,
+        classCurriculumsData,
       ] = await Promise.all([
-        academicService.centers.list(),
-        academicService.classes.list(),
-        userService.list({ roleCode: "teacher", isActive: true }),
-        userService.list({ roleCode: "teacher", isActive: "" as any }),
-        userService.list({ roleCode: "student", isActive: true }),
-        userService.list({ roleCode: "student", isActive: "" as any }),
-        rbacService.roles.list(),
-        academicService.specializations.list(),
+        hasPermission("centers.read") ? academicService.centers.list().catch(() => []) : Promise.resolve([]),
+        hasPermission("classes.read") ? academicService.classes.list().catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "teacher", isActive: true }).catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "teacher", isActive: false }).catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "student", isActive: true }).catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "student", isActive: false }).catch(() => []) : Promise.resolve([]),
+        isTeacher || !hasPermission("users.read") ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: true }).catch(() => []),
+        isTeacher || !hasPermission("users.read") ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: false }).catch(() => []),
+        isTeacher || !hasPermission("users.manage") ? Promise.resolve([]) : userService.provisioningRoles().catch(() => []),
+        hasPermission("students.manage") ? userService.studentRole().catch(() => null) : Promise.resolve(null),
+        hasPermission("specializations.read") ? academicService.specializations.list().catch(() => []) : Promise.resolve([]),
+        hasPermission("learning.read") ? learningCmsService.curriculums.list({ status: "published", limit: 100 }).catch(() => null) : Promise.resolve(null),
+        hasPermission("learning.assign") ? teacherLearningService.classCurriculums.list({ limit: 100 }).catch(() => null) : Promise.resolve(null),
       ]);
 
       setCenters(centersData || []);
       setClasses(classesData || []);
-      
+      setCurriculums(curriculumsData?.data || []);
+      setClassCurriculums(classCurriculumsData?.data || []);
+
       const rawTeachers = [...(activeTeachers || []), ...(inactiveTeachers || [])];
       const uniqueTeachers = rawTeachers.filter(
         (teacher, index, self) => self.findIndex((t) => t.id === teacher.id) === index
       );
-      setTeachers(uniqueTeachers);
+      setTeachers((prevTeachers) => {
+        return uniqueTeachers.map((t: any) => {
+          const prev = prevTeachers.find((p: any) => p.id === t.id);
+          const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
+          const matchedClasses = (classesData || []).filter((c: any) => classIds.includes(c.id));
+          const teacherCenterIds = Array.from(
+            new Set([
+              ...(t.centerIds || []),
+              ...matchedClasses.map((c: any) => c.centerId),
+              ...(t.teacherProfile?.classes || []).map((c: any) => c.centerId || c.center?.id),
+              t.centerId,
+              prev?.centerId,
+            ].filter(Boolean))
+          );
+          return {
+            ...t,
+            centerIds: teacherCenterIds,
+            centerId: teacherCenterIds[0] || t.centerId || prev?.centerId,
+          };
+        });
+      });
 
       const rawStudents = [...(activeStudents || []), ...(inactiveStudents || [])];
       const uniqueStudents = rawStudents.filter(
         (student, index, self) => self.findIndex((s) => s.id === student.id) === index
       );
-      setStudents(uniqueStudents);
-      
+      setStudents((prevStudents) => {
+        return uniqueStudents.map((s: any) => {
+          const prev = prevStudents.find((p: any) => p.id === s.id);
+          const classIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
+          const matchedClass =
+            (classesData || []).find((c: any) => classIds.includes(c.id)) ||
+            (s.studentProfile?.classes || [])[0];
+          return {
+            ...s,
+            centerId:
+              s.centerId ||
+              matchedClass?.centerId ||
+              matchedClass?.center?.id ||
+              s.studentProfile?.centerId ||
+              s.student?.classes?.[0]?.class?.centerId ||
+              prev?.centerId,
+          };
+        });
+      });
+
+      const rawAdmins = [...(activeAdmins || []), ...(inactiveAdmins || [])];
+      const uniqueAdmins = rawAdmins.filter(
+        (admin, index, self) => self.findIndex((a) => a.id === admin.id) === index
+      );
+      setAdmins(uniqueAdmins);
+
       setRoles(rolesData || []);
+      setStudentRoleId(studentRoleData?.id || "");
       setSpecializations(specializationsData || []);
 
       // Autoselect the first center on load if not selected already
-      if (centersData && centersData.length > 0 && !selectedCenterId) {
-        setSelectedCenterId(centersData[0].id);
+      const initialCenters = isTeacher
+        ? (centersData || []).filter((c: any) => {
+            const teacherClassIds = (user?.teacherProfile?.classes || user?.teacherProfile?.classIds || []).map((tc: any) =>
+              typeof tc === "string" ? tc : tc?.id
+            );
+            const classesInCenter = (classesData || []).filter((cls: any) => cls.centerId === c.id);
+            const teachesInCenter = classesInCenter.some((cls: any) => teacherClassIds.includes(cls.id));
+            return (
+              c.id === user?.centerId ||
+              c.id === user?.teacherProfile?.centerId ||
+              (user?.teacherProfile?.centerIds || []).includes(c.id) ||
+              teachesInCenter
+            );
+          })
+        : (centersData || []);
+
+      if (initialCenters.length > 0 && !selectedCenterId) {
+        setSelectedCenterId(initialCenters[0].id);
       }
     } catch (err) {
       message.error("Tải dữ liệu thất bại");
@@ -187,28 +398,83 @@ export default function CenterManagement() {
     }
   };
 
-  const getTeacherRoleId = () => roles.find((r) => r.code === "teacher")?.id || "";
-  const getStudentRoleId = () => roles.find((r) => r.code === "student")?.id || "";
+  const getTeacherRoleId = () => roles.find((r) => r.code?.toLowerCase() === "teacher")?.id || "";
+  const getStudentRoleId = () =>
+    studentRoleId || roles.find((r) => r.code?.toLowerCase() === "student")?.id || "";
+  const getAdminRoleId = () => roles.find((r) => r.code?.toLowerCase() === "admin")?.id || "";
 
   const isUserActive = (record: any) => {
     if (!record) return false;
     if (record.isActive === false) return false;
     if (record.endDate) {
-      return dayjs(record.endDate).isAfter(dayjs());
+      const endDateStr = dayjs(record.endDate).format("YYYY-MM-DD");
+      const todayStr = dayjs().format("YYYY-MM-DD");
+      return endDateStr > todayStr;
     }
     return true;
   };
 
   // ================= CENTER CRUD HANDLERS =================
+  const getRelativeUrl = (file: UploadFile) => {
+    if (file.response?.url) {
+      return file.response.url;
+    }
+    if (file.url) {
+      if (file.url.startsWith("http")) {
+        try {
+          const parsed = new URL(file.url);
+          if (parsed.pathname.startsWith("/uploads")) {
+            return parsed.pathname;
+          }
+        } catch { }
+      }
+      return file.url;
+    }
+    return "";
+  };
+
+  const handleUploadChange = ({ fileList }: { fileList: UploadFile[] }) => {
+    const cappedList = fileList.slice(0, 20);
+    const updated = cappedList.map((file) => {
+      if (!file.url && file.originFileObj) {
+        const previewUrl = URL.createObjectURL(file.originFileObj);
+        file.url = previewUrl;
+        file.thumbUrl = previewUrl;
+      }
+      return file;
+    });
+    setSubImagesFileList(updated);
+  };
+
   const handleCenterCreate = () => {
+    if (!hasPermission("classes.manage")) return;
     setEditingCenter(null);
+    setSubImagesFileList([]);
     centerForm.resetFields();
     setCenterModalOpen(true);
   };
 
   const handleCenterEdit = (record: any, e: React.MouseEvent) => {
+    if (!hasPermission("classes.manage")) return;
     e.stopPropagation(); // Avoid triggering selectedCenterId change
     setEditingCenter(record);
+
+    // Populate Auxiliary/Sub Images File List
+    if (record.images && Array.isArray(record.images)) {
+      setSubImagesFileList(
+        record.images.map((img: any, idx: number) => ({
+          uid: img.id || `-${idx + 2}`,
+          name: img.url.split("/").pop() || `image-${idx}.png`,
+          status: "done",
+          url: resolveMediaUrl(img.url),
+          thumbUrl: resolveMediaUrl(img.url),
+          response: { url: img.url },
+        }))
+      );
+    } else {
+      setSubImagesFileList([]);
+    }
+
     centerForm.setFieldsValue({
       name: record.name,
       address: record.address,
@@ -222,6 +488,7 @@ export default function CenterManagement() {
   };
 
   const handleCenterDelete = (record: any, e: React.MouseEvent) => {
+    if (!hasPermission("classes.manage")) return;
     e.stopPropagation();
     Modal.confirm({
       title: "Xóa trung tâm",
@@ -245,24 +512,105 @@ export default function CenterManagement() {
   };
 
   const handleCenterSubmit = async (values: any) => {
+    setLoading(true);
+    let payload: any = null;
     try {
-      if (editingCenter) {
-        await academicService.centers.update(editingCenter.id, values);
-        message.success("Cập nhật trung tâm thành công");
-      } else {
-        await academicService.centers.create(values);
-        message.success("Tạo trung tâm thành công");
+      const subImgUrls: string[] = [];
+
+      for (const file of subImagesFileList) {
+        if (file.originFileObj) {
+          // This is a newly added local file, upload it now
+          try {
+            const media = await learningCmsService.mediaAssets.upload(file.originFileObj, file.name);
+            subImgUrls.push(media.url);
+          } catch (uploadErr: any) {
+            message.error(`Tải ảnh ${file.name} lên thất bại: ${uploadErr.message || uploadErr}`);
+            setLoading(false);
+            return;
+          }
+        } else {
+          // This is an existing file, retrieve its relative URL path
+          const relUrl = getRelativeUrl(file);
+          if (relUrl) {
+            subImgUrls.push(relUrl);
+          }
+        }
       }
-      loadData();
-      setCenterModalOpen(false);
-      centerForm.resetFields();
+
+      payload = {
+        ...values,
+        image: null,
+        images: subImgUrls,
+      };
+
+      const doSubmit = async () => {
+        if (editingCenter) {
+          await academicService.centers.update(editingCenter.id, payload);
+          message.success("Cập nhật trung tâm thành công");
+        } else {
+          await academicService.centers.create(payload);
+          message.success("Tạo trung tâm thành công");
+        }
+        loadData();
+        setCenterModalOpen(false);
+        centerForm.resetFields();
+      };
+
+      await doSubmit();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const centerId = err.details?.id;
+        if (centerId) {
+          Modal.confirm({
+            title: "Khôi phục trung tâm",
+            content: "Tên trung tâm đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại trung tâm này không?",
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await academicService.centers.reactivate(centerId);
+                // 2. Update with current form details
+                await academicService.centers.update(centerId, payload);
+                message.success("Khôi phục và cập nhật trung tâm thành công");
+
+                loadData();
+                setSelectedCenterId(centerId);
+                setCenterModalOpen(false);
+                centerForm.resetFields();
+              } catch (reactivateErr: any) {
+                if (reactivateErr.fieldErrors) {
+                  const fields = Object.entries(reactivateErr.fieldErrors).map(([key, val]) => ({
+                    name: key,
+                    errors: Array.isArray(val) ? val : [val],
+                  }));
+                  centerForm.setFields(fields);
+                } else {
+                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                }
+              }
+            },
+          });
+          return;
+        }
+      }
+      if (err.fieldErrors) {
+        const fields = Object.entries(err.fieldErrors).map(([key, val]) => ({
+          name: key,
+          errors: Array.isArray(val) ? val : [val],
+        }));
+        centerForm.setFields(fields);
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   // ================= CLASS CRUD HANDLERS =================
   const handleClassCreate = () => {
+    if (!hasPermission("classes.manage")) return;
     setEditingClass(null);
     classForm.resetFields();
     if (selectedCenterId) {
@@ -272,16 +620,21 @@ export default function CenterManagement() {
   };
 
   const handleClassEdit = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     setEditingClass(record);
+    const mapped = classCurriculums.filter((cc) => cc.classId === record.id);
     classForm.setFieldsValue({
       name: record.name,
       centerId: record.centerId,
+      specializationId: record.specializationId,
       description: record.description,
+      curriculumIds: mapped.map((m) => m.curriculumId),
     });
     setClassModalOpen(true);
   };
 
   const handleClassDelete = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     Modal.confirm({
       title: "Xóa lớp học",
       content: `Bạn có chắc muốn xóa lớp học ${record.name}?`,
@@ -300,45 +653,161 @@ export default function CenterManagement() {
     });
   };
 
+  const syncClassCurriculums = async (classId: string, targetCurriculumIds: string[]) => {
+    if (!hasPermission("learning.assign")) return;
+    const currentMappings = classCurriculums.filter((cc) => cc.classId === classId);
+    const currentIds = currentMappings.map((m) => m.curriculumId);
+    const nextIds = targetCurriculumIds || [];
+
+    // Create new mappings
+    for (const id of nextIds) {
+      if (!currentIds.includes(id)) {
+        try {
+          await teacherLearningService.classCurriculums.create({
+            classId,
+            curriculumId: id,
+          });
+        } catch (err) {
+          console.error(`Failed to map curriculum ${id}:`, err);
+        }
+      }
+    }
+
+    // Remove old mappings
+    for (const mapping of currentMappings) {
+      if (!nextIds.includes(mapping.curriculumId)) {
+        try {
+          await teacherLearningService.classCurriculums.remove(mapping.id);
+        } catch (err) {
+          console.error(`Failed to remove curriculum map ${mapping.id}:`, err);
+        }
+      }
+    }
+  };
+
   const handleClassSubmit = async (values: any) => {
+    const { curriculumIds, specializationId, ...classValues } = values;
     try {
+      let savedClass: any = null;
       if (editingClass) {
-        await academicService.classes.update(editingClass.id, values);
+        savedClass = await academicService.classes.update(editingClass.id, classValues);
+        await syncClassCurriculums(editingClass.id, curriculumIds);
         message.success("Cập nhật lớp học thành công");
       } else {
-        await academicService.classes.create(values);
+        savedClass = await academicService.classes.create({
+          ...classValues,
+          specializationId,
+        });
+        if (savedClass?.id) {
+          await syncClassCurriculums(savedClass.id, curriculumIds);
+        }
         message.success("Tạo lớp học thành công");
       }
       loadData();
       setClassModalOpen(false);
       classForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.statusCode === 409 && err.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const classId = err.details?.id;
+        if (classId) {
+          Modal.confirm({
+            title: "Khôi phục lớp học",
+            content: "Tên lớp học đã tồn tại trong trung tâm này nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại lớp học này không?",
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await academicService.classes.reactivate(classId);
+                // 2. Update with current form details
+                await academicService.classes.update(classId, classValues);
+                // 3. Sync curriculum mapping
+                await syncClassCurriculums(classId, curriculumIds);
+
+                message.success("Khôi phục và cập nhật lớp học thành công");
+
+                loadData();
+                setClassModalOpen(false);
+                classForm.resetFields();
+              } catch (reactivateErr: any) {
+                if (reactivateErr.fieldErrors) {
+                  const fields = Object.entries(reactivateErr.fieldErrors).map(([key, val]) => ({
+                    name: key,
+                    errors: Array.isArray(val) ? val : [val],
+                  }));
+                  classForm.setFields(fields);
+                } else {
+                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                }
+              }
+            },
+          });
+          return;
+        }
+      }
+      if (err.fieldErrors) {
+        const fields = Object.entries(err.fieldErrors).map(([key, val]) => ({
+          name: key,
+          errors: Array.isArray(val) ? val : [val],
+        }));
+        classForm.setFields(fields);
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
     }
   };
 
   // ================= TEACHER HANDLERS =================
   const handleTeacherCreate = () => {
+    if (!hasPermission("users.manage")) return;
     setEditingTeacher(null);
-    setSelectedModalCenterId(selectedCenterId || undefined);
+    const initialCenterIds = selectedCenterId ? [selectedCenterId] : [];
+    setSelectedTeacherCenterIds(initialCenterIds);
     teacherForm.resetFields();
     teacherForm.setFieldsValue({
       startDate: dayjs(),
-      ...(selectedCenterId && { centerId: selectedCenterId }),
+      centerIds: initialCenterIds,
+      degrees: [],
     });
     setTeacherModalOpen(true);
   };
 
   const handleTeacherEdit = (record: any) => {
+    if (!hasPermission("users.manage")) return;
     setEditingTeacher(record);
     const profile = record.teacherProfile || {};
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
+    const specIds = profile.specializations?.map((s: any) => s.id) || profile.specializationIds || [];
 
-    // Auto-detect center based on classes
-    const matchedClass = classes.find((c) => classIds.includes(c.id));
-    const initialCenterId = matchedClass?.centerId || record.centerId || undefined;
+    // Auto-detect all centers based on teacher's classes
+    const matchedClassCenterIds = classes
+      .filter((c) => classIds.includes(c.id))
+      .map((c) => c.centerId);
+    const profileClassCenterIds = (profile.classes || [])
+      .map((c: any) => c.centerId || c.center?.id);
+    const initialCenterIds = Array.from(
+      new Set([
+        ...matchedClassCenterIds,
+        ...profileClassCenterIds,
+        ...(record.centerIds || []),
+        ...(record.centerId ? [record.centerId] : []),
+        ...(selectedCenterId && matchedClassCenterIds.length === 0 ? [selectedCenterId] : []),
+      ].filter(Boolean))
+    ) as string[];
 
-    setSelectedModalCenterId(initialCenterId);
+    setSelectedTeacherCenterIds(initialCenterIds);
+
+    // Map degrees for Upload component
+    const mappedDegrees = (profile.degrees || []).map((deg: any, dIdx: number) => ({
+      name: deg.name,
+      files: (deg.images || []).map((img: any, iIdx: number) => ({
+        uid: img.id || `existing-img-${dIdx}-${iIdx}`,
+        name: img.url.split("/").pop() || `degree-img-${iIdx}`,
+        status: "done" as const,
+        url: img.url,
+        response: { url: img.url },
+      })),
+    }));
 
     teacherForm.setFieldsValue({
       code: record.code,
@@ -349,16 +818,23 @@ export default function CenterManagement() {
       startDate: record.startDate ? dayjs(record.startDate) : undefined,
       endDate: record.endDate ? dayjs(record.endDate) : undefined,
       address: record.address,
-      centerId: initialCenterId,
+      citizenId: record.citizenId || undefined,
+      centerIds: initialCenterIds,
       yearsOfExperience: profile.yearsOfExperience,
       description: profile.description || "",
       classIds: classIds,
-      specializationIds: profile.specializations?.map((s: any) => s.id) || profile.specializationIds || [],
+      specializationIds: specIds,
+      bankAccountNumber: profile.bankAccountNumber || "",
+      bankName: profile.bankName || "",
+      insuranceStartDate: profile.insuranceStartDate ? dayjs(profile.insuranceStartDate) : undefined,
+      employmentType: profile.employmentType || undefined,
+      degrees: mappedDegrees,
     });
     setTeacherModalOpen(true);
   };
 
   const handleTeacherDelete = (record: any) => {
+    if (!hasPermission("users.manage")) return;
     Modal.confirm({
       title: "Xóa giáo viên",
       content: `Bạn có chắc chắn muốn xóa giáo viên ${record.fullName}?`,
@@ -377,19 +853,45 @@ export default function CenterManagement() {
     });
   };
 
-  const handleTeacherSubmit = async (values: TeacherFormValues) => {
+  const executeTeacherSubmit = async (values: TeacherFormValues) => {
     try {
-      const formattedDob = values.dateOfBirth ? (values.dateOfBirth as any).format("YYYY-MM-DD") : undefined;
-      const formattedStartDate = values.startDate ? (values.startDate as any).format("YYYY-MM-DD") : undefined;
-      const formattedEndDate = (values.endDate && values.endDate !== "") ? (values.endDate as any).format("YYYY-MM-DD") : null;
+      setLoading(true);
+      const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
+      const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
+      const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
-      const profileData = {
+
+      const formattedInsuranceDate = (values.insuranceStartDate && values.insuranceStartDate.isValid())
+        ? values.insuranceStartDate.format("YYYY-MM-DD")
+        : null;
+
+      const formattedDegrees = values.degrees !== undefined ? (values.degrees || []).map((deg: any) => {
+        const imageUrls = (deg.files || [])
+          .map((f: any) => f.response?.url || f.url)
+          .filter(Boolean);
+        return {
+          name: deg.name,
+          imageUrls,
+        };
+      }) : undefined;
+
+      const profileData: any = {
         yearsOfExperience: values.yearsOfExperience || 0,
         description: values.description || "",
+        bankAccountNumber: values.bankAccountNumber,
+        bankName: values.bankName,
+        insuranceStartDate: formattedInsuranceDate,
+        employmentType: values.employmentType || null,
         classIds: values.classIds || [],
         specializationIds: values.specializationIds || [],
       };
+
+      if (formattedDegrees !== undefined) {
+        profileData.degrees = formattedDegrees;
+      }
+
+      const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
 
       if (editingTeacher) {
         await userService.update(editingTeacher.id, {
@@ -397,36 +899,89 @@ export default function CenterManagement() {
           email: cleanEmail,
           phone: values.phone,
           dateOfBirth: formattedDob,
+          startDate: formattedStartDate,
           endDate: formattedEndDate,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           teacherProfile: profileData,
         });
-        message.success("Cập nhật giáo viên thành công");
+        const todayStr = dayjs().format("YYYY-MM-DD");
+        const isNowInactive = formattedEndDate ? formattedEndDate <= todayStr : false;
+        if (isNowInactive && teacherStatusFilter === "active") {
+          setTeacherStatusFilter("all");
+        }
+        message.success(
+          isNowInactive
+            ? "Cập nhật thành công! Giáo viên đã chuyển sang trạng thái Đã nghỉ."
+            : "Cập nhật giáo viên thành công"
+        );
       } else {
-        await userService.create({
-          code: values.code,
-          password: values.password || "TempPass@123",
+        const createdUser = await userService.create({
+          password: values.password || DEFAULT_TEACHER_PASSWORD,
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
           dateOfBirth: formattedDob,
-          startDate: formattedStartDate,
+          startDate: formattedStartDate!,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           roleId: getTeacherRoleId(),
           teacherProfile: profileData,
         });
-        message.success("Tạo giáo viên thành công");
+        message.success(`Tạo giáo viên thành công! Mã: ${createdUser.code}`);
       }
       loadData();
       setTeacherModalOpen(false);
+      setSelectedTeacherCenterIds([]);
       teacherForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
+        message.error("Số căn cước công dân đã tồn tại");
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleTeacherSubmit = async (values: TeacherFormValues) => {
+    const selectedCenterIds = values.centerIds || [];
+    const selectedClassIds = values.classIds || [];
+    const unassignedCenters = selectedCenterIds
+      .map((cenId) => {
+        const centerObj = centers.find((c) => c.id === cenId);
+        const hasClass = classes.some(
+          (cls) => cls.centerId === cenId && selectedClassIds.includes(cls.id)
+        );
+        return {
+          id: cenId,
+          name: centerObj?.name || "Trung tâm",
+          hasClass,
+        };
+      })
+      .filter((c) => !c.hasClass);
+
+    if (unassignedCenters.length > 0) {
+      const names = unassignedCenters.map((u) => u.name).join(", ");
+      Modal.confirm({
+        title: "Chưa chọn lớp học",
+        icon: <AlertTriangle className="text-amber-500 mr-2" size={20} />,
+        content: `Trung tâm [${names}] chưa có lớp học phụ trách. Giáo viên chỉ hiển thị tại trung tâm khi có lớp học. Bạn vẫn muốn lưu?`,
+        okText: "Vẫn lưu",
+        cancelText: "Hủy",
+        okButtonProps: { className: "bg-indigo-600 hover:bg-indigo-700" },
+        onOk: () => executeTeacherSubmit(values),
+      });
+      return;
+    }
+
+    await executeTeacherSubmit(values);
   };
 
   // ================= STUDENT HANDLERS =================
   const handleStudentCreate = () => {
+    if (!hasPermission("students.manage")) return;
     setEditingStudent(null);
     setSelectedModalCenterId(selectedCenterId || undefined);
     studentForm.resetFields();
@@ -438,6 +993,7 @@ export default function CenterManagement() {
   };
 
   const handleStudentEdit = (record: any) => {
+    if (!hasPermission("students.manage")) return;
     setEditingStudent(record);
     const profile = record.studentProfile || {};
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
@@ -453,17 +1009,20 @@ export default function CenterManagement() {
       fullName: record.fullName,
       email: record.email,
       phone: record.phone,
-      dateOfBirth: record.dateOfBirth ? dayjs(record.dateOfBirth) : undefined,
+      birthYear: profile.birthYear ?? record.student?.birthYear ?? undefined,
       startDate: record.startDate ? dayjs(record.startDate) : undefined,
       endDate: record.endDate ? dayjs(record.endDate) : undefined,
       address: record.address,
+      citizenId: record.citizenId || undefined,
       centerId: initialCenterId,
       classIds: classIds,
+      parentFullName: profile.parentFullName || "",
     });
     setStudentModalOpen(true);
   };
 
   const handleStudentDelete = (record: any) => {
+    if (!hasPermission("students.manage")) return;
     Modal.confirm({
       title: "Xóa học sinh",
       content: `Bạn có chắc chắn muốn xóa học sinh ${record.fullName}?`,
@@ -484,46 +1043,168 @@ export default function CenterManagement() {
 
   const handleStudentSubmit = async (values: StudentFormValues) => {
     try {
-      const formattedDob = values.dateOfBirth ? (values.dateOfBirth as any).format("YYYY-MM-DD") : undefined;
-      const formattedStartDate = values.startDate ? (values.startDate as any).format("YYYY-MM-DD") : undefined;
-      const formattedEndDate = (values.endDate && values.endDate !== "") ? (values.endDate as any).format("YYYY-MM-DD") : null;
+      setLoading(true);
+      const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
+      const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
       const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
       const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
+
       const profileData = {
         classIds: values.classIds || [],
+        parentFullName: values.parentFullName,
+        birthYear: values.birthYear,
       };
+
+      const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
 
       if (editingStudent) {
         await userService.update(editingStudent.id, {
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
-          dateOfBirth: formattedDob,
           endDate: formattedEndDate,
           address: cleanAddress,
+          citizenId: citizenIdVal,
           studentProfile: profileData,
         });
-        message.success("Cập nhật học sinh thành công");
+        const todayStr = dayjs().format("YYYY-MM-DD");
+        const isNowInactive = formattedEndDate ? formattedEndDate <= todayStr : false;
+        if (isNowInactive && studentStatusFilter === "active") {
+          setStudentStatusFilter("all");
+        }
+        message.success(
+          isNowInactive
+            ? "Cập nhật thành công! Học sinh đã chuyển sang trạng thái Đã nghỉ."
+            : "Cập nhật học sinh thành công"
+        );
       } else {
-        await userService.create({
-          code: values.code,
-          password: values.password || "TempPass@123",
+        const createdUser = await userService.create({
+          password: values.password || DEFAULT_STUDENT_PASSWORD,
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
-          dateOfBirth: formattedDob,
-          startDate: formattedStartDate,
+          startDate: formattedStartDate!,
           address: cleanAddress,
-          roleId: getStudentRoleId(),
+          citizenId: citizenIdVal,
+          roleId: getStudentRoleId() || (await userService.studentRole()).id,
           studentProfile: profileData,
         });
-        message.success("Tạo học sinh thành công");
+        message.success(`Tạo học sinh thành công! Mã: ${createdUser.code}`);
       }
       loadData();
       setStudentModalOpen(false);
       studentForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
+        message.error("Số căn cước công dân đã tồn tại");
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ================= ADMIN HANDLERS =================
+  const handleAdminCreate = () => {
+    if (!hasPermission("users.manage")) return;
+    setEditingAdmin(null);
+    adminForm.resetFields();
+    adminForm.setFieldsValue({
+      startDate: dayjs(),
+    });
+    setAdminModalOpen(true);
+  };
+
+  const handleAdminEdit = (record: any) => {
+    if (!hasPermission("users.manage")) return;
+    setEditingAdmin(record);
+    adminForm.setFieldsValue({
+      code: record.code,
+      fullName: record.fullName,
+      email: record.email,
+      phone: record.phone,
+      dateOfBirth: record.dateOfBirth ? dayjs(record.dateOfBirth) : undefined,
+      startDate: record.startDate ? dayjs(record.startDate) : undefined,
+      endDate: record.endDate ? dayjs(record.endDate) : undefined,
+      address: record.address,
+      citizenId: record.citizenId || undefined,
+    });
+    setAdminModalOpen(true);
+  };
+
+  const handleAdminDelete = (record: any) => {
+    if (!hasPermission("users.manage")) return;
+    Modal.confirm({
+      title: "Xóa quản trị viên",
+      content: `Bạn có chắc chắn muốn xóa quản trị viên ${record.fullName}?`,
+      okText: "Xóa",
+      cancelText: "Hủy",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await userService.remove(record.id);
+          setAdmins((prev) => prev.filter((a) => a.id !== record.id));
+          message.success("Xóa quản trị viên thành công");
+        } catch (err) {
+          message.error("Xóa thất bại");
+        }
+      },
+    });
+  };
+
+  const handleAdminSubmit = async (values: any) => {
+    try {
+      setLoading(true);
+      const formattedDob = values.dateOfBirth ? values.dateOfBirth.format("YYYY-MM-DD") : undefined;
+      const formattedStartDate = values.startDate ? values.startDate.format("YYYY-MM-DD") : undefined;
+      const formattedEndDate = (values.endDate && values.endDate.isValid()) ? values.endDate.format("YYYY-MM-DD") : null;
+      const cleanEmail = values.email && values.email.trim() !== "" ? values.email.trim() : undefined;
+      const cleanAddress = values.address && values.address.trim() !== "" ? values.address.trim() : undefined;
+
+      const citizenIdVal = values.citizenId && values.citizenId.trim() !== "" ? values.citizenId.trim() : null;
+
+      if (editingAdmin) {
+        await userService.update(editingAdmin.id, {
+          fullName: values.fullName,
+          email: cleanEmail,
+          phone: values.phone,
+          dateOfBirth: formattedDob,
+          endDate: formattedEndDate,
+          address: cleanAddress,
+          citizenId: citizenIdVal,
+        });
+        message.success("Cập nhật quản trị viên thành công");
+      } else {
+        const adminRoleId = getAdminRoleId();
+        if (!adminRoleId) {
+          message.error("Không tìm thấy vai trò Quản trị viên (admin). Vui lòng thử tải lại trang!");
+          return;
+        }
+        const createdUser = await userService.create({
+          password: values.password || "Admin@123456",
+          fullName: values.fullName,
+          email: cleanEmail,
+          phone: values.phone,
+          dateOfBirth: formattedDob,
+          startDate: formattedStartDate!,
+          address: cleanAddress,
+          citizenId: citizenIdVal,
+          roleId: adminRoleId,
+        });
+        message.success(`Tạo quản trị viên thành công! Mã: ${createdUser.code}`);
+      }
+      loadData();
+      setAdminModalOpen(false);
+      adminForm.resetFields();
+    } catch (err: any) {
+      if (err.message && err.message.includes("Số căn cước công dân đã tồn tại")) {
+        message.error("Số căn cước công dân đã tồn tại");
+      } else {
+        message.error(getErrorMessage(err, "Thao tác thất bại"));
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -537,7 +1218,7 @@ export default function CenterManagement() {
   const handleConfirmResetPassword = async () => {
     if (!resetPasswordUser) return;
     try {
-      const result = await authService.resetPassword({
+      const result = await (isTeacher ? authService.resetStudentPassword : authService.resetPassword)({
         identifier: resetPasswordUser.code,
       });
       setResetPasswordResult(result.password);
@@ -556,12 +1237,14 @@ export default function CenterManagement() {
 
   // ================= SPECIALIZATION CRUD HANDLERS =================
   const handleSpecializationCreate = () => {
+    if (!hasPermission("classes.manage")) return;
     setEditingSpecialization(null);
     specializationForm.resetFields();
     setSpecializationModalOpen(true);
   };
 
   const handleSpecializationEdit = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     setEditingSpecialization(record);
     specializationForm.setFieldsValue({
       code: record.code,
@@ -572,6 +1255,7 @@ export default function CenterManagement() {
   };
 
   const handleSpecializationDelete = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     Modal.confirm({
       title: "Xóa chuyên môn",
       content: `Bạn có chắc muốn xóa chuyên môn ${record.name}?`,
@@ -603,7 +1287,51 @@ export default function CenterManagement() {
       setSpecializationModalOpen(false);
       specializationForm.resetFields();
     } catch (err: any) {
-      message.error(err.message || "Thao tác thất bại");
+      const errObj = err?.response?.data || err;
+      if (errObj.statusCode === 409 && errObj.errorCode === "DUPLICATE_INACTIVE_RECORD") {
+        const specId = errObj.details?.id;
+        if (specId) {
+          Modal.confirm({
+            title: "Khôi phục chuyên môn",
+            content: "Mã hoặc tên chuyên môn đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại chuyên môn này không?",
+            okText: "Khôi phục",
+            cancelText: "Hủy bỏ",
+            onOk: async () => {
+              try {
+                // 1. Reactivate
+                await academicService.specializations.reactivate(specId);
+                // 2. Update with current form details
+                await academicService.specializations.update(specId, values);
+                message.success("Khôi phục và cập nhật chuyên môn thành công");
+
+                loadData();
+                setSpecializationModalOpen(false);
+                specializationForm.resetFields();
+              } catch (reactivateErr: any) {
+                if (reactivateErr.fieldErrors) {
+                  const fields = Object.entries(reactivateErr.fieldErrors).map(([key, val]) => ({
+                    name: key,
+                    errors: Array.isArray(val) ? val : [val],
+                  }));
+                  specializationForm.setFields(fields);
+                } else {
+                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                }
+              }
+            },
+          });
+          return;
+        }
+      }
+      if (err.fieldErrors) {
+        const fields = Object.entries(err.fieldErrors).map(([key, val]) => ({
+          name: key,
+          errors: Array.isArray(val) ? val : [val],
+        }));
+        specializationForm.setFields(fields);
+      } else {
+        message.error(err.message || "Thao tác thất bại");
+      }
     }
   };
 
@@ -611,6 +1339,8 @@ export default function CenterManagement() {
   const teacherColumns = [
     {
       title: "Giáo viên",
+      width: 220,
+      fixed: "left" as const,
       render: (_: any, record: any) => (
         <div className="flex items-center gap-3">
           <Avatar className="bg-gradient-to-r from-indigo-500 to-indigo-600 font-semibold uppercase text-xs">
@@ -625,6 +1355,8 @@ export default function CenterManagement() {
     },
     {
       title: "Chuyên môn",
+      width: 180,
+      fixed: "left" as const,
       render: (_: any, record: any) => {
         const specIds = record.teacherProfile?.specializationIds || record.teacherProfile?.specializations?.map((s: any) => s.id) || [];
         const specs = specializations.filter((s) => specIds.includes(s.id));
@@ -642,16 +1374,38 @@ export default function CenterManagement() {
     },
     {
       title: "Lớp học phụ trách",
+      width: 220,
+      fixed: "left" as const,
       render: (_: any, record: any) => {
         const classIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
         const tClasses = classes.filter((c) => classIds.includes(c.id));
         return (
           <div className="flex flex-wrap gap-1">
-            {tClasses.map((c) => (
-              <Tag key={c.id} color="purple" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-purple-50 text-purple-600 font-medium">
-                {c.name}
-              </Tag>
-            ))}
+            {tClasses.map((c) => {
+              const isCurrentCenter = c.centerId === selectedCenterId;
+              const centerObj = centers.find((cen) => cen.id === c.centerId);
+              return (
+                <Tooltip
+                  key={c.id}
+                  title={centerObj ? `Cơ sở: ${centerObj.name}` : undefined}
+                >
+                  <Tag
+                    color={isCurrentCenter ? "purple" : "blue"}
+                    className={`border-none rounded-full px-2.5 py-0.5 text-xs font-medium ${isCurrentCenter
+                      ? "bg-purple-50 text-purple-600"
+                      : "bg-blue-50 text-blue-600"
+                      }`}
+                  >
+                    {c.name}
+                    {centers.length > 1 && centerObj && !isCurrentCenter && (
+                      <span className="opacity-75 text-[10px] ml-1 font-normal">
+                        ({centerObj.name})
+                      </span>
+                    )}
+                  </Tag>
+                </Tooltip>
+              );
+            })}
             {tClasses.length === 0 && <span className="text-slate-400 text-xs">-</span>}
           </div>
         );
@@ -659,6 +1413,7 @@ export default function CenterManagement() {
     },
     {
       title: "Kinh nghiệm",
+      width: 130,
       render: (_: any, record: any) => (
         <span className="text-slate-600 font-medium text-sm">
           {record.teacherProfile?.yearsOfExperience || 0} năm
@@ -666,123 +1421,8 @@ export default function CenterManagement() {
       ),
     },
     {
-      title: "Liên hệ",
-      render: (_: any, record: any) => (
-        <div className="text-xs text-slate-500 space-y-0.5">
-          {record.email && <div>{record.email}</div>}
-          {record.phone && <div>{record.phone}</div>}
-          {!record.email && !record.phone && <span>-</span>}
-        </div>
-      ),
-    },
-    {
-      title: "Trạng thái",
-      render: (_: any, record: any) => {
-        const active = isUserActive(record);
-        const endDate = record.endDate ? dayjs(record.endDate) : null;
-        const now = dayjs();
-        const isScheduled = active && endDate && endDate.isAfter(now);
-        const daysLeft = isScheduled ? endDate.diff(now, "day") : 0;
-
-        if (!active) {
-          return (
-            <Tooltip title={endDate ? `Ngày kết thúc: ${endDate.format("DD/MM/YYYY")}` : "Tài khoản đã bị vô hiệu hóa"}>
-              <Tag color="default" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500">
-                Đã nghỉ
-              </Tag>
-            </Tooltip>
-          );
-        }
-
-        if (isScheduled) {
-          return (
-            <Tooltip title={`Sẽ ngừng hoạt động vào ${endDate!.format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
-              <div className="space-y-1">
-                <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                  Đang hoạt động
-                </Tag>
-                <div className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
-                  <ClockCircleOutlined /> Còn {daysLeft} ngày
-                </div>
-              </div>
-            </Tooltip>
-          );
-        }
-
-        return (
-          <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
-            Đang hoạt động
-          </Tag>
-        );
-      },
-    },
-    {
-      title: "Thao tác",
-      align: "right" as const,
-      render: (_: any, record: any) => (
-        <Space size="small">
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
-            onClick={() => handleTeacherEdit(record)}
-          />
-          {isUserActive(record) ? (
-            <Button
-              type="text"
-              size="small"
-              icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
-              onClick={() => handleResetPassword(record)}
-            />
-          ) : (
-            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
-              <Button
-                type="text"
-                size="small"
-                disabled
-                icon={<KeyOutlined className="text-slate-300" />}
-              />
-            </Tooltip>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
-  const studentColumns = [
-    {
-      title: "Học sinh",
-      render: (_: any, record: any) => (
-        <div className="flex items-center gap-3">
-          <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs">
-            {record.fullName?.charAt(0) || "S"}
-          </Avatar>
-          <div>
-            <div className="font-semibold text-slate-800">{record.fullName}</div>
-            <div className="text-xs text-slate-400">@{record.code}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: "Lớp học tham gia",
-      render: (_: any, record: any) => {
-        const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
-        const sClasses = classes.filter((c) => classIds.includes(c.id));
-        return (
-          <div className="flex flex-wrap gap-1">
-            {sClasses.map((c) => (
-              <Tag key={c.id} color="blue" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-blue-50 text-blue-600 font-medium">
-                {c.name}
-              </Tag>
-            ))}
-            {sClasses.length === 0 && <span className="text-slate-400 text-xs">-</span>}
-          </div>
-        );
-      },
-    },
-    {
-      title: "Thời gian học",
+      title: "Thời gian dạy",
+      width: 180,
       render: (_: any, record: any) => {
         const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
         const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
@@ -808,6 +1448,7 @@ export default function CenterManagement() {
     },
     {
       title: "Liên hệ",
+      width: 180,
       render: (_: any, record: any) => (
         <div className="text-xs text-slate-500 space-y-0.5">
           {record.email && <div>{record.email}</div>}
@@ -818,12 +1459,11 @@ export default function CenterManagement() {
     },
     {
       title: "Trạng thái",
+      width: 140,
       render: (_: any, record: any) => {
         const active = isUserActive(record);
         const endDate = record.endDate ? dayjs(record.endDate) : null;
         const now = dayjs();
-
-        // Scheduled deactivation: endDate is in the future
         const isScheduled = active && endDate && endDate.isAfter(now);
         const daysLeft = isScheduled ? endDate.diff(now, "day") : 0;
 
@@ -861,6 +1501,8 @@ export default function CenterManagement() {
     },
     {
       title: "Thao tác",
+      width: 100,
+      fixed: "right" as const,
       align: "right" as const,
       render: (_: any, record: any) => (
         <Space size="small">
@@ -868,6 +1510,172 @@ export default function CenterManagement() {
             type="text"
             size="small"
             icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("users.manage")}
+            onClick={() => handleTeacherEdit(record)}
+          />
+          {isUserActive(record) ? (
+            <Button
+              type="text"
+              size="small"
+              icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              disabled={!hasPermission("users.manage")}
+              onClick={() => handleResetPassword(record)}
+            />
+          ) : (
+            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
+              <Button
+                type="text"
+                size="small"
+                disabled
+                icon={<KeyOutlined className="text-slate-300" />}
+              />
+            </Tooltip>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
+  const studentColumns = [
+    {
+      title: "Học sinh",
+      width: 220,
+      fixed: "left" as const,
+      render: (_: any, record: any) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs shrink-0">
+            {record.fullName?.charAt(0) || "S"}
+          </Avatar>
+          <div>
+            <div className="font-semibold text-slate-800">{record.fullName}</div>
+            <div className="text-xs text-slate-400">@{record.code}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "Năm sinh",
+      width: 110,
+      render: (_: any, record: any) => {
+        const birthYear = record.studentProfile?.birthYear || record.student?.birthYear;
+        return birthYear ? (
+          <span className="text-slate-600 font-medium text-sm">{birthYear}</span>
+        ) : (
+          <span className="text-slate-400 text-xs">-</span>
+        );
+      },
+    },
+    {
+      title: "Lớp học tham gia",
+      width: 180,
+      render: (_: any, record: any) => {
+        const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
+        const sClasses = classes.filter((c) => classIds.includes(c.id));
+        return (
+          <div className="flex flex-wrap gap-1">
+            {sClasses.map((c) => (
+              <Tag key={c.id} color="blue" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-blue-50 text-blue-600 font-medium">
+                {c.name}
+              </Tag>
+            ))}
+            {sClasses.length === 0 && <span className="text-slate-400 text-xs">-</span>}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Thời gian học",
+      width: 180,
+      render: (_: any, record: any) => {
+        const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
+        const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
+        return (
+          <div className="text-xs space-y-1">
+            {start && (
+              <div className="flex items-center gap-1.5 text-emerald-600">
+                <CalendarOutlined className="text-[10px]" />
+                <span className="font-medium">Bắt đầu:</span> {start}
+              </div>
+            )}
+            {end ? (
+              <div className="flex items-center gap-1.5 text-orange-500">
+                <ClockCircleOutlined className="text-[10px]" />
+                <span className="font-medium">Kết thúc:</span> {end}
+              </div>
+            ) : (
+              <div className="text-slate-400 italic">Chưa có ngày kết thúc</div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Liên hệ",
+      width: 180,
+      render: (_: any, record: any) => (
+        <div className="text-xs text-slate-500 space-y-0.5">
+          {record.email && <div>{record.email}</div>}
+          {record.phone && <div>{record.phone}</div>}
+          {!record.email && !record.phone && <span>-</span>}
+        </div>
+      ),
+    },
+    {
+      title: "Trạng thái",
+      width: 140,
+      render: (_: any, record: any) => {
+        const active = isUserActive(record);
+        const endDateStr = record.endDate ? dayjs(record.endDate).format("YYYY-MM-DD") : null;
+        const todayStr = dayjs().format("YYYY-MM-DD");
+
+        // Scheduled deactivation: endDate is in the future
+        const isScheduled = active && endDateStr && endDateStr > todayStr;
+        const daysLeft = isScheduled ? dayjs(record.endDate).diff(dayjs().startOf("day"), "day") : 0;
+
+        if (!active) {
+          return (
+            <Tooltip title={record.endDate ? `Ngày kết thúc: ${dayjs(record.endDate).format("DD/MM/YYYY")}` : "Tài khoản đã bị vô hiệu hóa"}>
+              <Tag color="default" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500">
+                Đã nghỉ
+              </Tag>
+            </Tooltip>
+          );
+        }
+
+        if (isScheduled) {
+          return (
+            <Tooltip title={`Sẽ ngừng hoạt động vào ${dayjs(record.endDate).format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
+              <div className="space-y-1">
+                <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                  Đang hoạt động
+                </Tag>
+                <div className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
+                  <ClockCircleOutlined /> Còn {daysLeft} ngày
+                </div>
+              </div>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
+            Đang hoạt động
+          </Tag>
+        );
+      },
+    },
+    {
+      title: "Thao tác",
+      width: 100,
+      fixed: "right" as const,
+      align: "right" as const,
+      render: (_: any, record: any) => (
+        <Space size="small">
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("students.manage")}
             onClick={() => handleStudentEdit(record)}
           />
           {isUserActive(record) ? (
@@ -875,6 +1683,7 @@ export default function CenterManagement() {
               type="text"
               size="small"
               icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              disabled={!hasPermission(isTeacher ? "students.reset-password" : "users.manage")}
               onClick={() => handleResetPassword(record)}
             />
           ) : (
@@ -916,6 +1725,7 @@ export default function CenterManagement() {
             type="text"
             size="small"
             icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("classes.manage")}
             onClick={() => handleSpecializationEdit(record)}
           />
           <Button
@@ -923,6 +1733,7 @@ export default function CenterManagement() {
             size="small"
             danger
             icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+            disabled={!hasPermission("classes.manage")}
             onClick={() => handleSpecializationDelete(record)}
           />
         </Space>
@@ -930,8 +1741,16 @@ export default function CenterManagement() {
     },
   ];
 
+  const renderedTeacherColumns = useMemo(() => {
+    return isTeacher ? teacherColumns.filter((col) => col.title !== "Thao tác") : teacherColumns;
+  }, [isTeacher, teacherColumns]);
+
+  const renderedSpecializationColumns = useMemo(() => {
+    return isTeacher ? specializationColumns.filter((col) => col.title !== "Thao tác") : specializationColumns;
+  }, [isTeacher, specializationColumns]);
+
   // ================= DYNAMIC DATA FILTERS =================
-  const filteredCenters = centers.filter((c) => {
+  const filteredCenters = visibleCenters.filter((c) => {
     const q = centerSearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -945,18 +1764,54 @@ export default function CenterManagement() {
   const selectedCenter = centers.find((c) => c.id === selectedCenterId);
   const centerClasses = classes.filter((cls) => cls.centerId === selectedCenterId);
   const centerClassesIds = centerClasses.map((cls) => cls.id);
+  const paginatedCenterClasses = centerClasses.slice(
+    (classPage - 1) * CLASSES_PAGE_SIZE,
+    classPage * CLASSES_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setClassPage(1);
+    setShowAllCenterImages(false);
+  }, [selectedCenterId]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(centerClasses.length / CLASSES_PAGE_SIZE));
+    if (classPage > maxPage) {
+      setClassPage(maxPage);
+    }
+  }, [centerClasses.length, classPage]);
 
   const centerTeachers = teachers.filter((t) => {
     const tClasses = t.teacherProfile?.classes || [];
-    return t.centerId === selectedCenterId || tClasses.some((c: any) => c.centerId === selectedCenterId);
+    const tClassIds = t.teacherProfile?.classIds || [];
+    return (
+      t.centerId === selectedCenterId ||
+      (t.centerIds && t.centerIds.includes(selectedCenterId)) ||
+      tClasses.some((c: any) => c.centerId === selectedCenterId || c.center?.id === selectedCenterId) ||
+      tClassIds.some((cid: string) => centerClassesIds.includes(cid))
+    );
   });
+
+  const visibleCenterTeachers = useMemo(() => {
+    if (isTeacher) {
+      return centerTeachers.filter((t) => t.id === user?.id);
+    }
+    return centerTeachers;
+  }, [isTeacher, centerTeachers, user?.id]);
 
   const centerStudents = students.filter((s) => {
     const sClasses = s.studentProfile?.classes || [];
-    return s.centerId === selectedCenterId || sClasses.some((c: any) => c.centerId === selectedCenterId);
+    const sClassIds = s.studentProfile?.classIds || [];
+    return (
+      s.centerId === selectedCenterId ||
+      sClasses.some((c: any) => c.centerId === selectedCenterId) ||
+      sClassIds.some((cid: string) => centerClassesIds.includes(cid))
+    );
   });
 
-  const filteredTeachers = centerTeachers.filter((t) => {
+  const filteredTeachers = visibleCenterTeachers.filter((t) => {
+    if (teacherStatusFilter === "active" && !isUserActive(t)) return false;
+    if (teacherStatusFilter === "inactive" && isUserActive(t)) return false;
     const q = teacherSearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -968,6 +1823,8 @@ export default function CenterManagement() {
   });
 
   const filteredStudents = centerStudents.filter((s) => {
+    if (studentStatusFilter === "active" && !isUserActive(s)) return false;
+    if (studentStatusFilter === "inactive" && isUserActive(s)) return false;
     const q = studentSearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -977,6 +1834,151 @@ export default function CenterManagement() {
       s.phone?.toLowerCase().includes(q)
     );
   });
+
+  const filteredAdmins = admins.filter((a) => {
+    const q = adminSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      a.fullName?.toLowerCase().includes(q) ||
+      a.code?.toLowerCase().includes(q) ||
+      a.email?.toLowerCase().includes(q) ||
+      a.phone?.toLowerCase().includes(q)
+    );
+  });
+
+  const adminColumns = [
+    {
+      title: "Quản trị viên",
+      render: (_: any, record: any) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="bg-gradient-to-r from-emerald-500 to-emerald-600 font-semibold uppercase text-xs">
+            {record.fullName?.charAt(0) || "A"}
+          </Avatar>
+          <div>
+            <div className="font-semibold text-slate-800">{record.fullName}</div>
+            <div className="text-xs text-slate-400">@{record.code}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "Căn cước công dân (CCCD)",
+      render: (_: any, record: any) => (
+        <span className="text-slate-600 font-medium text-sm">
+          {record.citizenId || "-"}
+        </span>
+      ),
+    },
+    {
+      title: "Liên hệ",
+      render: (_: any, record: any) => (
+        <div className="text-xs text-slate-500 space-y-0.5">
+          {record.email && <div>{record.email}</div>}
+          {record.phone && <div>{record.phone}</div>}
+          {!record.email && !record.phone && <span>-</span>}
+        </div>
+      ),
+    },
+    {
+      title: "Thời gian làm việc",
+      render: (_: any, record: any) => {
+        const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
+        const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
+        return (
+          <div className="text-xs space-y-1">
+            {start && (
+              <div className="flex items-center gap-1.5 text-emerald-600">
+                <CalendarOutlined className="text-[10px]" />
+                <span className="font-medium">Bắt đầu:</span> {start}
+              </div>
+            )}
+            {end ? (
+              <div className="flex items-center gap-1.5 text-orange-500">
+                <ClockCircleOutlined className="text-[10px]" />
+                <span className="font-medium">Kết thúc:</span> {end}
+              </div>
+            ) : (
+              <div className="text-slate-400 italic">Chưa có ngày kết thúc</div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Trạng thái",
+      render: (_: any, record: any) => {
+        const active = isUserActive(record);
+        const endDate = record.endDate ? dayjs(record.endDate) : null;
+        const now = dayjs();
+        const isScheduled = active && endDate && endDate.isAfter(now);
+        const daysLeft = isScheduled ? endDate.diff(now, "day") : 0;
+
+        if (!active) {
+          return (
+            <Tooltip title={endDate ? `Ngày kết thúc: ${endDate.format("DD/MM/YYYY")}` : "Tài khoản đã bị vô hiệu hóa"}>
+              <Tag color="default" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500">
+                Đã nghỉ
+              </Tag>
+            </Tooltip>
+          );
+        }
+
+        if (isScheduled) {
+          return (
+            <Tooltip title={`Sẽ ngừng hoạt động vào ${endDate!.format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
+              <div className="space-y-1">
+                <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                  Đang hoạt động
+                </Tag>
+                <div className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
+                  <ClockCircleOutlined /> Còn {daysLeft} ngày
+                </div>
+              </div>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
+            Đang hoạt động
+          </Tag>
+        );
+      },
+    },
+    {
+      title: "Thao tác",
+      align: "right" as const,
+      render: (_: any, record: any) => (
+        <Space size="small">
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("users.manage")}
+            onClick={() => handleAdminEdit(record)}
+          />
+          {isUserActive(record) ? (
+            <Button
+              type="text"
+              size="small"
+              icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              disabled={!hasPermission(isTeacher ? "students.reset-password" : "users.manage")}
+              onClick={() => handleResetPassword(record)}
+            />
+          ) : (
+            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
+              <Button
+                type="text"
+                size="small"
+                disabled
+                icon={<KeyOutlined className="text-slate-300" />}
+              />
+            </Tooltip>
+          )}
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <ConfigProvider
@@ -1006,10 +2008,12 @@ export default function CenterManagement() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
               <div>
                 <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight">
-                  Dashboard Quản Lý
+                  {isTeacher ? "Cơ sở đào tạo & Lớp học" : "Dashboard Quản Lý"}
                 </Title>
                 <Text className="text-slate-400 text-sm">
-                  Quản lý trung tâm, lớp học, giáo viên & học sinh đơn giản & hiện đại
+                  {isTeacher
+                    ? "Quản lý thông tin học sinh và theo dõi cơ sở đào tạo"
+                    : "Quản lý trung tâm, lớp học, giáo viên & học sinh đơn giản & hiện đại"}
                 </Text>
               </div>
             </div>
@@ -1019,20 +2023,23 @@ export default function CenterManagement() {
 
               {/* LEFT SIDEBAR: CENTERS LIST */}
               <Col xs={24} lg={6}>
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 sticky top-6">
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-[80px] z-10 transition-all">
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold text-slate-800 m-0">
-                      Trung tâm ({centers.length})
+                      Trung tâm ({visibleCenters.length})
                     </h3>
-                    <Button
-                      type="primary"
-                      size="small"
-                      icon={<PlusOutlined />}
-                      onClick={handleCenterCreate}
-                      className="bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center font-medium"
-                    >
-                      Thêm mới
-                    </Button>
+                    {!isTeacher && (
+                      <Button
+                        type="primary"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        disabled={!hasPermission("classes.manage")}
+                        onClick={handleCenterCreate}
+                        className="bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center font-medium"
+                      >
+                        Thêm mới
+                      </Button>
+                    )}
                   </div>
 
                   <Input
@@ -1044,48 +2051,33 @@ export default function CenterManagement() {
                     allowClear
                   />
 
-                  <div className="space-y-2 max-h-[550px] overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
                     {filteredCenters.map((center) => {
                       const isSelected = center.id === selectedCenterId;
                       return (
                         <div
                           key={center.id}
                           onClick={() => setSelectedCenterId(center.id)}
-                          className={`group cursor-pointer rounded-2xl p-4 transition-all duration-200 border text-left ${isSelected
-                            ? "bg-indigo-50/50 border-indigo-200 text-indigo-900 shadow-sm"
-                            : "bg-white border-slate-100 text-slate-600 hover:bg-slate-50/50 hover:border-slate-200"
+                          className={`group cursor-pointer rounded-2xl p-3.5 transition-all duration-200 border text-left flex items-center justify-between ${isSelected
+                            ? "bg-indigo-50/50 border-indigo-200 text-indigo-900 shadow-xs"
+                            : "bg-white border-slate-100 text-slate-600 hover:bg-slate-50/60 hover:border-slate-200"
                             }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="font-bold text-sm line-clamp-1 flex-1 pr-2">
-                              🏫 {center.name}
-                            </div>
-                            <span
-                              className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${isSelected ? "bg-indigo-600" : "bg-slate-300 group-hover:bg-indigo-400"
-                                }`}
+                          <div className="font-bold text-sm line-clamp-1 flex-1 pr-2 flex items-center gap-2">
+                            <Building2
+                              size={16}
+                              className={
+                                isSelected
+                                  ? "text-indigo-600 shrink-0"
+                                  : "text-slate-400 group-hover:text-indigo-500 shrink-0 transition-colors"
+                              }
                             />
+                            <span className="truncate">{center.name}</span>
                           </div>
-
-                          <div className="text-xs text-slate-400 mt-2 line-clamp-1 flex items-center gap-1.5">
-                            <EnvironmentOutlined /> {center.address || "Chưa cập nhật địa chỉ"}
-                          </div>
-
-                          {/* Quick Actions (Hover State) */}
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1 mt-2.5 pt-2 border-t border-dashed border-slate-200/50">
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
-                              onClick={(e) => handleCenterEdit(center, e)}
-                            />
-                            <Button
-                              type="text"
-                              size="small"
-                              danger
-                              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
-                              onClick={(e) => handleCenterDelete(center, e)}
-                            />
-                          </div>
+                          <span
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${isSelected ? "bg-indigo-600" : "bg-slate-300 group-hover:bg-indigo-400"
+                              }`}
+                          />
                         </div>
                       );
                     })}
@@ -1121,10 +2113,10 @@ export default function CenterManagement() {
                   <div className="space-y-6">
 
                     {/* CENTER COVER IMAGE (If exists) */}
-                    {selectedCenter?.image && (
+                    {/* {(selectedCenter?.image || (selectedCenter?.images && selectedCenter.images.length > 0)) && (
                       <div className="w-full h-48 rounded-3xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100">
                         <img
-                          src={selectedCenter.image}
+                          src={resolveMediaUrl(selectedCenter.image || selectedCenter.images[0].url)}
                           alt={selectedCenter.name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -1133,14 +2125,16 @@ export default function CenterManagement() {
                           }}
                         />
                       </div>
-                    )}
+                    )} */}
 
                     {/* CENTER CONTACT & GENERAL DETAIL */}
-                    <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+                    <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm min-h-[195px] flex flex-col justify-between">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-2xl">🏫</span>
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                              <Building2 size={22} />
+                            </div>
                             <Title level={3} className="!mb-0 !text-slate-800 font-extrabold">
                               {selectedCenter?.name}
                             </Title>
@@ -1148,30 +2142,40 @@ export default function CenterManagement() {
                               Đang hoạt động
                             </Tag>
                           </div>
-                          {selectedCenter?.description && (
-                            <Paragraph className="text-slate-500 mt-2 mb-0 text-sm max-w-3xl">
-                              {selectedCenter.description}
-                            </Paragraph>
-                          )}
+                          <div className="min-h-[26px] mt-2 flex items-center">
+                            {selectedCenter?.description ? (
+                              <Paragraph className="text-slate-500 mb-0 text-sm max-w-3xl line-clamp-2">
+                                {selectedCenter.description}
+                              </Paragraph>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic">
+                                Chưa có thông tin mô tả trung tâm
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        <Space>
-                          <Button
-                            icon={<EditOutlined />}
-                            onClick={(e) => handleCenterEdit(selectedCenter, e)}
-                            className="rounded-xl border-slate-200 hover:text-indigo-600 hover:border-indigo-600"
-                          >
-                            Chỉnh sửa
-                          </Button>
-                          <Button
-                            danger
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => handleCenterDelete(selectedCenter, e)}
-                            className="rounded-xl"
-                          >
-                            Xóa trung tâm
-                          </Button>
-                        </Space>
+                        {!isTeacher && (
+                          <Space>
+                            <Button
+                              icon={<EditOutlined />}
+                              disabled={!hasPermission("classes.manage")}
+                              onClick={(e) => handleCenterEdit(selectedCenter, e)}
+                              className="rounded-xl border-slate-200 hover:text-indigo-600 hover:border-indigo-600"
+                            >
+                              Chỉnh sửa
+                            </Button>
+                            <Button
+                              danger
+                              icon={<DeleteOutlined />}
+                              disabled={!hasPermission("classes.manage")}
+                              onClick={(e) => handleCenterDelete(selectedCenter, e)}
+                              className="rounded-xl"
+                            >
+                              Xóa trung tâm
+                            </Button>
+                          </Space>
+                        )}
                       </div>
 
                       <Divider className="my-5 border-slate-100" />
@@ -1214,6 +2218,80 @@ export default function CenterManagement() {
                         </Col>
                       </Row>
                     </div>
+
+                    {/* CENTER IMAGES GALLERY */}
+                    {selectedCenter?.images && selectedCenter.images.length > 0 && (
+                      <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <LucideImageIcon size={18} className="text-slate-500" />
+                            <h3 className="text-base font-bold text-slate-800 m-0">
+                              Ảnh chi tiết trung tâm ({selectedCenter.images.length})
+                            </h3>
+                          </div>
+                          {selectedCenter.images.length > 4 && showAllCenterImages && (
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => setShowAllCenterImages(false)}
+                              className="text-xs font-semibold text-indigo-600 p-0 h-auto"
+                            >
+                              Thu gọn
+                            </Button>
+                          )}
+                        </div>
+                        <Image.PreviewGroup
+                          items={selectedCenter.images.map((img: any) => resolveMediaUrl(img.url))}
+                        >
+                          <Row gutter={[16, 16]}>
+                            {(showAllCenterImages
+                              ? selectedCenter.images
+                              : selectedCenter.images.slice(0, 4)
+                            ).map((img: any, idx: number) => {
+                              const remainingCount = selectedCenter.images.length - 4;
+                              const isMoreTrigger = !showAllCenterImages && idx === 3 && remainingCount > 0;
+
+                              return (
+                                <Col xs={12} sm={8} md={6} key={img.id || idx}>
+                                  <div className="group relative aspect-[4/3] rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-100">
+                                    <Image
+                                      src={resolveMediaUrl(img.url)}
+                                      alt="Center detail"
+                                      rootClassName="w-full h-full"
+                                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                      preview={
+                                        isMoreTrigger
+                                          ? false
+                                          : {
+                                              cover: (
+                                                <span className="text-white text-xs font-semibold bg-slate-900/60 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                                                  Xem ảnh
+                                                </span>
+                                              ),
+                                            }
+                                      }
+                                    />
+                                    {isMoreTrigger && (
+                                      <div
+                                        onClick={() => setShowAllCenterImages(true)}
+                                        className="absolute inset-0 bg-slate-900/60 hover:bg-slate-900/70 backdrop-blur-[2px] flex flex-col items-center justify-center cursor-pointer transition-all duration-200 z-10"
+                                      >
+                                        <span className="text-white text-2xl font-extrabold tracking-tight">
+                                          +{remainingCount}
+                                        </span>
+                                        <span className="text-white/90 text-xs font-medium mt-0.5">
+                                          Xem thêm
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </Col>
+                              );
+                            })}
+                          </Row>
+                        </Image.PreviewGroup>
+                      </div>
+                    )}
 
                     {/* STATS INFO */}
                     <Row gutter={[16, 16]}>
@@ -1258,50 +2336,89 @@ export default function CenterManagement() {
                     <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">📚</span>
+                          <GraduationCap size={18} className="text-slate-500" />
                           <h3 className="text-base font-bold text-slate-800 m-0">Lớp học thuộc trung tâm</h3>
                         </div>
-                        <Button
-                          type="dashed"
-                          icon={<PlusOutlined />}
-                          onClick={handleClassCreate}
-                          className="hover:text-indigo-600 hover:border-indigo-600 rounded-xl font-semibold text-xs"
-                        >
-                          Tạo lớp học mới
-                        </Button>
+                        {!isTeacher && (
+                          <Button
+                            type="dashed"
+                            icon={<PlusOutlined />}
+                            disabled={!hasPermission("classes.manage")}
+                            onClick={handleClassCreate}
+                            className="hover:text-indigo-600 hover:border-indigo-600 rounded-xl font-semibold text-xs"
+                          >
+                            Tạo lớp học mới
+                          </Button>
+                        )}
                       </div>
 
                       <Row gutter={[16, 16]}>
-                        {centerClasses.map((cls) => {
+                        {paginatedCenterClasses.map((cls) => {
                           const classStudentsCount = students.filter((s) => {
                             const sClassIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
                             return sClassIds.includes(cls.id);
                           }).length;
 
+                          const mapped = classCurriculums.filter((cc) => cc.classId === cls.id);
+
                           return (
                             <Col xs={24} sm={12} md={8} key={cls.id}>
                               <div className="group border border-slate-100 rounded-2xl p-5 bg-slate-50/20 hover:bg-white hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 relative flex flex-col justify-between min-h-[120px]">
                                 <div>
-                                  <div className="flex items-start justify-between">
-                                    <div className="font-bold text-slate-800 text-sm truncate max-w-[130px]">{cls.name}</div>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-                                      <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
-                                        onClick={() => handleClassEdit(cls)}
-                                      />
-                                      <Button
-                                        type="text"
-                                        size="small"
-                                        danger
-                                        icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
-                                        onClick={() => handleClassDelete(cls)}
-                                      />
-                                    </div>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <Tooltip title={cls.name}>
+                                      <div className="font-bold text-slate-800 text-sm truncate flex-1 min-w-0 cursor-default">
+                                        {cls.name}
+                                      </div>
+                                    </Tooltip>
+                                    {!isTeacher && (
+                                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
+                                          disabled={!hasPermission("classes.manage")}
+                                          onClick={() => handleClassEdit(cls)}
+                                        />
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          danger
+                                          icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
+                                          disabled={!hasPermission("classes.manage")}
+                                          onClick={() => handleClassDelete(cls)}
+                                        />
+                                      </div>
+                                    )}
                                   </div>
+                                  {cls.specializationId && (
+                                    <div className="mt-1">
+                                      <span className="text-[10px] text-emerald-600 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                                        <LucideBookOpen size={10} />
+                                        {specializations.find(s => s.id === cls.specializationId)?.name || "Môn học khác"}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {mapped.length > 0 && (
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {mapped.map((m) => {
+                                        const name = m.curriculum?.title || m.curriculum?.code;
+                                        if (!name) return null;
+                                        return (
+                                          <Tooltip key={m.id} title={name}>
+                                            <span className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 max-w-full truncate">
+                                              <LucideBookOpen size={10} className="shrink-0" />
+                                              <span className="truncate">{name}</span>
+                                            </span>
+                                          </Tooltip>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                   {cls.description && (
-                                    <div className="text-slate-400 text-xs mt-1.5 line-clamp-2">{cls.description}</div>
+                                    <Tooltip title={cls.description}>
+                                      <div className="text-slate-400 text-xs mt-1.5 line-clamp-2 cursor-default">{cls.description}</div>
+                                    </Tooltip>
                                   )}
                                 </div>
                                 <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-3">
@@ -1323,13 +2440,26 @@ export default function CenterManagement() {
                           </Col>
                         )}
                       </Row>
+
+                      {centerClasses.length > CLASSES_PAGE_SIZE && (
+                        <div className="mt-5 flex justify-end">
+                          <Pagination
+                            current={classPage}
+                            pageSize={CLASSES_PAGE_SIZE}
+                            total={centerClasses.length}
+                            onChange={(page) => setClassPage(page)}
+                            showSizeChanger={false}
+                            size="small"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* GOOGLE MAP EMBED (If exists) */}
                     {selectedCenter?.mapEmbedUrl && (
                       <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                         <div className="flex items-center gap-2 mb-4">
-                          <span className="text-lg">📍</span>
+                          <MapPin size={18} className="text-slate-500" />
                           <h3 className="text-base font-bold text-slate-800 m-0">Vị trí trung tâm</h3>
                         </div>
                         <div className="w-full h-64 rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
@@ -1350,7 +2480,8 @@ export default function CenterManagement() {
                     {/* USERS ACCORDION/TAB CARD */}
                     <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
                       <Tabs
-                        defaultActiveKey="teachers"
+                        activeKey={activeSubTab}
+                        onChange={handleSubTabChange}
                         className="custom-tabs border-b-0"
                         items={[
                           {
@@ -1358,36 +2489,52 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <TeamOutlined />
-                                Giáo viên ({centerTeachers.length})
+                                Giáo viên ({visibleCenterTeachers.length})
                               </span>
                             ),
                             children: (
                               <div className="space-y-4 pt-4">
-                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <Input
-                                    placeholder="Tìm kiếm giáo viên theo tên, mã..."
-                                    prefix={<SearchOutlined className="text-slate-400" />}
-                                    value={teacherSearch}
-                                    onChange={(e) => setTeacherSearch(e.target.value)}
-                                    className="max-w-md rounded-xl border-slate-200"
-                                    allowClear
-                                  />
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleTeacherCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                                  >
-                                    Tạo Giáo viên
-                                  </Button>
+                                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+                                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+                                    <Input
+                                      placeholder="Tìm kiếm giáo viên theo tên, mã..."
+                                      prefix={<SearchOutlined className="text-slate-400" />}
+                                      value={teacherSearch}
+                                      onChange={(e) => setTeacherSearch(e.target.value)}
+                                      className="max-w-md rounded-xl border-slate-200"
+                                      allowClear
+                                    />
+                                    <Segmented
+                                      value={teacherStatusFilter}
+                                      onChange={(val) => setTeacherStatusFilter(val as any)}
+                                      options={[
+                                        { label: `Tất cả (${visibleCenterTeachers.length})`, value: "all" },
+                                        { label: `Đang hoạt động (${visibleCenterTeachers.filter(isUserActive).length})`, value: "active" },
+                                        { label: `Đã nghỉ (${visibleCenterTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
+                                      ]}
+                                      className="bg-slate-100 p-0.5 rounded-xl text-xs"
+                                    />
+                                  </div>
+                                  {!isTeacher && (
+                                    <Button
+                                      type="primary"
+                                      icon={<PlusOutlined />}
+                                      disabled={!hasPermission("users.manage")}
+                                      onClick={handleTeacherCreate}
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                    >
+                                      Tạo Giáo viên
+                                    </Button>
+                                  )}
                                 </div>
 
                                 <Table
                                   rowKey="id"
                                   dataSource={filteredTeachers}
-                                  columns={teacherColumns}
+                                  columns={renderedTeacherColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
+                                  scroll={{ x: "max-content" }}
                                   className="border border-slate-100 rounded-2xl overflow-hidden"
                                 />
                               </div>
@@ -1403,18 +2550,31 @@ export default function CenterManagement() {
                             ),
                             children: (
                               <div className="space-y-4 pt-4">
-                                <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <Input
-                                    placeholder="Tìm kiếm học sinh theo tên, mã..."
-                                    prefix={<SearchOutlined className="text-slate-400" />}
-                                    value={studentSearch}
-                                    onChange={(e) => setStudentSearch(e.target.value)}
-                                    className="max-w-md rounded-xl border-slate-200"
-                                    allowClear
-                                  />
+                                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
+                                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+                                    <Input
+                                      placeholder="Tìm kiếm học sinh theo tên, mã..."
+                                      prefix={<SearchOutlined className="text-slate-400" />}
+                                      value={studentSearch}
+                                      onChange={(e) => setStudentSearch(e.target.value)}
+                                      className="max-w-md rounded-xl border-slate-200"
+                                      allowClear
+                                    />
+                                    <Segmented
+                                      value={studentStatusFilter}
+                                      onChange={(val) => setStudentStatusFilter(val as any)}
+                                      options={[
+                                        { label: `Tất cả (${centerStudents.length})`, value: "all" },
+                                        { label: `Đang hoạt động (${centerStudents.filter(isUserActive).length})`, value: "active" },
+                                        { label: `Đã nghỉ (${centerStudents.filter((s) => !isUserActive(s)).length})`, value: "inactive" },
+                                      ]}
+                                      className="bg-slate-100 p-0.5 rounded-xl text-xs"
+                                    />
+                                  </div>
                                   <Button
                                     type="primary"
                                     icon={<PlusOutlined />}
+                                    disabled={!hasPermission("students.manage")}
                                     onClick={handleStudentCreate}
                                     className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
                                   >
@@ -1428,6 +2588,7 @@ export default function CenterManagement() {
                                   columns={studentColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy học sinh nào" }}
+                                  scroll={{ x: "max-content" }}
                                   className="border border-slate-100 rounded-2xl overflow-hidden"
                                 />
                               </div>
@@ -1445,20 +2606,23 @@ export default function CenterManagement() {
                               <div className="space-y-4 pt-4">
                                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
                                   <div className="text-slate-400 text-sm">Danh sách các Chuyên môn học thuật khả dụng</div>
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    onClick={handleSpecializationCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
-                                  >
-                                    Tạo Chuyên môn
-                                  </Button>
+                                  {!isTeacher && (
+                                    <Button
+                                      type="primary"
+                                      icon={<PlusOutlined />}
+                                      disabled={!hasPermission("classes.manage")}
+                                      onClick={handleSpecializationCreate}
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                    >
+                                      Tạo Chuyên môn
+                                    </Button>
+                                  )}
                                 </div>
 
                                 <Table
                                   rowKey="id"
                                   dataSource={specializations}
-                                  columns={specializationColumns}
+                                  columns={renderedSpecializationColumns}
                                   pagination={{ pageSize: 5, showSizeChanger: false }}
                                   locale={{ emptyText: "Không tìm thấy chuyên môn nào" }}
                                   className="border border-slate-100 rounded-2xl overflow-hidden"
@@ -1466,6 +2630,51 @@ export default function CenterManagement() {
                               </div>
                             ),
                           },
+                          ...(!isTeacher
+                            ? [
+                                {
+                                  key: "admins",
+                                  label: (
+                                    <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
+                                      <SafetyCertificateOutlined />
+                                      Quản trị viên ({admins.length})
+                                    </span>
+                                  ),
+                                  children: (
+                                    <div className="space-y-4 pt-4">
+                                      <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+                                        <Input
+                                          placeholder="Tìm kiếm quản trị viên theo tên, mã..."
+                                          prefix={<SearchOutlined className="text-slate-400" />}
+                                          value={adminSearch}
+                                          onChange={(e) => setAdminSearch(e.target.value)}
+                                          className="max-w-md rounded-xl border-slate-200"
+                                          allowClear
+                                        />
+                                        <Button
+                                          type="primary"
+                                          icon={<PlusOutlined />}
+                                          disabled={!hasPermission("users.manage")}
+                                          onClick={handleAdminCreate}
+                                          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                        >
+                                          Tạo Quản trị viên
+                                        </Button>
+                                      </div>
+
+                                      <Table
+                                        rowKey="id"
+                                        dataSource={filteredAdmins}
+                                        columns={adminColumns}
+                                        pagination={{ pageSize: 5, showSizeChanger: false }}
+                                        locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
+                                        className="border border-slate-100 rounded-2xl overflow-hidden"
+                                      />
+                                    </div>
+                                  ),
+                                },
+                              ]
+                            : []),
                         ]}
                       />
                     </div>
@@ -1483,36 +2692,93 @@ export default function CenterManagement() {
               onOk={() => centerForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
+              width={720}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
                 form={centerForm}
                 layout="vertical"
                 onFinish={handleCenterSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
-                <Form.Item
-                  name="name"
-                  label="Tên trung tâm"
-                  rules={[{ required: true, message: "Vui lòng nhập tên trung tâm!" }]}
-                >
-                  <Input placeholder="Ví dụ: Kata Hà Nội" className="rounded-xl" />
-                </Form.Item>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="name"
+                      label="Tên trung tâm"
+                      rules={[{ required: true, message: "Vui lòng nhập tên trung tâm!" }]}
+                    >
+                      <Input placeholder="Ví dụ: Kata Hà Nội" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="phone"
+                      label="Số điện thoại liên hệ"
+                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại liên hệ!" }]}
+                    >
+                      <Input placeholder="Ví dụ: 0123456789" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-                <Form.Item name="address" label="Địa chỉ">
-                  <Input placeholder="Ví dụ: Cầu Giấy, Hà Nội" className="rounded-xl" />
-                </Form.Item>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="email"
+                      label="Email liên hệ"
+                      rules={[
+                        { required: true, message: "Vui lòng nhập email liên hệ!" },
+                        { type: "email", message: "Email không hợp lệ!" }
+                      ]}
+                    >
+                      <Input placeholder="Ví dụ: contact@kata.edu.vn" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="address"
+                      label="Địa chỉ"
+                      rules={[{ required: true, message: "Vui lòng nhập địa chỉ!" }]}
+                    >
+                      <Input placeholder="Ví dụ: Cầu Giấy, Hà Nội" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-                <Form.Item name="phone" label="Số điện thoại liên hệ">
-                  <Input placeholder="Ví dụ: 0123456789" className="rounded-xl" />
-                </Form.Item>
-
-                <Form.Item name="email" label="Email liên hệ">
-                  <Input placeholder="Ví dụ: contact@kata.edu.vn" className="rounded-xl" />
-                </Form.Item>
-
-                <Form.Item name="image" label="Đường dẫn ảnh đại diện (Image URL)">
-                  <Input placeholder="Ví dụ: https://images.unsplash.com/... hoặc /uploads/..." className="rounded-xl" />
+                <Form.Item label="Hình ảnh trung tâm (Tối đa 20 ảnh)" tooltip="Hỗ trợ tải lên nhiều hình ảnh cùng lúc để giới thiệu trung tâm">
+                  <Upload
+                    listType="picture-card"
+                    fileList={subImagesFileList}
+                    beforeUpload={() => false}
+                    onChange={handleUploadChange}
+                    accept="image/*"
+                    multiple
+                    maxCount={20}
+                    onPreview={(file) => {
+                      const url = file.url || file.thumbUrl || file.response?.url;
+                      if (url) showPreview(url);
+                    }}
+                  >
+                    {subImagesFileList.length < 20 && (
+                      <div>
+                        <PlusOutlined />
+                        <div style={{ marginTop: 8 }}>Tải ảnh lên</div>
+                      </div>
+                    )}
+                  </Upload>
                 </Form.Item>
 
                 <Form.Item name="mapEmbedUrl" label="Link bản đồ nhúng (Google Map Embed URL)">
@@ -1533,12 +2799,25 @@ export default function CenterManagement() {
               onOk={() => classForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
+              centered
+              width={620}
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
                 form={classForm}
                 layout="vertical"
                 onFinish={handleClassSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Form.Item
@@ -1563,6 +2842,34 @@ export default function CenterManagement() {
                   </Select>
                 </Form.Item>
 
+                <Form.Item
+                  name="specializationId"
+                  label="Môn học (Chuyên môn)"
+                  rules={[{ required: true, message: "Vui lòng chọn môn học cho lớp!" }]}
+                >
+                  <Select placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass}>
+                    {specializations.map((spec) => (
+                      <Select.Option key={spec.id} value={spec.id}>
+                        {spec.name}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+
+                <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
+                  <SafeSelect
+                    disabled={!hasPermission("learning.assign")}
+                    mode="multiple"
+                    placeholder="Chọn giáo trình gắn với lớp"
+                    allowClear
+                    className="rounded-xl"
+                    options={curriculums.map((curr) => ({
+                      label: curr.title || curr.code,
+                      value: curr.id,
+                    }))}
+                  />
+                </Form.Item>
+
                 <Form.Item name="description" label="Mô tả lớp học">
                   <Input.TextArea placeholder="Nhập mô tả ngắn về lớp học này..." rows={2} className="rounded-xl" />
                 </Form.Item>
@@ -1575,18 +2882,32 @@ export default function CenterManagement() {
               open={teacherModalOpen}
               onCancel={() => {
                 setTeacherModalOpen(false);
+                setSelectedTeacherCenterIds([]);
                 teacherForm.resetFields();
               }}
               onOk={() => teacherForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
               width={650}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
                 form={teacherForm}
                 layout="vertical"
+                autoComplete="off"
                 onFinish={handleTeacherSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Row gutter={16}>
@@ -1594,12 +2915,8 @@ export default function CenterManagement() {
                     <Form.Item
                       name="code"
                       label="Mã giáo viên"
-                      rules={[
-                        { required: true, message: "Nhập mã giáo viên!" },
-                        { min: 3, message: "Mã phải từ 3 ký tự!" },
-                      ]}
                     >
-                      <Input placeholder="teacher01" disabled={!!editingTeacher} className="rounded-xl" />
+                      <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
@@ -1627,9 +2944,15 @@ export default function CenterManagement() {
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
-                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại!" }]}
+                      rules={[
+                        { required: true, message: "Vui lòng nhập số điện thoại!" },
+                        {
+                          pattern: /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/,
+                          message: "Số điện thoại không đúng định dạng (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09)!",
+                        },
+                      ]}
                     >
-                      <Input placeholder="0123456789" className="rounded-xl" />
+                      <Input placeholder="0912345678" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -1654,6 +2977,18 @@ export default function CenterManagement() {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
+                      name="citizenId"
+                      label="(CCCD - 12 chữ số)"
+                      rules={[
+                        { required: !editingTeacher, message: "Vui lòng nhập số CCCD!" },
+                        { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
+                      ]}
+                    >
+                      <Input placeholder="Nhập 12 chữ số CCCD" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
                       name="startDate"
                       label="Ngày bắt đầu giảng dạy"
                       tooltip="Ngày giáo viên chính thức tham gia trung tâm."
@@ -1668,8 +3003,11 @@ export default function CenterManagement() {
                       />
                     </Form.Item>
                   </Col>
-                  {editingTeacher && (
-                    <Col span={12}>
+                </Row>
+
+                {editingTeacher && (
+                  <Row gutter={16}>
+                    <Col span={24}>
                       <Form.Item
                         name="endDate"
                         label="Ngày kết thúc giảng dạy"
@@ -1683,17 +3021,18 @@ export default function CenterManagement() {
                         />
                       </Form.Item>
                     </Col>
-                  )}
-                </Row>
+                  </Row>
+                )}
 
                 {editingTeacher && (
                   <>
                     {/* Active status banner */}
                     {(() => {
                       const active = isUserActive(editingTeacher);
-                      const endDate = editingTeacher.endDate ? dayjs(editingTeacher.endDate) : null;
-                      const isScheduled = active && endDate && endDate.isAfter(dayjs());
-                      const daysLeft = isScheduled ? endDate.diff(dayjs(), "day") : 0;
+                      const endDateStr = editingTeacher.endDate ? dayjs(editingTeacher.endDate).format("YYYY-MM-DD") : null;
+                      const todayStr = dayjs().format("YYYY-MM-DD");
+                      const isScheduled = active && endDateStr && endDateStr > todayStr;
+                      const daysLeft = isScheduled ? dayjs(editingTeacher.endDate).diff(dayjs().startOf("day"), "day") : 0;
 
                       return (
                         <div className={`rounded-xl p-3 mb-4 text-sm flex items-center gap-2 ${!active
@@ -1705,10 +3044,10 @@ export default function CenterManagement() {
                           <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${!active ? "bg-slate-400" : isScheduled ? "bg-amber-400" : "bg-emerald-400"
                             }`} />
                           {!active && (
-                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){endDate && ` — kết thúc ngày ${endDate.format("DD/MM/YYYY")}`}</span>
+                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){editingTeacher.endDate && ` — kết thúc ngày ${dayjs(editingTeacher.endDate).format("DD/MM/YYYY")}`}</span>
                           )}
                           {active && isScheduled && (
-                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {endDate!.format("DD/MM/YYYY")})</span>
+                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {dayjs(editingTeacher.endDate).format("DD/MM/YYYY")})</span>
                           )}
                           {active && !isScheduled && (
                             <span>Tài khoản <strong>đang hoạt động</strong></span>
@@ -1718,7 +3057,7 @@ export default function CenterManagement() {
                     })()}
 
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
-                      <div className="font-semibold text-blue-700">ℹ️ Quy tắc trạng thái tài khoản:</div>
+                      <div className="font-semibold text-blue-700 flex items-center gap-1.5"><LucideInfo size={14} /> Quy tắc trạng thái tài khoản:</div>
                       <ul className="list-disc pl-4 m-0 space-y-0.5">
                         <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
                         <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
@@ -1731,19 +3070,28 @@ export default function CenterManagement() {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
-                      name="centerId"
+                      name="centerIds"
                       label="Trung tâm liên kết"
-                      rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
+                      rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 trung tâm!" }]}
+                      tooltip="Chọn một hoặc nhiều trung tâm để lọc danh sách lớp phụ trách"
                     >
-                      <Select
-                        placeholder="Chọn trung tâm"
+                      <SafeSelect
+                        mode="multiple"
+                        placeholder="Chọn các trung tâm liên kết"
                         className="rounded-xl"
-                        onChange={(val) => {
-                          setSelectedModalCenterId(val);
-                          // Clear class selection if center changes to prevent mismatch
-                          teacherForm.setFieldsValue({ classIds: [] });
+                        showSearch
+                        optionFilterProp="label"
+                        onChange={(nextCenterIds: string[]) => {
+                          setSelectedTeacherCenterIds(nextCenterIds);
+                          // Keep only classes that belong to one of the selected centers
+                          const currentClassIds: string[] = teacherForm.getFieldValue("classIds") || [];
+                          const validClassIds = currentClassIds.filter((cid: string) => {
+                            const cls = classes.find((c) => c.id === cid);
+                            return cls && nextCenterIds.includes(cls.centerId);
+                          });
+                          teacherForm.setFieldsValue({ classIds: validClassIds });
                         }}
-                        options={centers.map(c => ({ label: c.name, value: c.id }))}
+                        options={centers.map((c) => ({ label: c.name, value: c.id }))}
                       />
                     </Form.Item>
                   </Col>
@@ -1761,15 +3109,28 @@ export default function CenterManagement() {
                   name="classIds"
                   label="Lớp học phụ trách"
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
+                  tooltip="Giáo viên có thể dạy các lớp thuộc các trung tâm đã chọn"
                 >
-                  <Select
+                  <SafeSelect
                     mode="multiple"
-                    placeholder="Chọn lớp học (chọn trung tâm trước để lọc)"
+                    placeholder="Chọn lớp học (chọn trung tâm liên kết trước để lọc)"
                     style={{ width: "100%" }}
                     className="rounded-xl"
+                    showSearch
+                    optionFilterProp="label"
                     options={classes
-                      .filter((c) => !selectedModalCenterId || c.centerId === selectedModalCenterId)
-                      .map((c) => ({ label: c.name, value: c.id }))}
+                      .filter(
+                        (c) =>
+                          selectedTeacherCenterIds.length === 0 ||
+                          selectedTeacherCenterIds.includes(c.centerId)
+                      )
+                      .map((c) => {
+                        const centerObj = centers.find((cen) => cen.id === c.centerId);
+                        return {
+                          label: centerObj ? `${c.name} (${centerObj.name})` : c.name,
+                          value: c.id,
+                        };
+                      })}
                   />
                 </Form.Item>
 
@@ -1778,8 +3139,10 @@ export default function CenterManagement() {
                   label="Chuyên môn"
                   rules={[{ required: true, message: "Chọn ít nhất 1 chuyên môn!" }]}
                 >
-                  <Select
+                  <SafeSelect
                     mode="multiple"
+                    showSearch
+                    optionFilterProp="label"
                     placeholder="Chọn chuyên môn"
                     style={{ width: "100%" }}
                     className="rounded-xl"
@@ -1787,16 +3150,68 @@ export default function CenterManagement() {
                   />
                 </Form.Item>
 
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="bankName"
+                      label="Tên ngân hàng"
+                      rules={[{ required: true, message: "Vui lòng nhập tên ngân hàng!" }]}
+                    >
+                      <Input placeholder="Ví dụ: Vietcombank" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="bankAccountNumber"
+                      label="Số tài khoản ngân hàng"
+                      rules={[{ required: true, message: "Vui lòng nhập số tài khoản!" }]}
+                    >
+                      <Input placeholder="Ví dụ: 00123456789" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="employmentType"
+                      label="Loại hợp đồng"
+                    >
+                      <Select
+                        placeholder="Chọn loại hợp đồng"
+                        className="rounded-xl"
+                        allowClear
+                        options={[
+                          { label: "Toàn thời gian (Full-time)", value: "full_time" },
+                          { label: "Bán thời gian (Part-time)", value: "part_time" },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="insuranceStartDate"
+                      label="Ngày đóng bảo hiểm"
+                    >
+                      <DatePicker
+                        style={{ width: "100%" }}
+                        placeholder="Chọn ngày đóng bảo hiểm"
+                        className="rounded-xl"
+                        format="DD/MM/YYYY"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
                 {!editingTeacher && (
                   <Form.Item
-                    name="password"
-                    label="Mật khẩu tài khoản"
-                    rules={[
-                      { required: true, message: "Nhập mật khẩu!" },
-                      { min: 8, message: "Mật khẩu phải tối thiểu từ 8 ký tự!" },
-                    ]}
+                    label="Mật khẩu tài khoản (Mặc định)"
                   >
-                    <Input.Password placeholder="Tối thiểu 8 ký tự" className="rounded-xl" />
+                    <Input
+                      value="********"
+                      disabled
+                      className="rounded-xl font-mono text-slate-500"
+                    />
                   </Form.Item>
                 )}
 
@@ -1808,6 +3223,112 @@ export default function CenterManagement() {
                   <Input.TextArea placeholder="Nhập một số thông tin giới thiệu ngắn về giáo viên..." rows={2} className="rounded-xl" />
                 </Form.Item>
 
+                <div className="border-t border-slate-100 pt-4 mt-4">
+                  <h4 className="font-bold text-slate-700 text-sm mb-3">Bằng cấp & Chứng chỉ giáo viên</h4>
+                  <Form.List name="degrees">
+                    {(fields, { add, remove }) => (
+                      <div className="space-y-4">
+                        {fields.map(({ key, name, ...restField }) => (
+                          <Card
+                            key={key}
+                            size="small"
+                            className="border-slate-100 bg-slate-50/50 rounded-xl relative"
+                            title={`Bằng cấp #${name + 1}`}
+                            extra={
+                              <Button
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={() => remove(name)}
+                              />
+                            }
+                          >
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'name']}
+                              label="Tên bằng cấp / chứng chỉ"
+                              rules={[{ required: true, message: 'Nhập tên bằng cấp!' }]}
+                            >
+                              <Input placeholder="Ví dụ: Cử nhân Ngôn ngữ Anh, Chứng chỉ IELTS..." className="rounded-xl" />
+                            </Form.Item>
+
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'files']}
+                              label="Ảnh bằng cấp (Cần ít nhất 1 ảnh)"
+                              valuePropName="fileList"
+                              getValueFromEvent={(e: any) => {
+                                if (Array.isArray(e)) return e;
+                                return e && e.fileList;
+                              }}
+                              rules={[
+                                {
+                                  validator(_, value) {
+                                    if (value && value.length > 0) return Promise.resolve();
+                                    return Promise.reject(new Error("Vui lòng tải lên ít nhất 1 ảnh bằng cấp!"));
+                                  }
+                                }
+                              ]}
+                            >
+                              <Upload
+                                customRequest={async (options) => {
+                                  const { file, onSuccess, onError } = options;
+                                  try {
+                                    const urls = await userService.uploadTeacherDegreeImages([file as File]);
+                                    onSuccess!({ url: urls[0] });
+                                  } catch (err) {
+                                    onError!(err as Error);
+                                  }
+                                }}
+                                listType="picture-card"
+                                multiple
+                                accept="image/*"
+                                itemRender={(originNode, file, fileList, actions) => {
+                                  const url = file.url || file.response?.url;
+                                  if (!url) return originNode;
+                                  return (
+                                    <div className="relative group w-full h-full rounded-lg overflow-hidden border border-slate-200">
+                                      <SecureImage src={url} className="w-full h-full object-cover" />
+                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          icon={<EyeOutlined className="text-white text-xs" />}
+                                          onClick={() => showPreview(url)}
+                                        />
+                                        <Button
+                                          type="text"
+                                          size="small"
+                                          danger
+                                          icon={<DeleteOutlined className="text-white text-xs" />}
+                                          onClick={actions.remove}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                }}
+                              >
+                                <div>
+                                  <PlusOutlined />
+                                  <div style={{ marginTop: 8 }}>Tải ảnh</div>
+                                </div>
+                              </Upload>
+                            </Form.Item>
+                          </Card>
+                        ))}
+                        <Button
+                          type="dashed"
+                          onClick={() => add()}
+                          block
+                          icon={<PlusOutlined />}
+                          className="rounded-xl"
+                        >
+                          Thêm bằng cấp mới
+                        </Button>
+                      </div>
+                    )}
+                  </Form.List>
+                </div>
               </Form>
             </Modal>
 
@@ -1822,13 +3343,26 @@ export default function CenterManagement() {
               onOk={() => studentForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
               width={650}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
                 form={studentForm}
                 layout="vertical"
+                autoComplete="off"
                 onFinish={handleStudentSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Row gutter={16}>
@@ -1836,12 +3370,8 @@ export default function CenterManagement() {
                     <Form.Item
                       name="code"
                       label="Mã học sinh"
-                      rules={[
-                        { required: true, message: "Nhập mã học sinh!" },
-                        { min: 3, message: "Mã phải từ 3 ký tự!" },
-                      ]}
                     >
-                      <Input placeholder="student01" disabled={!!editingStudent} className="rounded-xl" />
+                      <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
@@ -1869,9 +3399,15 @@ export default function CenterManagement() {
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
-                      rules={[{ required: true, message: "Vui lòng nhập số điện thoại!" }]}
+                      rules={[
+                        { required: true, message: "Vui lòng nhập số điện thoại!" },
+                        {
+                          pattern: /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/,
+                          message: "Số điện thoại không đúng định dạng (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09)!",
+                        },
+                      ]}
                     >
-                      <Input placeholder="0123456789" className="rounded-xl" />
+                      <Input placeholder="0912345678" className="rounded-xl" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -1879,11 +3415,20 @@ export default function CenterManagement() {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Form.Item
-                      name="dateOfBirth"
-                      label="Ngày sinh"
-                      rules={[{ required: true, message: "Vui lòng chọn ngày sinh!" }]}
+                      name="birthYear"
+                      label="Năm sinh"
+                      rules={[
+                        { required: true, message: "Vui lòng nhập năm sinh!" },
+                        { type: "number", min: 1900, max: dayjs().year(), message: `Năm sinh không hợp lệ (1900 - ${dayjs().year()})!` },
+                      ]}
                     >
-                      <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
+                      <InputNumber
+                        style={{ width: "100%" }}
+                        placeholder="Ví dụ: 2015"
+                        min={1900}
+                        max={dayjs().year()}
+                        className="rounded-xl"
+                      />
                     </Form.Item>
                   </Col>
                   <Col span={12}>
@@ -1933,7 +3478,268 @@ export default function CenterManagement() {
                     {/* Active status banner */}
                     {(() => {
                       const active = isUserActive(editingStudent);
-                      const endDate = editingStudent.endDate ? dayjs(editingStudent.endDate) : null;
+                      const endDateStr = editingStudent.endDate ? dayjs(editingStudent.endDate).format("YYYY-MM-DD") : null;
+                      const todayStr = dayjs().format("YYYY-MM-DD");
+                      const isScheduled = active && endDateStr && endDateStr > todayStr;
+                      const daysLeft = isScheduled ? dayjs(editingStudent.endDate).diff(dayjs().startOf("day"), "day") : 0;
+
+                      return (
+                        <div className={`rounded-xl p-3 mb-4 text-sm flex items-center gap-2 ${!active
+                          ? "bg-slate-50 border border-slate-200 text-slate-600"
+                          : isScheduled
+                            ? "bg-amber-50 border border-amber-200 text-amber-700"
+                            : "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                          }`}>
+                          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${!active ? "bg-slate-400" : isScheduled ? "bg-amber-400" : "bg-emerald-400"
+                            }`} />
+                          {!active && (
+                            <span>Tài khoản <strong>đã nghỉ</strong> (inactive){editingStudent.endDate && ` — kết thúc ngày ${dayjs(editingStudent.endDate).format("DD/MM/YYYY")}`}</span>
+                          )}
+                          {active && isScheduled && (
+                            <span>Tài khoản đang hoạt động — <strong>sẽ tự động nghỉ sau {daysLeft} ngày</strong> (ngày {dayjs(editingStudent.endDate).format("DD/MM/YYYY")})</span>
+                          )}
+                          {active && !isScheduled && (
+                            <span>Tài khoản <strong>đang hoạt động</strong></span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
+                      <div className="font-semibold text-blue-700 flex items-center gap-1.5"><LucideInfo size={14} /> Quy tắc trạng thái tài khoản:</div>
+                      <ul className="list-disc pl-4 m-0 space-y-0.5">
+                        <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
+                        <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
+                        <li>Hệ thống backend sẽ tự động kiểm tra và vô hiệu hóa tài khoản khi đến ngày kết thúc</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="parentFullName"
+                      label="Họ và tên phụ huynh"
+                      rules={[{ required: true, message: "Vui lòng nhập họ tên phụ huynh!" }]}
+                    >
+                      <Input placeholder="Nguyễn Văn B" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="citizenId"
+                      label="(CCCD - 12 chữ số)"
+                      rules={[
+                        { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
+                      ]}
+                    >
+                      <Input placeholder="Nhập 12 chữ số CCCD (tùy chọn)" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item
+                  name="centerId"
+                  label="Trung tâm đăng ký"
+                  rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
+                >
+                  <Select
+                    placeholder="Chọn trung tâm"
+                    className="rounded-xl"
+                    onChange={(val) => {
+                      setSelectedModalCenterId(val);
+                      // Clear class selection if center changes to prevent mismatch
+                      studentForm.setFieldsValue({ classIds: [] });
+                    }}
+                    options={visibleCenters.map(c => ({ label: c.name, value: c.id }))}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  name="classIds"
+                  label="Lớp học tham gia"
+                  rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
+                >
+                  <SafeSelect
+                    mode="multiple"
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Chọn lớp học (chọn trung tâm trước để lọc)"
+                    style={{ width: "100%" }}
+                    className="rounded-xl"
+                    options={classes
+                      .filter((c) => !selectedModalCenterId || c.centerId === selectedModalCenterId)
+                      .map((c) => ({ label: c.name, value: c.id }))}
+                  />
+                </Form.Item>
+
+                {!editingStudent && (
+                  <Form.Item
+                    label="Mật khẩu tài khoản (Mặc định)"
+                  >
+                    <Input
+                      value="********"
+                      disabled
+                      className="rounded-xl font-mono text-slate-500"
+                    />
+                  </Form.Item>
+                )}
+
+              </Form>
+            </Modal>
+
+            {/* CREATE / EDIT ADMIN MODAL */}
+            <Modal
+              title={editingAdmin ? "Cập nhật Quản trị viên" : "Tạo Quản trị viên mới"}
+              open={adminModalOpen}
+              onCancel={() => {
+                setAdminModalOpen(false);
+                adminForm.resetFields();
+              }}
+              onOk={() => adminForm.submit()}
+              okText="Lưu lại"
+              cancelText="Hủy bỏ"
+              maskClosable={false}
+              width={650}
+              centered
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
+              className="rounded-2xl"
+            >
+              <Form
+                form={adminForm}
+                layout="vertical"
+                onFinish={handleAdminSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
+                className="pt-2"
+              >
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="code"
+                      label="Mã quản trị viên"
+                    >
+                      <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="fullName"
+                      label="Họ và tên"
+                      rules={[{ required: true, message: "Vui lòng nhập họ tên!" }]}
+                    >
+                      <Input placeholder="Admin B" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="email"
+                      label="Email (tùy chọn)"
+                      rules={[{ type: "email", message: "Email không hợp lệ!" }]}
+                    >
+                      <Input placeholder="Nhập email nếu có" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="phone"
+                      label="Số điện thoại"
+                      rules={[
+                        { required: true, message: "Vui lòng nhập số điện thoại!" },
+                        {
+                          pattern: /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/,
+                          message: "Số điện thoại không đúng định dạng (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09)!",
+                        },
+                      ]}
+                    >
+                      <Input placeholder="0912345678" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="dateOfBirth"
+                      label="Ngày sinh"
+                      rules={[{ required: true, message: "Vui lòng chọn ngày sinh!" }]}
+                    >
+                      <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="address" label="Địa chỉ (tùy chọn)">
+                      <Input placeholder="Nhập địa chỉ (tùy chọn)" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      name="citizenId"
+                      label="(CCCD - 12 chữ số)"
+                      rules={[
+                        { pattern: /^\d{12}$/, message: "Số CCCD phải gồm đúng 12 chữ số!" }
+                      ]}
+                    >
+                      <Input placeholder="Nhập 12 chữ số CCCD (tùy chọn)" className="rounded-xl" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      name="startDate"
+                      label="Ngày bắt đầu làm việc"
+                      tooltip="Ngày admin chính thức tham gia trung tâm."
+                      rules={[{ required: true, message: "Vui lòng chọn ngày bắt đầu!" }]}
+                    >
+                      <DatePicker
+                        style={{ width: "100%" }}
+                        placeholder="Chọn ngày bắt đầu"
+                        className="rounded-xl"
+                        format="DD/MM/YYYY"
+                        disabled={!!editingAdmin}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                {editingAdmin && (
+                  <Row gutter={16}>
+                    <Col span={24}>
+                      <Form.Item
+                        name="endDate"
+                        label="Ngày kết thúc làm việc"
+                        tooltip="Nếu endDate ≤ ngày hiện tại → tài khoản bị inactive. Nếu endDate trong tương lai → tài khoản sẽ bị cron tự động vô hiệu hóa khi đến ngày. Bỏ trống = hoạt động vô thời hạn."
+                      >
+                        <DatePicker
+                          style={{ width: "100%" }}
+                          placeholder="Bỏ trống = hoạt động mãi"
+                          className="rounded-xl"
+                          format="DD/MM/YYYY"
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                )}
+
+                {editingAdmin && (
+                  <>
+                    {/* Active status banner */}
+                    {(() => {
+                      const active = isUserActive(editingAdmin);
+                      const endDate = editingAdmin.endDate ? dayjs(editingAdmin.endDate) : null;
                       const isScheduled = active && endDate && endDate.isAfter(dayjs());
                       const daysLeft = isScheduled ? endDate.diff(dayjs(), "day") : 0;
 
@@ -1960,7 +3766,7 @@ export default function CenterManagement() {
                     })()}
 
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-600 space-y-1">
-                      <div className="font-semibold text-blue-700">ℹ️ Quy tắc trạng thái tài khoản:</div>
+                      <div className="font-semibold text-blue-700 flex items-center gap-1.5"><LucideInfo size={14} /> Quy tắc trạng thái tài khoản:</div>
                       <ul className="list-disc pl-4 m-0 space-y-0.5">
                         <li><strong>endDate trống</strong> hoặc <strong>trong tương lai</strong> → Tài khoản <strong>active</strong> (đăng nhập được)</li>
                         <li><strong>endDate ≤ hôm nay</strong> → Tài khoản <strong>inactive</strong> (không đăng nhập được)</li>
@@ -1970,40 +3776,7 @@ export default function CenterManagement() {
                   </>
                 )}
 
-                <Form.Item
-                  name="centerId"
-                  label="Trung tâm đăng ký"
-                  rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
-                >
-                  <Select
-                    placeholder="Chọn trung tâm"
-                    className="rounded-xl"
-                    onChange={(val) => {
-                      setSelectedModalCenterId(val);
-                      // Clear class selection if center changes to prevent mismatch
-                      studentForm.setFieldsValue({ classIds: [] });
-                    }}
-                    options={centers.map(c => ({ label: c.name, value: c.id }))}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  name="classIds"
-                  label="Lớp học tham gia"
-                  rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
-                >
-                  <Select
-                    mode="multiple"
-                    placeholder="Chọn lớp học (chọn trung tâm trước để lọc)"
-                    style={{ width: "100%" }}
-                    className="rounded-xl"
-                    options={classes
-                      .filter((c) => !selectedModalCenterId || c.centerId === selectedModalCenterId)
-                      .map((c) => ({ label: c.name, value: c.id }))}
-                  />
-                </Form.Item>
-
-                {!editingStudent && (
+                {!editingAdmin && (
                   <Form.Item
                     name="password"
                     label="Mật khẩu tài khoản"
@@ -2027,6 +3800,8 @@ export default function CenterManagement() {
                 setResetPasswordModalOpen(false);
                 setResetPasswordResult(null);
               }}
+              maskClosable={false}
+              centered
               footer={null}
               className="rounded-2xl"
             >
@@ -2071,9 +3846,10 @@ export default function CenterManagement() {
                       Sao chép
                     </Button>
                   </div>
-                  <p className="text-amber-600 text-xs bg-amber-50 p-3 rounded-xl">
-                    ⚠️ Hãy copy và chia sẻ mật khẩu mới này cho người dùng. Họ có thể đổi sang mật khẩu mong muốn sau khi đăng nhập thành công.
-                  </p>
+                  <div className="flex items-start gap-2 text-amber-700 text-xs bg-amber-50 p-3 rounded-xl border border-amber-200/50">
+                    <AlertTriangle size={15} className="shrink-0 text-amber-600 mt-0.5" />
+                    <span>Hãy copy và chia sẻ mật khẩu mới này cho người dùng. Họ có thể đổi sang mật khẩu mong muốn sau khi đăng nhập thành công.</span>
+                  </div>
                   <Button
                     block
                     type="primary"
@@ -2097,12 +3873,25 @@ export default function CenterManagement() {
               onOk={() => specializationForm.submit()}
               okText="Lưu lại"
               cancelText="Hủy bỏ"
+              maskClosable={false}
+              centered
+              width={560}
+              styles={{
+                body: {
+                  maxHeight: "72vh",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  paddingRight: "8px",
+                },
+              }}
               className="rounded-2xl"
             >
               <Form
                 form={specializationForm}
                 layout="vertical"
                 onFinish={handleSpecializationSubmit}
+                onFinishFailed={() => message.error("Vui lòng kiểm tra và nhập/chọn đầy đủ các thông tin bắt buộc!")}
+                scrollToFirstError={{ behavior: "smooth", block: "center" }}
                 className="pt-2"
               >
                 <Form.Item
@@ -2129,6 +3918,9 @@ export default function CenterManagement() {
                 </Form.Item>
               </Form>
             </Modal>
+
+            {/* IMAGE PREVIEW LIGHTBOX */}
+            {previewElement}
 
           </div>
         </Spin>

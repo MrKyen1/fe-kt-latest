@@ -59,7 +59,7 @@ export default function UserProfile() {
 
   const beforeUpload = (file: File) => {
     if (!file.type.startsWith("image/")) {
-      message.error("Chi duoc upload anh");
+      message.error("Chỉ được upload ảnh");
       return Upload.LIST_IGNORE;
     }
 
@@ -67,7 +67,7 @@ export default function UserProfile() {
   };
 
   const handlePreview = (info: { file: { originFileObj?: File } | File }) => {
-    const file = "originFileObj" in info.file ? info.file.originFileObj : info.file;
+    const file = info.file instanceof File ? info.file : info.file.originFileObj;
     if (!file) return;
 
     setAvatarFile(file);
@@ -82,7 +82,7 @@ export default function UserProfile() {
       let finalAvatar = avatar;
 
       if (avatarFile) {
-        const media = await learningCmsService.mediaAssets.upload(avatarFile, "User avatar");
+        const media = await learningCmsService.mediaAssets.uploadAvatar(avatarFile);
         finalAvatar = media.url;
       }
 
@@ -106,16 +106,18 @@ export default function UserProfile() {
       setAvatarFile(null);
       message.success("Cập nhật thành công");
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Cap nhat that bai");
+      message.error(err instanceof Error ? err.message : "Cập nhật thất bại");
     } finally {
       setIsSaving(false);
     }
   };
 
+  const avatarSrc = previewAvatar || (avatar ? resolveMediaUrl(avatar) : undefined);
+
   return (
     <div className="flex justify-center">
       <Card
-        bordered={false}
+        variant="borderless"
         className="w-full max-w-3xl rounded-xl"
         style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}
       >
@@ -131,9 +133,9 @@ export default function UserProfile() {
             <div className="relative">
               <Avatar
                 size={120}
-                src={previewAvatar || resolveMediaUrl(avatar)}
-                icon={!avatar && <UserOutlined />}
-                imgProps={{ crossOrigin: "anonymous" }}
+                src={avatarSrc}
+                icon={!avatarSrc && <UserOutlined />}
+                crossOrigin="anonymous"
               />
 
               <Upload
