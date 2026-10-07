@@ -658,18 +658,18 @@ export function ExamAnalyticsModal({
                     <div className="space-y-4 pt-2">
                       {/* KPI Cards Row 1: 4 cards */}
                       <Row gutter={[12, 12]}>
-                        <Col span={6}>
+                        <Col xs={12} sm={6}>
                           <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
                             <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
                               <span>Học sinh được giao</span>
                               <TeamOutlined className="text-slate-400 text-sm" />
                             </div>
-                            <div className="text-2xl font-bold tracking-tight text-slate-800">
+                            <div className="text-xl sm:text-2xl font-bold tracking-tight text-slate-800">
                               {totalAssigned}
                             </div>
                           </div>
                         </Col>
-                        <Col span={6}>
+                        <Col xs={12} sm={6}>
                           <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 shadow-2xs hover:border-emerald-200 transition-all">
                             <div className="flex items-center justify-between text-xs font-medium text-emerald-700 mb-1.5">
                               <span>Hoàn thành 100%</span>
@@ -678,7 +678,7 @@ export function ExamAnalyticsModal({
                               />
                             </div>
                             <div
-                              className={`text-2xl font-bold tracking-tight ${
+                              className={`text-xl sm:text-2xl font-bold tracking-tight ${
                                 totalMastered > 0 ? "text-emerald-600" : "text-slate-800"
                               }`}
                             >
@@ -686,7 +686,7 @@ export function ExamAnalyticsModal({
                             </div>
                           </div>
                         </Col>
-                        <Col span={6}>
+                        <Col xs={12} sm={6}>
                           <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3.5 shadow-2xs hover:border-amber-200 transition-all">
                             <div className="flex items-center justify-between text-xs font-medium text-amber-700 mb-1.5">
                               <span>Đã nộp bài</span>
@@ -695,7 +695,7 @@ export function ExamAnalyticsModal({
                               />
                             </div>
                             <div
-                              className={`text-2xl font-bold tracking-tight ${
+                              className={`text-xl sm:text-2xl font-bold tracking-tight ${
                                 totalSubmittedOnly > 0 ? "text-amber-600" : "text-slate-800"
                               }`}
                             >
@@ -703,13 +703,13 @@ export function ExamAnalyticsModal({
                             </div>
                           </div>
                         </Col>
-                        <Col span={6}>
+                        <Col xs={12} sm={6}>
                           <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
                             <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
                               <span>Tỷ lệ thành thạo</span>
                               <TrophyOutlined className="text-slate-400 text-sm" />
                             </div>
-                            <div className="text-2xl font-bold tracking-tight text-slate-800">
+                            <div className="text-xl sm:text-2xl font-bold tracking-tight text-slate-800">
                               {completionRate}%
                             </div>
                           </div>
@@ -718,13 +718,13 @@ export function ExamAnalyticsModal({
 
                       {/* Score Metrics Row 2: 2 cards with identical layout and font sizes */}
                       <Row gutter={[12, 12]}>
-                        <Col span={12}>
+                        <Col xs={12} sm={12}>
                           <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
                             <div className="text-xs font-medium text-slate-500 mb-1.5">
                               Điểm trung bình
                             </div>
                             <div className="flex items-baseline gap-2">
-                              <span className="text-2xl font-bold text-slate-800 tracking-tight">
+                              <span className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
                                 {analyticsData?.averageScore != null ? analyticsData.averageScore.toFixed(2) : "—"}
                               </span>
                               <span className="text-xs font-normal text-slate-400">
@@ -733,13 +733,13 @@ export function ExamAnalyticsModal({
                             </div>
                           </div>
                         </Col>
-                        <Col span={12}>
+                        <Col xs={12} sm={12}>
                           <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition-all">
                             <div className="text-xs font-medium text-slate-500 mb-1.5">
                               Điểm cao nhất
                             </div>
                             <div className="flex items-baseline gap-2">
-                              <span className="text-2xl font-bold text-slate-800 tracking-tight">
+                              <span className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
                                 {analyticsData?.bestScore != null ? analyticsData.bestScore.toFixed(2) : "—"}
                               </span>
                               <span className="text-xs font-normal text-slate-400">

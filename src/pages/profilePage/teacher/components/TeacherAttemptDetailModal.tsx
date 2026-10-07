@@ -114,7 +114,7 @@ export function TeacherAttemptDetailModal({
           <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 items-center">
               {/* Student info */}
-              <div className="col-span-2 border-r-0 sm:border-r border-slate-100 pr-2">
+              <div className="col-span-2 border-b sm:border-b-0 sm:border-r border-slate-100 pb-2.5 sm:pb-0 pr-2">
                 <div className="text-xs font-medium text-slate-500 mb-1">Học sinh</div>
                 <div className="text-base font-bold text-slate-800 truncate">
                   {activeData.student?.user?.fullName || studentName || "Học sinh"}

@@ -1666,8 +1666,8 @@ export default function QuestionFormModal({
           </div>
         )}
         {/* Type & classification */}
-        <Row gutter={16}>
-          <Col span={12}>
+        <Row gutter={[16, 0]}>
+          <Col xs={24} md={12}>
             <Form.Item name="type" label="Loại câu hỏi" rules={[{ required: true, message: "Vui lòng chọn loại câu hỏi!" }]}>
               <Select
                 className="rounded-xl"
@@ -1719,7 +1719,7 @@ export default function QuestionFormModal({
               </Select>
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} md={12}>
             <Form.Item name="difficultyLevelId" label="Level độ khó">
               <Select className="rounded-xl" placeholder="Chọn level" allowClear>
                 {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
@@ -1728,15 +1728,15 @@ export default function QuestionFormModal({
           </Col>
         </Row>
 
-        <Row gutter={16}>
-          <Col span={12}>
+        <Row gutter={[16, 0]}>
+          <Col xs={24} md={12}>
             <Form.Item name="skillId" label="Kỹ năng">
               <Select className="rounded-xl" placeholder="Chọn kỹ năng" allowClear>
                 {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
               </Select>
             </Form.Item>
           </Col>
-          <Col span={12}>
+          <Col xs={24} md={12}>
             <Form.Item name="topicId" label="Chủ đề">
               <Select className="rounded-xl" placeholder="Chọn chủ đề" allowClear>
                 {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}

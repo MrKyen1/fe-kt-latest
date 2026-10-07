@@ -70,6 +70,7 @@ import {
   Info as LucideInfo,
   AlertTriangle,
 } from "lucide-react";
+import { useResponsive } from "../../../hooks/useResponsive";
 import dayjs from "dayjs";
 
 const { Title, Text, Paragraph } = Typography;
@@ -120,9 +121,16 @@ interface StudentFormValues {
 }
 
 export default function CenterManagement() {
+  const { isMobile } = useResponsive();
   const { user } = useAuth();
   const isTeacher = user?.role === "teacher";
   const basePath = isTeacher ? "/teacher/centers" : "/admin/dashboard/centers";
+
+  // Mobile card pagination states
+  const [mobileTeacherPage, setMobileTeacherPage] = useState(1);
+  const [mobileStudentPage, setMobileStudentPage] = useState(1);
+  const [mobileAdminPage, setMobileAdminPage] = useState(1);
+  const [mobileSpecPage, setMobileSpecPage] = useState(1);
 
   // ================= DATA STATE =================
   const [centers, setCenters] = useState<any[]>([]);
@@ -2446,7 +2454,7 @@ export default function CenterManagement() {
                     )}
 
                     {/* USERS ACCORDION/TAB CARD */}
-                    <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+                    <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-sm">
                       <Tabs
                         activeKey={activeSubTab}
                         onChange={handleSubTabChange}
@@ -2461,49 +2469,185 @@ export default function CenterManagement() {
                               </span>
                             ),
                             children: (
-                              <div className="space-y-4 pt-4">
-                                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
-                                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+                              <div className="space-y-4 pt-3 sm:pt-4">
+                                <div className="flex flex-col gap-3 justify-between items-stretch">
+                                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between flex-1">
                                     <Input
                                       placeholder="Tìm kiếm giáo viên theo tên, mã..."
                                       prefix={<SearchOutlined className="text-slate-400" />}
                                       value={teacherSearch}
-                                      onChange={(e) => setTeacherSearch(e.target.value)}
-                                      className="max-w-md rounded-xl border-slate-200"
+                                      onChange={(e) => {
+                                        setTeacherSearch(e.target.value);
+                                        setMobileTeacherPage(1);
+                                      }}
+                                      className="w-full sm:max-w-xs rounded-xl border-slate-200"
                                       allowClear
                                     />
-                                    <Segmented
-                                      value={teacherStatusFilter}
-                                      onChange={(val) => setTeacherStatusFilter(val as any)}
-                                      options={[
-                                        { label: `Tất cả (${visibleCenterTeachers.length})`, value: "all" },
-                                        { label: `Đang hoạt động (${visibleCenterTeachers.filter(isUserActive).length})`, value: "active" },
-                                        { label: `Đã nghỉ (${visibleCenterTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
-                                      ]}
-                                      className="bg-slate-100 p-0.5 rounded-xl text-xs"
-                                    />
+                                    <div className="overflow-x-auto max-w-full pb-0.5">
+                                      <Segmented
+                                        value={teacherStatusFilter}
+                                        onChange={(val) => {
+                                          setTeacherStatusFilter(val as any);
+                                          setMobileTeacherPage(1);
+                                        }}
+                                        options={[
+                                          { label: `Tất cả (${visibleCenterTeachers.length})`, value: "all" },
+                                          { label: `Đang hoạt động (${visibleCenterTeachers.filter(isUserActive).length})`, value: "active" },
+                                          { label: `Đã nghỉ (${visibleCenterTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
+                                        ]}
+                                        className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap"
+                                      />
+                                    </div>
                                   </div>
                                   {!isTeacher && (
                                     <Button
                                       type="primary"
                                       icon={<PlusOutlined />}
                                       onClick={handleTeacherCreate}
-                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto self-start sm:self-end"
                                     >
                                       Tạo Giáo viên
                                     </Button>
                                   )}
                                 </div>
 
-                                <Table
-                                  rowKey="id"
-                                  dataSource={filteredTeachers}
-                                  columns={renderedTeacherColumns}
-                                  pagination={{ pageSize: 5, showSizeChanger: false }}
-                                  locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
-                                  scroll={{ x: "max-content" }}
-                                  className="border border-slate-100 rounded-2xl overflow-hidden"
-                                />
+                                {isMobile ? (
+                                  /* Mobile Card List: Giáo viên */
+                                  <div className="space-y-3">
+                                    {filteredTeachers.length === 0 ? (
+                                      <div className="py-8 text-center text-slate-400 text-xs bg-slate-50/50 rounded-2xl border border-slate-100">
+                                        Không tìm thấy giáo viên nào
+                                      </div>
+                                    ) : (
+                                      filteredTeachers
+                                        .slice((mobileTeacherPage - 1) * 5, mobileTeacherPage * 5)
+                                        .map((record) => {
+                                          const active = isUserActive(record);
+                                          const tClassIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
+                                          const tClasses = classes.filter((c) => tClassIds.includes(c.id));
+                                          const specIds = record.teacherProfile?.specializationIds || [];
+                                          const tSpecs = specializations.filter((s) => specIds.includes(s.id));
+
+                                          return (
+                                            <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
+                                              <div className="flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                  <Avatar className="bg-gradient-to-r from-indigo-500 to-indigo-600 font-semibold uppercase text-xs shrink-0">
+                                                    {record.fullName?.charAt(0) || "T"}
+                                                  </Avatar>
+                                                  <div className="min-w-0">
+                                                    <div className="font-bold text-slate-800 text-sm truncate">{record.fullName}</div>
+                                                    <div className="text-xs text-slate-400 font-mono">@{record.code}</div>
+                                                  </div>
+                                                </div>
+
+                                                <Tag
+                                                  color={active ? "success" : "default"}
+                                                  className="border-none rounded-full px-2.5 py-0.5 text-[11px] font-semibold shrink-0 m-0"
+                                                >
+                                                  {active ? "Đang hoạt động" : "Đã nghỉ"}
+                                                </Tag>
+                                              </div>
+
+                                              {(tSpecs.length > 0 || tClasses.length > 0) && (
+                                                <div className="space-y-1">
+                                                  {tSpecs.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                      {tSpecs.map((s) => (
+                                                        <Tag key={s.id} color="purple" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-purple-50 text-purple-600 font-medium">
+                                                          {s.name}
+                                                        </Tag>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                  {tClasses.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                      {tClasses.map((c) => (
+                                                        <Tag key={c.id} color="cyan" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-cyan-50 text-cyan-700 font-medium">
+                                                          {c.name}
+                                                        </Tag>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+
+                                              <div className="text-xs text-slate-500 space-y-1 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                                                {record.teacherProfile?.yearsOfExperience !== undefined && (
+                                                  <div>Kinh nghiệm: <strong className="text-slate-700">{record.teacherProfile.yearsOfExperience} năm</strong></div>
+                                                )}
+                                                {(record.email || record.phone) && (
+                                                  <div className="text-slate-600 truncate">
+                                                    {record.phone && <span>{record.phone}</span>}
+                                                    {record.phone && record.email && <span> • </span>}
+                                                    {record.email && <span>{record.email}</span>}
+                                                  </div>
+                                                )}
+                                              </div>
+
+                                              {!isTeacher && (
+                                                <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                                                  <Button
+                                                    type="default"
+                                                    size="middle"
+                                                    icon={<EditOutlined className="text-indigo-600" />}
+                                                    onClick={() => handleTeacherEdit(record)}
+                                                    className="rounded-xl font-semibold text-xs h-8 px-3 border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-300"
+                                                  >
+                                                    Chỉnh sửa
+                                                  </Button>
+                                                  {active ? (
+                                                    <Button
+                                                      type="default"
+                                                      size="middle"
+                                                      icon={<KeyOutlined className="text-amber-500" />}
+                                                      onClick={() => handleResetPassword(record)}
+                                                      className="rounded-xl font-semibold text-xs h-8 px-3 border-slate-200 text-slate-700 hover:text-amber-600 hover:border-amber-300"
+                                                    >
+                                                      Đổi MK
+                                                    </Button>
+                                                  ) : (
+                                                    <Button
+                                                      type="default"
+                                                      size="middle"
+                                                      disabled
+                                                      icon={<KeyOutlined className="text-slate-300" />}
+                                                      className="rounded-xl font-semibold text-xs h-8 px-3"
+                                                    >
+                                                      Đổi MK
+                                                    </Button>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })
+                                    )}
+
+                                    {filteredTeachers.length > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={mobileTeacherPage}
+                                          pageSize={5}
+                                          total={filteredTeachers.length}
+                                          onChange={setMobileTeacherPage}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <Table
+                                    rowKey="id"
+                                    dataSource={filteredTeachers}
+                                    columns={renderedTeacherColumns}
+                                    pagination={{ pageSize: 5, showSizeChanger: false }}
+                                    locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
+                                    scroll={{ x: 800 }}
+                                    className="border border-slate-100 rounded-2xl overflow-hidden"
+                                  />
+                                )}
                               </div>
                             ),
                           },
@@ -2516,47 +2660,169 @@ export default function CenterManagement() {
                               </span>
                             ),
                             children: (
-                              <div className="space-y-4 pt-4">
-                                <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
-                                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+                              <div className="space-y-4 pt-3 sm:pt-4">
+                                <div className="flex flex-col gap-3 justify-between items-stretch">
+                                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between flex-1">
                                     <Input
                                       placeholder="Tìm kiếm học sinh theo tên, mã..."
                                       prefix={<SearchOutlined className="text-slate-400" />}
                                       value={studentSearch}
-                                      onChange={(e) => setStudentSearch(e.target.value)}
-                                      className="max-w-md rounded-xl border-slate-200"
+                                      onChange={(e) => {
+                                        setStudentSearch(e.target.value);
+                                        setMobileStudentPage(1);
+                                      }}
+                                      className="w-full sm:max-w-xs rounded-xl border-slate-200"
                                       allowClear
                                     />
-                                    <Segmented
-                                      value={studentStatusFilter}
-                                      onChange={(val) => setStudentStatusFilter(val as any)}
-                                      options={[
-                                        { label: `Tất cả (${centerStudents.length})`, value: "all" },
-                                        { label: `Đang hoạt động (${centerStudents.filter(isUserActive).length})`, value: "active" },
-                                        { label: `Đã nghỉ (${centerStudents.filter((s) => !isUserActive(s)).length})`, value: "inactive" },
-                                      ]}
-                                      className="bg-slate-100 p-0.5 rounded-xl text-xs"
-                                    />
+                                    <div className="overflow-x-auto max-w-full pb-0.5">
+                                      <Segmented
+                                        value={studentStatusFilter}
+                                        onChange={(val) => {
+                                          setStudentStatusFilter(val as any);
+                                          setMobileStudentPage(1);
+                                        }}
+                                        options={[
+                                          { label: `Tất cả (${centerStudents.length})`, value: "all" },
+                                          { label: `Đang hoạt động (${centerStudents.filter(isUserActive).length})`, value: "active" },
+                                          { label: `Đã nghỉ (${centerStudents.filter((s) => !isUserActive(s)).length})`, value: "inactive" },
+                                        ]}
+                                        className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap"
+                                      />
+                                    </div>
                                   </div>
                                   <Button
                                     type="primary"
                                     icon={<PlusOutlined />}
                                     onClick={handleStudentCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto self-start sm:self-end"
                                   >
                                     Tạo Học sinh
                                   </Button>
                                 </div>
 
-                                <Table
-                                  rowKey="id"
-                                  dataSource={filteredStudents}
-                                  columns={studentColumns}
-                                  pagination={{ pageSize: 5, showSizeChanger: false }}
-                                  locale={{ emptyText: "Không tìm thấy học sinh nào" }}
-                                  scroll={{ x: "max-content" }}
-                                  className="border border-slate-100 rounded-2xl overflow-hidden"
-                                />
+                                {isMobile ? (
+                                  /* Mobile Card List: Học sinh */
+                                  <div className="space-y-3">
+                                    {filteredStudents.length === 0 ? (
+                                      <div className="py-8 text-center text-slate-400 text-xs bg-slate-50/50 rounded-2xl border border-slate-100">
+                                        Không tìm thấy học sinh nào
+                                      </div>
+                                    ) : (
+                                      filteredStudents
+                                        .slice((mobileStudentPage - 1) * 5, mobileStudentPage * 5)
+                                        .map((record) => {
+                                          const active = isUserActive(record);
+                                          const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
+                                          const sClasses = classes.filter((c) => classIds.includes(c.id));
+                                          const birthYear = record.studentProfile?.birthYear || record.student?.birthYear;
+                                          const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
+                                          const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
+
+                                          return (
+                                            <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
+                                              <div className="flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                  <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs shrink-0">
+                                                    {record.fullName?.charAt(0) || "S"}
+                                                  </Avatar>
+                                                  <div className="min-w-0">
+                                                    <div className="font-bold text-slate-800 text-sm truncate">{record.fullName}</div>
+                                                    <div className="text-xs text-slate-400 font-mono">@{record.code}</div>
+                                                  </div>
+                                                </div>
+
+                                                <Tag
+                                                  color={active ? "success" : "default"}
+                                                  className="border-none rounded-full px-2.5 py-0.5 text-[11px] font-semibold shrink-0 m-0"
+                                                >
+                                                  {active ? "Đang hoạt động" : "Đã nghỉ"}
+                                                </Tag>
+                                              </div>
+
+                                              {sClasses.length > 0 && (
+                                                <div className="flex flex-wrap gap-1">
+                                                  {sClasses.map((c) => (
+                                                    <Tag key={c.id} color="blue" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-blue-50 text-blue-600 font-medium">
+                                                      {c.name}
+                                                    </Tag>
+                                                  ))}
+                                                </div>
+                                              )}
+
+                                              <div className="text-xs text-slate-500 space-y-1 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                                                {birthYear && <div>Năm sinh: <strong className="text-slate-700">{birthYear}</strong></div>}
+                                                {start && <div>Bắt đầu: <span className="text-emerald-600 font-medium">{start}</span></div>}
+                                                {end && <div>Kết thúc: <span className="text-orange-600 font-medium">{end}</span></div>}
+                                                {(record.email || record.phone) && (
+                                                  <div className="pt-0.5 text-slate-600 truncate">
+                                                    {record.phone && <span>{record.phone}</span>}
+                                                    {record.phone && record.email && <span> • </span>}
+                                                    {record.email && <span>{record.email}</span>}
+                                                  </div>
+                                                )}
+                                              </div>
+
+                                              <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                                                <Button
+                                                  type="default"
+                                                  size="middle"
+                                                  icon={<EditOutlined className="text-indigo-600" />}
+                                                  onClick={() => handleStudentEdit(record)}
+                                                  className="rounded-xl font-semibold text-xs h-8 px-3 border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-300"
+                                                >
+                                                  Chỉnh sửa
+                                                </Button>
+                                                {active ? (
+                                                  <Button
+                                                    type="default"
+                                                    size="middle"
+                                                    icon={<KeyOutlined className="text-amber-500" />}
+                                                    onClick={() => handleResetPassword(record)}
+                                                    className="rounded-xl font-semibold text-xs h-8 px-3 border-slate-200 text-slate-700 hover:text-amber-600 hover:border-amber-300"
+                                                  >
+                                                    Đổi MK
+                                                  </Button>
+                                                ) : (
+                                                  <Button
+                                                    type="default"
+                                                    size="middle"
+                                                    disabled
+                                                    icon={<KeyOutlined className="text-slate-300" />}
+                                                    className="rounded-xl font-semibold text-xs h-8 px-3"
+                                                  >
+                                                    Đổi MK
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })
+                                    )}
+
+                                    {filteredStudents.length > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={mobileStudentPage}
+                                          pageSize={5}
+                                          total={filteredStudents.length}
+                                          onChange={setMobileStudentPage}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <Table
+                                    rowKey="id"
+                                    dataSource={filteredStudents}
+                                    columns={studentColumns}
+                                    pagination={{ pageSize: 5, showSizeChanger: false }}
+                                    locale={{ emptyText: "Không tìm thấy học sinh nào" }}
+                                    scroll={{ x: 850 }}
+                                    className="border border-slate-100 rounded-2xl overflow-hidden"
+                                  />
+                                )}
                               </div>
                             ),
                           },
@@ -2569,29 +2835,92 @@ export default function CenterManagement() {
                               </span>
                             ),
                             children: (
-                              <div className="space-y-4 pt-4">
+                              <div className="space-y-4 pt-3 sm:pt-4">
                                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <div className="text-slate-400 text-sm">Danh sách các Chuyên môn học thuật khả dụng</div>
+                                  <div className="text-slate-400 text-xs sm:text-sm">Danh sách các Chuyên môn học thuật khả dụng</div>
                                   {!isTeacher && (
                                     <Button
                                       type="primary"
                                       icon={<PlusOutlined />}
                                       onClick={handleSpecializationCreate}
-                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto"
                                     >
                                       Tạo Chuyên môn
                                     </Button>
                                   )}
                                 </div>
 
-                                <Table
-                                  rowKey="id"
-                                  dataSource={specializations}
-                                  columns={renderedSpecializationColumns}
-                                  pagination={{ pageSize: 5, showSizeChanger: false }}
-                                  locale={{ emptyText: "Không tìm thấy chuyên môn nào" }}
-                                  className="border border-slate-100 rounded-2xl overflow-hidden"
-                                />
+                                {isMobile ? (
+                                  /* Mobile Card List: Chuyên môn */
+                                  <div className="space-y-2.5">
+                                    {specializations.length === 0 ? (
+                                      <div className="py-8 text-center text-slate-400 text-xs bg-slate-50/50 rounded-2xl border border-slate-100">
+                                        Không tìm thấy chuyên môn nào
+                                      </div>
+                                    ) : (
+                                      specializations
+                                        .slice((mobileSpecPage - 1) * 5, mobileSpecPage * 5)
+                                        .map((record) => (
+                                          <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-2">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="font-bold text-slate-800 text-sm">{record.name}</div>
+                                              {record.code && (
+                                                <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 shrink-0">{record.code}</span>
+                                              )}
+                                            </div>
+                                            {record.description && (
+                                              <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-100">{record.description}</div>
+                                            )}
+                                            {!isTeacher && (
+                                              <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                                                <Button
+                                                  type="default"
+                                                  size="middle"
+                                                  icon={<EditOutlined className="text-indigo-600" />}
+                                                  onClick={() => handleSpecializationEdit(record)}
+                                                  className="rounded-xl font-semibold text-xs h-8 px-3 border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-300"
+                                                >
+                                                  Chỉnh sửa
+                                                </Button>
+                                                <Button
+                                                  danger
+                                                  size="middle"
+                                                  icon={<DeleteOutlined />}
+                                                  onClick={() => handleSpecializationDelete(record)}
+                                                  className="rounded-xl font-semibold text-xs h-8 px-3"
+                                                >
+                                                  Xóa
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))
+                                    )}
+
+                                    {specializations.length > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={mobileSpecPage}
+                                          pageSize={5}
+                                          total={specializations.length}
+                                          onChange={setMobileSpecPage}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <Table
+                                    rowKey="id"
+                                    dataSource={specializations}
+                                    columns={renderedSpecializationColumns}
+                                    pagination={{ pageSize: 5, showSizeChanger: false }}
+                                    locale={{ emptyText: "Không tìm thấy chuyên môn nào" }}
+                                    scroll={{ x: 600 }}
+                                    className="border border-slate-100 rounded-2xl overflow-hidden"
+                                  />
+                                )}
                               </div>
                             ),
                           },
@@ -2606,34 +2935,93 @@ export default function CenterManagement() {
                                     </span>
                                   ),
                                   children: (
-                                    <div className="space-y-4 pt-4">
+                                    <div className="space-y-4 pt-3 sm:pt-4">
                                       <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
                                         <Input
                                           placeholder="Tìm kiếm quản trị viên theo tên, mã..."
                                           prefix={<SearchOutlined className="text-slate-400" />}
                                           value={adminSearch}
-                                          onChange={(e) => setAdminSearch(e.target.value)}
-                                          className="max-w-md rounded-xl border-slate-200"
+                                          onChange={(e) => {
+                                            setAdminSearch(e.target.value);
+                                            setMobileAdminPage(1);
+                                          }}
+                                          className="w-full sm:max-w-md rounded-xl border-slate-200"
                                           allowClear
                                         />
                                         <Button
                                           type="primary"
                                           icon={<PlusOutlined />}
                                           onClick={handleAdminCreate}
-                                          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+                                          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto"
                                         >
                                           Tạo Quản trị viên
                                         </Button>
                                       </div>
 
-                                      <Table
-                                        rowKey="id"
-                                        dataSource={filteredAdmins}
-                                        columns={adminColumns}
-                                        pagination={{ pageSize: 5, showSizeChanger: false }}
-                                        locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
-                                        className="border border-slate-100 rounded-2xl overflow-hidden"
-                                      />
+                                      {isMobile ? (
+                                        /* Mobile Card List: Quản trị viên */
+                                        <div className="space-y-2.5">
+                                          {filteredAdmins.length === 0 ? (
+                                            <div className="py-8 text-center text-slate-400 text-xs bg-slate-50/50 rounded-2xl border border-slate-100">
+                                              Không tìm thấy quản trị viên nào
+                                            </div>
+                                          ) : (
+                                            filteredAdmins
+                                              .slice((mobileAdminPage - 1) * 5, mobileAdminPage * 5)
+                                              .map((record) => (
+                                                <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
+                                                  <div className="flex items-center gap-2.5">
+                                                    <Avatar className="bg-indigo-600 text-white font-semibold uppercase text-xs shrink-0">
+                                                      {record.fullName?.charAt(0) || "A"}
+                                                    </Avatar>
+                                                    <div className="min-w-0 flex-1">
+                                                      <div className="font-bold text-slate-800 text-sm truncate">{record.fullName}</div>
+                                                      <div className="text-xs text-slate-400 font-mono">@{record.code}</div>
+                                                    </div>
+                                                  </div>
+                                                  <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-0.5">
+                                                    {record.email && <div>Email: {record.email}</div>}
+                                                    {record.phone && <div>SĐT: {record.phone}</div>}
+                                                  </div>
+                                                  <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                                                    <Button
+                                                      type="default"
+                                                      size="middle"
+                                                      icon={<EditOutlined className="text-indigo-600" />}
+                                                      onClick={() => handleAdminEdit(record)}
+                                                      className="rounded-xl font-semibold text-xs h-8 px-3 border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-300"
+                                                    >
+                                                      Chỉnh sửa
+                                                    </Button>
+                                                  </div>
+                                                </div>
+                                              ))
+                                          )}
+
+                                          {filteredAdmins.length > 5 && (
+                                            <div className="pt-2 flex justify-center">
+                                              <Pagination
+                                                current={mobileAdminPage}
+                                                pageSize={5}
+                                                total={filteredAdmins.length}
+                                                onChange={setMobileAdminPage}
+                                                size="small"
+                                                showSizeChanger={false}
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <Table
+                                          rowKey="id"
+                                          dataSource={filteredAdmins}
+                                          columns={adminColumns}
+                                          pagination={{ pageSize: 5, showSizeChanger: false }}
+                                          locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
+                                          scroll={{ x: 700 }}
+                                          className="border border-slate-100 rounded-2xl overflow-hidden"
+                                        />
+                                      )}
                                     </div>
                                   ),
                                 },
@@ -2678,7 +3066,7 @@ export default function CenterManagement() {
                 className="pt-2"
               >
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="name"
                       label="Tên trung tâm"
@@ -2687,7 +3075,7 @@ export default function CenterManagement() {
                       <Input placeholder="Ví dụ: Kata Hà Nội" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="phone"
                       label="Số điện thoại liên hệ"
@@ -2699,7 +3087,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="email"
                       label="Email liên hệ"
@@ -2711,7 +3099,7 @@ export default function CenterManagement() {
                       <Input placeholder="Ví dụ: contact@kata.edu.vn" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="address"
                       label="Địa chỉ"
@@ -2874,7 +3262,7 @@ export default function CenterManagement() {
                 className="pt-2"
               >
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="code"
                       label="Mã giáo viên"
@@ -2882,7 +3270,7 @@ export default function CenterManagement() {
                       <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="fullName"
                       label="Họ và tên"
@@ -2894,7 +3282,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="email"
                       label="Email"
@@ -2903,7 +3291,7 @@ export default function CenterManagement() {
                       <Input placeholder="teacher@email.com" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
@@ -2921,7 +3309,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="dateOfBirth"
                       label="Ngày sinh"
@@ -2930,7 +3318,7 @@ export default function CenterManagement() {
                       <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item name="address" label="Địa chỉ">
                       <Input placeholder="Hà Nội" className="rounded-xl" />
                     </Form.Item>
@@ -2938,7 +3326,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="citizenId"
                       label="(CCCD - 12 chữ số)"
@@ -2950,7 +3338,7 @@ export default function CenterManagement() {
                       <Input placeholder="Nhập 12 chữ số CCCD" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="startDate"
                       label="Ngày bắt đầu giảng dạy"
@@ -3031,7 +3419,7 @@ export default function CenterManagement() {
                 )}
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="centerIds"
                       label="Trung tâm liên kết"
@@ -3058,7 +3446,7 @@ export default function CenterManagement() {
                       />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="yearsOfExperience"
                       label="Kinh nghiệm (số năm)"
@@ -3114,7 +3502,7 @@ export default function CenterManagement() {
                 </Form.Item>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="bankName"
                       label="Tên ngân hàng"
@@ -3123,7 +3511,7 @@ export default function CenterManagement() {
                       <Input placeholder="Ví dụ: Vietcombank" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="bankAccountNumber"
                       label="Số tài khoản ngân hàng"
@@ -3135,7 +3523,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="employmentType"
                       label="Loại hợp đồng"
@@ -3151,7 +3539,7 @@ export default function CenterManagement() {
                       />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="insuranceStartDate"
                       label="Ngày đóng bảo hiểm"
@@ -3329,7 +3717,7 @@ export default function CenterManagement() {
                 className="pt-2"
               >
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="code"
                       label="Mã học sinh"
@@ -3337,7 +3725,7 @@ export default function CenterManagement() {
                       <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="fullName"
                       label="Họ và tên"
@@ -3349,7 +3737,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="email"
                       label="Email"
@@ -3358,7 +3746,7 @@ export default function CenterManagement() {
                       <Input placeholder="student@email.com" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
@@ -3376,7 +3764,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="birthYear"
                       label="Năm sinh"
@@ -3394,7 +3782,7 @@ export default function CenterManagement() {
                       />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item name="address" label="Địa chỉ">
                       <Input placeholder="Hà Nội" className="rounded-xl" />
                     </Form.Item>
@@ -3402,7 +3790,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="startDate"
                       label="Ngày bắt đầu học"
@@ -3419,7 +3807,7 @@ export default function CenterManagement() {
                     </Form.Item>
                   </Col>
                   {editingStudent && (
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                       <Form.Item
                         name="endDate"
                         label="Ngày kết thúc học"
@@ -3480,7 +3868,7 @@ export default function CenterManagement() {
                 )}
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="parentFullName"
                       label="Họ và tên phụ huynh"
@@ -3489,7 +3877,7 @@ export default function CenterManagement() {
                       <Input placeholder="Nguyễn Văn B" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="citizenId"
                       label="(CCCD - 12 chữ số)"
@@ -3585,7 +3973,7 @@ export default function CenterManagement() {
                 className="pt-2"
               >
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="code"
                       label="Mã quản trị viên"
@@ -3593,7 +3981,7 @@ export default function CenterManagement() {
                       <Input placeholder="Hệ thống tự sinh" disabled className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="fullName"
                       label="Họ và tên"
@@ -3605,7 +3993,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="email"
                       label="Email (tùy chọn)"
@@ -3614,7 +4002,7 @@ export default function CenterManagement() {
                       <Input placeholder="Nhập email nếu có" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="phone"
                       label="Số điện thoại"
@@ -3632,7 +4020,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="dateOfBirth"
                       label="Ngày sinh"
@@ -3641,7 +4029,7 @@ export default function CenterManagement() {
                       <DatePicker style={{ width: "100%" }} placeholder="Chọn ngày sinh" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item name="address" label="Địa chỉ (tùy chọn)">
                       <Input placeholder="Nhập địa chỉ (tùy chọn)" className="rounded-xl" />
                     </Form.Item>
@@ -3649,7 +4037,7 @@ export default function CenterManagement() {
                 </Row>
 
                 <Row gutter={16}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="citizenId"
                       label="(CCCD - 12 chữ số)"
@@ -3660,7 +4048,7 @@ export default function CenterManagement() {
                       <Input placeholder="Nhập 12 chữ số CCCD (tùy chọn)" className="rounded-xl" />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       name="startDate"
                       label="Ngày bắt đầu làm việc"

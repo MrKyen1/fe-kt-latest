@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Button, Space, Table, Tag, Tooltip } from "antd";
+import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -9,6 +9,7 @@ import {
 } from "@ant-design/icons";
 import { Can } from "../../../../../components/Can";
 import { AppImage } from "../../../../../components/AppImagePreview";
+import { useResponsive } from "../../../../../hooks/useResponsive";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -236,6 +237,7 @@ export default function CurriculumsTab({
   onToggleStatus,
   onConfigExams,
 }: Props) {
+  const { isMobile } = useResponsive();
   const publishedCount = curriculums.filter((c) => c.status === "published").length;
   const examsMap = useMemo(() => new Map(exams.map((e) => [e.id, e])), [exams]);
 
@@ -254,8 +256,8 @@ export default function CurriculumsTab({
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <span className="text-slate-500">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <span className="text-slate-500 text-sm">
           Giáo trình đào tạo —{" "}
           <strong>{publishedCount}/{curriculums.length}</strong> đang phát hành trên trang này (Tổng cộng <strong>{pagination.total}</strong> giáo trình)
         </span>
@@ -264,28 +266,177 @@ export default function CurriculumsTab({
             type="primary"
             icon={<PlusOutlined />}
             onClick={onCreateClick}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto"
           >
             Tạo giáo trình mới
           </Button>
         </Can>
       </div>
 
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={curriculums}
-        columns={columns}
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: pagination.total,
-          onChange: pagination.onChange,
-          showSizeChanger: true,
-          pageSizeOptions: ["10", "20", "50", "100"],
-          showTotal: (total) => `Tổng cộng ${total} giáo trình`,
-        }}
-      />
+      {isMobile ? (
+        /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
+        <div className="space-y-3">
+          {loading ? (
+            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
+              <Spin />
+            </div>
+          ) : curriculums.length === 0 ? (
+            <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
+              <Empty description={<span className="text-slate-400 text-xs">Chưa có giáo trình nào</span>} />
+            </div>
+          ) : (
+            curriculums.map((record) => {
+              const examList = record.exams ?? [];
+              const count = examList.length;
+
+              return (
+                <div
+                  key={record.id}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3"
+                >
+                  {/* Top: Avatar & Info */}
+                  <div className="flex items-start gap-3">
+                    {record.image ? (
+                      <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-slate-200 bg-slate-100 flex items-center justify-center">
+                        <AppImage
+                          src={record.image}
+                          alt={record.title}
+                          className="w-14 h-14 object-cover"
+                          rootClassName="w-full h-full flex items-center justify-center"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 shrink-0 flex items-center justify-center font-bold text-xs border border-purple-100">
+                        {record.code ? record.code.slice(0, 4).toUpperCase() : "CURR"}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="font-bold text-slate-800 text-base leading-snug">
+                        {record.title}
+                      </div>
+                      <div className="text-xs text-slate-400 font-mono">
+                        {record.code && <span className="text-indigo-600 font-semibold">{record.code}</span>}
+                        {record.level && ` • Level: ${record.level.name}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle: Stats & Status */}
+                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                    <div className="text-slate-600">
+                      Đề thi trong giáo trình: <strong className="text-indigo-600 font-bold">{count} đề</strong>
+                    </div>
+
+                    <Tag
+                      color={record.status === "published" ? "success" : "default"}
+                      className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-semibold m-0"
+                    >
+                      {record.status === "published" ? "Đang phát hành" : "Bản nháp"}
+                    </Tag>
+                  </div>
+
+                  {/* Actions bar */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <Can perform="learning.write">
+                      <Button
+                        type="dashed"
+                        size="middle"
+                        onClick={() => onConfigExams(record)}
+                        className="text-xs font-semibold border-purple-200 text-purple-600 rounded-xl hover:border-purple-500 h-9"
+                      >
+                        Cấu hình đề thi ({count})
+                      </Button>
+                    </Can>
+
+                    <div className="flex items-center gap-1">
+                      <Can perform="learning.publish">
+                        <Tooltip
+                          title={
+                            record.status === "published"
+                              ? "Chuyển về Nháp"
+                              : "Phát hành giáo trình"
+                          }
+                        >
+                          <Button
+                            type="text"
+                            size="middle"
+                            icon={
+                              record.status === "published"
+                                ? <CloseCircleOutlined className="text-amber-500 text-base" />
+                                : <CheckCircleOutlined className="text-emerald-500 text-base" />
+                            }
+                            onClick={() => onToggleStatus(record)}
+                            className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-slate-100"
+                          />
+                        </Tooltip>
+                      </Can>
+
+                      <Can perform="learning.write">
+                        <Tooltip title="Chỉnh sửa">
+                          <Button
+                            type="text"
+                            size="middle"
+                            icon={<EditOutlined className="text-slate-500 hover:text-indigo-600 text-base" />}
+                            onClick={() => onEditClick(record)}
+                            className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-slate-100"
+                          />
+                        </Tooltip>
+                      </Can>
+
+                      <Can perform="learning.delete">
+                        <Tooltip title="Xóa">
+                          <Button
+                            type="text"
+                            size="middle"
+                            danger
+                            icon={<DeleteOutlined className="text-rose-500 text-base" />}
+                            onClick={() => onDeleteClick(record)}
+                            className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-rose-50"
+                          />
+                        </Tooltip>
+                      </Can>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} giáo trình
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <Table
+          rowKey="id"
+          loading={loading}
+          dataSource={curriculums}
+          columns={columns}
+          scroll={{ x: 800 }}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            onChange: pagination.onChange,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "20", "50", "100"],
+            showTotal: (total) => `Tổng cộng ${total} giáo trình`,
+          }}
+        />
+      )}
     </div>
   );
 }

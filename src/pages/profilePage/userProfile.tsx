@@ -159,8 +159,8 @@ export default function UserProfile() {
             )}
           </div>
 
-          <Row gutter={16}>
-            <Col span={12}>
+          <Row gutter={[16, 8]}>
+            <Col xs={24} sm={12}>
               <Form.Item label="Username">
                 <Input
                   prefix={<UserOutlined />}
@@ -170,31 +170,31 @@ export default function UserProfile() {
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="Full Name" name="fullName" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="Phone" name="phone">
                 <Input prefix={<PhoneOutlined />} />
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="Email" name="email">
                 <Input prefix={<MailOutlined />} />
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="Ngày sinh" name="dateOfBirth">
                 <Input type="date" />
               </Form.Item>
             </Col>
 
-            <Col span={24}>
+            <Col xs={24}>
               <Form.Item label="Địa chỉ" name="address">
                 <Input.TextArea rows={3} />
               </Form.Item>

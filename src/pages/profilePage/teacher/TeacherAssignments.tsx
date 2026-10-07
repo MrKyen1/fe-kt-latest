@@ -244,6 +244,7 @@ function CurriculumAnalyticsModal({
                 size="small"
                 pagination={{ pageSize: 5 }}
                 rowKey="studentId"
+                scroll={{ x: 600 }}
                 dataSource={studentsList}
                 columns={[
                   {

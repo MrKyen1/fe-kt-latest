@@ -1,0 +1,95 @@
+/*
+ * Responsive overrides toàn cục cho mobile / tablet.
+ * Mọi rule đều nằm trong media query < 1024px → desktop không bị ảnh hưởng.
+ */
+
+/* ── Tablet & Mobile (< 1024px) ───────────────────────────── */
+@media (max-width: 1023.98px) {
+  /* Bảng antd luôn có thể cuộn ngang thay vì bóp méo cột */
+  .ant-table-wrapper .ant-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ant-table-wrapper .ant-table-content > table,
+  .ant-table-wrapper .ant-table-body > table {
+    min-width: max-content;
+  }
+
+  /* Tabs điều hướng cuộn ngang mượt */
+  .ant-tabs-nav-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── Mobile (< 768px) ─────────────────────────────────────── */
+@media (max-width: 767.98px) {
+  /* Modal gần full màn hình, nội dung cuộn bên trong */
+  .ant-modal-wrap .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+    top: 8px !important;
+    padding-bottom: 0 !important;
+  }
+  .ant-modal-wrap.ant-modal-centered .ant-modal {
+    top: 0 !important;
+  }
+  .ant-modal .ant-modal-content {
+    padding: 16px !important;
+    max-height: calc(100dvh - 16px);
+    display: flex;
+    flex-direction: column;
+  }
+  .ant-modal .ant-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    max-height: none !important;
+  }
+  .ant-modal .ant-modal-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .ant-modal .ant-modal-footer > .ant-btn + .ant-btn {
+    margin-inline-start: 0 !important;
+  }
+
+  /* Popover không tràn màn hình */
+  .ant-popover .ant-popover-inner {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+  }
+  .ant-popover .ant-popover-inner-content > div[style*="width"] {
+    max-width: calc(100vw - 48px);
+  }
+
+  /* Tránh iOS Safari tự zoom khi focus input (font < 16px) */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  .ant-select-selection-search-input {
+    font-size: 16px !important;
+  }
+
+  /* Pagination gọn trên mobile */
+  .ant-pagination .ant-pagination-options {
+    display: none;
+  }
+
+  /* Drawer full chiều rộng khi quá hẹp */
+  .ant-drawer-content-wrapper {
+    max-width: 100vw;
+  }
+
+  /* Header navigation desktop ẩn triệt để trên mobile */
+  .header .ant-menu-horizontal,
+  .header > .ant-menu {
+    display: none !important;
+  }
+}
+
+/* Safe-area cho thanh sticky ở iPhone có tai thỏ */
+.safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}

@@ -112,21 +112,21 @@ export default function TaxonomyTab({
           items={TAX_TABS}
         />
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <Input
             placeholder={searchPlaceholder}
             allowClear
             prefix={<SearchOutlined className="text-slate-400" />}
             value={taxSearch}
             onChange={(e) => onTaxSearchChange(e.target.value)}
-            className="rounded-xl w-64 shadow-sm border-slate-200"
+            className="rounded-xl flex-1 sm:w-64 shadow-sm border-slate-200"
           />
           <Can perform="learning.write">
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={onCreateClick}
-              className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+              className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold shrink-0"
             >
               Tạo mới
             </Button>
@@ -140,6 +140,7 @@ export default function TaxonomyTab({
         loading={loading}
         dataSource={dataSource}
         columns={columns}
+        scroll={{ x: 650 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

@@ -597,7 +597,7 @@ export default function AdminHomepageCms() {
               type="primary"
               icon={<PlusOutlined />}
               onClick={handleOpenCreateSlide}
-              className="bg-indigo-600 hover:bg-indigo-700 h-10 px-5 rounded-xl font-semibold shadow-xs flex items-center gap-2"
+              className="bg-indigo-600 hover:bg-indigo-700 h-10 px-5 rounded-xl font-semibold shadow-xs flex items-center justify-center gap-2 w-full sm:w-auto"
             >
               Thêm Slide mới
             </Button>
@@ -609,7 +609,7 @@ export default function AdminHomepageCms() {
             loading={loading}
             dataSource={homepageData?.slider || []}
             pagination={false}
-            scroll={{ x: "max-content" }}
+            scroll={{ x: 800 }}
             className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs"
             locale={{ emptyText: "Chưa có banner nào. Hãy tạo banner đầu tiên!" }}
             columns={[
@@ -1129,7 +1129,7 @@ export default function AdminHomepageCms() {
                 loading={loading}
                 dataSource={homepageData?.facilities?.gallery || []}
                 pagination={false}
-                scroll={{ x: "max-content" }}
+                scroll={{ x: 750 }}
                 className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs"
                 locale={{ emptyText: "Chưa có ảnh gallery nào." }}
                 columns={[
@@ -1763,8 +1763,8 @@ export default function AdminHomepageCms() {
                       <TextArea rows={2} placeholder="Nội dung mô tả ngắn gọn..." className="rounded-xl" />
                     </Form.Item>
 
-                    <Row gutter={12} className="mb-3">
-                      <Col span={12}>
+                    <Row gutter={[12, 12]} className="mb-3">
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           label={<span className="text-xs font-bold text-slate-700">Nhãn nút CTA</span>}
                           name="ctaLabel"
@@ -1773,7 +1773,7 @@ export default function AdminHomepageCms() {
                           <Input placeholder="Khám phá khóa học" className="rounded-xl" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           label={<span className="text-xs font-bold text-slate-700">Đường dẫn CTA Link</span>}
                           name="ctaLink"
@@ -1784,8 +1784,8 @@ export default function AdminHomepageCms() {
                       </Col>
                     </Row>
 
-                    <Row gutter={12}>
-                      <Col span={12}>
+                    <Row gutter={[12, 12]}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           label={<span className="text-xs font-bold text-slate-700">Thứ tự hiển thị</span>}
                           name="orderIndex"
@@ -1794,7 +1794,7 @@ export default function AdminHomepageCms() {
                           <InputNumber min={0} className="w-full rounded-xl" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           label={<span className="text-xs font-bold text-slate-700">Trạng thái hiển thị</span>}
                           name="isActive"
@@ -1949,8 +1949,8 @@ export default function AdminHomepageCms() {
                       <Input placeholder="Hoạt động ngoại khóa..." className="rounded-xl" />
                     </Form.Item>
 
-                    <Row gutter={12}>
-                      <Col span={12}>
+                    <Row gutter={[12, 12]}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           label={<span className="text-xs font-bold text-slate-700">Thứ tự hiển thị</span>}
                           name="orderIndex"
@@ -1959,7 +1959,7 @@ export default function AdminHomepageCms() {
                           <InputNumber min={0} className="w-full rounded-xl" />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} sm={12}>
                         <Form.Item
                           label={<span className="text-xs font-bold text-slate-700">Trạng thái</span>}
                           name="isActive"

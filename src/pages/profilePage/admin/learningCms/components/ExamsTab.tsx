@@ -1,4 +1,4 @@
-import { Button, Space, Table, Tag, Tooltip } from "antd";
+import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
 import { AlertTriangle, Clock } from "lucide-react";
 import {
   BookOutlined,
@@ -6,10 +6,12 @@ import {
   CloseCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  HistoryOutlined,
   PlusOutlined,
   SendOutlined,
 } from "@ant-design/icons";
 import { Can } from "../../../../../components/Can";
+import { useResponsive } from "../../../../../hooks/useResponsive";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -264,6 +266,7 @@ export default function ExamsTab({
   onConfigQuestions,
   onViewVersions,
 }: Props) {
+  const { isMobile } = useResponsive();
   const publishedCount = exams.filter((e) => e.status === "published").length;
 
   const columns = buildColumns(
@@ -278,8 +281,8 @@ export default function ExamsTab({
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <span className="text-slate-500">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <span className="text-slate-500 text-sm">
           Quản lý đề thi —{" "}
           <strong>{publishedCount}/{exams.length}</strong> đang phát hành trên trang này (Tổng cộng <strong>{pagination.total}</strong> đề thi)
         </span>
@@ -288,28 +291,224 @@ export default function ExamsTab({
             type="primary"
             icon={<PlusOutlined />}
             onClick={onCreateClick}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold"
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold shrink-0 w-full sm:w-auto"
           >
             Tạo đề thi mới
           </Button>
         </Can>
       </div>
 
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={exams}
-        columns={columns}
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: pagination.total,
-          onChange: pagination.onChange,
-          showSizeChanger: true,
-          pageSizeOptions: ["10", "20", "50", "100"],
-          showTotal: (total) => `Tổng cộng ${total} đề thi`,
-        }}
-      />
+      {isMobile ? (
+        /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
+        <div className="space-y-3">
+          {loading ? (
+            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
+              <Spin />
+            </div>
+          ) : exams.length === 0 ? (
+            <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
+              <Empty description={<span className="text-slate-400 text-xs">Chưa có đề thi nào</span>} />
+            </div>
+          ) : (
+            exams.map((record) => {
+              const questionCount = record.questions?.length ?? 0;
+              const isExam = record.examType === "exam";
+
+              return (
+                <div
+                  key={record.id}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3"
+                >
+                  {/* Top: Title & Badges */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-bold text-slate-800 text-base flex-1 min-w-0">
+                        {record.title}
+                      </div>
+                      <Tag
+                        color={isExam ? "purple" : "blue"}
+                        className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-bold shrink-0 m-0"
+                      >
+                        {isExam ? "Đề kiểm tra" : "Đề ôn tập"}
+                      </Tag>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap text-xs text-slate-400">
+                      {record.code && (
+                        <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] text-slate-600 font-semibold">
+                          {record.code}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={12} className="text-slate-400" />
+                        {record.timeLimitSeconds
+                          ? `${Math.round(record.timeLimitSeconds / 60)} phút`
+                          : "Không giới hạn"}
+                      </span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <BookOutlined className="text-slate-400 text-xs" />
+                        <strong className="text-slate-700">{questionCount}</strong> câu hỏi
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status Banner */}
+                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                          record.status === "published"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-slate-200 text-slate-600"
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            record.status === "published" ? "bg-emerald-500" : "bg-slate-400"
+                          }`}
+                        />
+                        {record.status === "published" ? "Đang phát hành" : "Bản nháp"}
+                      </span>
+
+                      {record.hasUnpublishedChanges && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          <AlertTriangle size={11} className="text-amber-800" />
+                          Có thay đổi
+                        </span>
+                      )}
+                    </div>
+
+                    {record.hasUnpublishedChanges && (
+                      <Can perform="learning.publish">
+                        <Button
+                          type="primary"
+                          danger
+                          size="small"
+                          icon={<SendOutlined className="text-xs" />}
+                          onClick={() => onRepublish(record)}
+                          className="rounded-lg text-xs font-bold px-2.5 h-7"
+                        >
+                          Xuất bản mới
+                        </Button>
+                      </Can>
+                    )}
+                  </div>
+
+                  {/* Actions bar */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <Can perform="learning.write">
+                        <Button
+                          type="dashed"
+                          size="middle"
+                          icon={<BookOutlined />}
+                          onClick={() => onConfigQuestions(record)}
+                          className="text-xs font-semibold border-indigo-200 text-indigo-600 rounded-xl hover:border-indigo-500 h-9"
+                        >
+                          Cấu hình câu ({questionCount})
+                        </Button>
+                      </Can>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Can perform="learning.publish">
+                        <Tooltip
+                          title={
+                            record.status === "published"
+                              ? "Chuyển về Nháp"
+                              : "Phát hành đề thi"
+                          }
+                        >
+                          <Button
+                            type="text"
+                            size="middle"
+                            icon={
+                              record.status === "published"
+                                ? <CloseCircleOutlined className="text-amber-500 text-base" />
+                                : <CheckCircleOutlined className="text-emerald-500 text-base" />
+                            }
+                            onClick={() => onToggleStatus(record)}
+                            className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-slate-100"
+                          />
+                        </Tooltip>
+                      </Can>
+
+                      <Tooltip title="Lịch sử phiên bản">
+                        <Button
+                          type="text"
+                          size="middle"
+                          icon={<HistoryOutlined className="text-slate-500 text-base" />}
+                          onClick={() => onViewVersions(record)}
+                          className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-slate-100"
+                        />
+                      </Tooltip>
+
+                      <Can perform="learning.write">
+                        <Tooltip title="Chỉnh sửa">
+                          <Button
+                            type="text"
+                            size="middle"
+                            icon={<EditOutlined className="text-slate-500 hover:text-indigo-600 text-base" />}
+                            onClick={() => onEditClick(record)}
+                            className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-slate-100"
+                          />
+                        </Tooltip>
+                      </Can>
+
+                      <Can perform="learning.delete">
+                        <Tooltip title="Xóa">
+                          <Button
+                            type="text"
+                            size="middle"
+                            danger
+                            icon={<DeleteOutlined className="text-rose-500 text-base" />}
+                            onClick={() => onDeleteClick(record)}
+                            className="w-9 h-9 flex items-center justify-center p-0 rounded-xl hover:bg-rose-50"
+                          />
+                        </Tooltip>
+                      </Can>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} đề thi
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <Table
+          rowKey="id"
+          loading={loading}
+          dataSource={exams}
+          columns={columns}
+          scroll={{ x: 900 }}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            onChange: pagination.onChange,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "20", "50", "100"],
+            showTotal: (total) => `Tổng cộng ${total} đề thi`,
+          }}
+        />
+      )}
     </div>
   );
 }

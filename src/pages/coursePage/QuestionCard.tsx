@@ -783,7 +783,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               const isThisOptionCorrect = checkOptionIsCorrect(option, question.correctAnswer) || (showFeedback && isSelected && isCorrect === true);
 
               let containerClass =
-                "flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-colors ";
+                "flex items-center justify-between p-3 sm:p-4 min-h-[48px] border rounded-xl cursor-pointer transition-colors ";
 
               let inputClass = isMulti
                 ? "w-4 h-4 rounded-full text-emerald-600 focus:ring-emerald-500 cursor-pointer appearance-none border border-slate-300 checked:bg-emerald-500 checked:border-emerald-500 relative flex items-center justify-center "
@@ -1231,20 +1231,20 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-white/50">
-      <div className="flex-1 overflow-hidden px-6 pt-6 pb-[5px] md:px-8 md:pt-8 md:pb-[5px] flex flex-col lg:flex-row gap-6 lg:gap-10">
+      <div className="flex-1 overflow-y-auto lg:overflow-hidden px-4 pt-4 pb-2 md:px-8 md:pt-8 md:pb-[5px] flex flex-col lg:flex-row gap-5 lg:gap-10">
         {hasSplitLayout ? (
           <>
             {/* Left */}
-            <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-6">
+            <div className="flex-1 lg:overflow-y-auto pr-1 lg:pr-2 flex flex-col gap-4 lg:gap-6">
               {!question.passage && renderQuestionHeader()}
 
               {question.passage && (
-                <div className="bg-emerald-50/50 p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-inner">
-                  <h3 className="text-sm font-bold text-emerald-800 mb-3 uppercase tracking-wider">
+                <div className="bg-emerald-50/50 p-4 sm:p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-inner">
+                  <h3 className="text-xs sm:text-sm font-bold text-emerald-800 mb-2 sm:mb-3 uppercase tracking-wider">
                     Đọc đoạn văn sau
                   </h3>
 
-                  <p className="text-[15px] md:text-base leading-relaxed text-slate-700 whitespace-pre-wrap">
+                  <p className="text-sm sm:text-[15px] md:text-base leading-relaxed text-slate-700 whitespace-pre-wrap">
                     {question.passage}
                   </p>
                 </div>
@@ -1257,7 +1257,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       <AppImage
                         src={media.url}
                         alt={`Context Media ${index + 1}`}
-                        className="max-w-full rounded-xl object-contain"
+                        className="max-w-full rounded-xl object-contain max-h-[300px] sm:max-h-[400px]"
                         maskText="Phóng to ảnh"
                       />
                     </div>
@@ -1267,11 +1267,11 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
 
             {/* Right */}
-            <div className="flex-1 overflow-y-auto lg:pl-6 lg:border-l border-slate-200 pr-2 pt-2">
+            <div className="flex-1 lg:overflow-y-auto lg:pl-6 lg:border-l border-slate-200 pr-1 lg:pr-2 pt-1 lg:pt-2">
               {!question.passage ? (
                 <div className="flex flex-col h-full w-full max-w-3xl mx-auto">
-                  <div className="flex-1 pb-2 overflow-x-hidden pt-2">
-                    <h3 className="text-sm font-bold text-slate-500 mb-4 uppercase tracking-wider">
+                  <div className="flex-1 pb-2 overflow-x-hidden pt-1 sm:pt-2">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-500 mb-3 sm:mb-4 uppercase tracking-wider">
                       Chọn đáp án của bạn:
                     </h3>
 
@@ -1286,14 +1286,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
           </>
         ) : (
-          <div className="w-full h-full overflow-y-auto flex flex-col mx-auto max-w-3xl pr-2 pt-2">
+          <div className="w-full h-full lg:overflow-y-auto flex flex-col mx-auto max-w-3xl pr-1 lg:pr-2 pt-1 lg:pt-2">
             {renderQuestionContent()}
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="mt-auto px-6 py-4 md:px-8 md:py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0 z-10 w-full">
+      <div className="mt-auto px-4 py-3 sm:px-6 sm:py-4 md:px-8 md:py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0 z-10 w-full safe-bottom">
         <div />
 
         {!showFeedback ? (
@@ -1301,19 +1301,19 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             <button
               onClick={onSubmit}
               disabled={isAnswerEmpty()}
-              className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:shadow-none"
+              className="px-5 sm:px-8 py-2.5 sm:py-3 min-h-[44px] rounded-xl font-bold bg-indigo-600 text-white text-sm sm:text-base shadow-md sm:shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:shadow-none"
             >
               Nộp câu trả lời
             </button>
           ) : (
             <button
               onClick={isLastQuestion ? onSubmit : onNext}
-              className="px-8 py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 flex items-center gap-2 transition-all group"
+              className="px-5 sm:px-8 py-2.5 sm:py-3 min-h-[44px] rounded-xl font-bold bg-indigo-600 text-white text-sm sm:text-base shadow-md sm:shadow-lg hover:bg-indigo-700 flex items-center gap-2 transition-all group"
             >
               {isLastQuestion ? "NỘP BÀI THI" : "Câu tiếp theo"}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 transform group-hover:translate-x-1 transition-transform"
+                className="h-4 w-4 sm:h-5 sm:w-5 transform group-hover:translate-x-1 transition-transform"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1330,7 +1330,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         ) : (
           <button
             onClick={onNext}
-            className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg flex items-center gap-2 transition-all group ${isLastQuestion && isReviewMode && !isMastered
+            className={`px-5 sm:px-8 py-2.5 sm:py-3 min-h-[44px] rounded-xl font-bold text-white text-sm sm:text-base shadow-md sm:shadow-lg flex items-center gap-2 transition-all group ${isLastQuestion && isReviewMode && !isMastered
               ? "bg-amber-600 hover:bg-amber-700"
               : "bg-emerald-600 hover:bg-emerald-700"
               }`}
@@ -1345,7 +1345,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 transform group-hover:translate-x-1 transition-transform"
+              className="h-4 w-4 sm:h-5 sm:w-5 transform group-hover:translate-x-1 transition-transform"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"

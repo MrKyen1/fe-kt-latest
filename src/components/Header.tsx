@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Layout, Menu, Button, Dropdown, MenuProps, Avatar, Badge, Popover, Spin, Tag } from "antd";
-import { UserOutlined, LogoutOutlined, BellOutlined } from "@ant-design/icons";
+import { Layout, Menu, Button, Dropdown, MenuProps, Avatar, Badge, Popover, Spin, Tag, Drawer } from "antd";
+import { UserOutlined, LogoutOutlined, BellOutlined, MenuOutlined } from "@ant-design/icons";
 import { useEffect, useState, memo, useMemo } from "react";
 import { Bell, Inbox, PenTool, BookOpen } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -44,7 +44,7 @@ function NotificationPopoverContent({
 
   if (!notifications || notifications.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400" style={{ width: 330 }}>
+      <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400" style={{ width: 330, maxWidth: "calc(100vw - 48px)" }}>
         <Inbox className="w-8 h-8 text-slate-300 mb-2 stroke-[1.5]" />
         <span className="text-xs font-medium">Bạn chưa có bài thi hoặc giáo trình mới nào!</span>
       </div>
@@ -55,7 +55,7 @@ function NotificationPopoverContent({
   const currCount = notifications.filter((n) => n.type === "curriculum").length;
 
   return (
-    <div style={{ width: 350 }} className="font-sans">
+    <div style={{ width: 350, maxWidth: "calc(100vw - 48px)" }} className="font-sans">
       <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
         <span className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
           <Bell size={15} className="text-indigo-600" />
@@ -161,6 +161,7 @@ const Header = memo(function Header() {
   const [notifications, setNotifications] = useState<AppNotificationItem[]>([]);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     setCurrent(location.pathname);
@@ -390,32 +391,131 @@ const Header = memo(function Header() {
   ];
 
   return (
-    <AntHeader className="sticky top-0 z-50 flex items-center justify-between bg-white px-4 md:px-12 shadow-sm header">
-      <Link
-        to="/home"
-        className="flex items-center gap-3 cursor-pointer group"
-        onClick={() => {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
-      >
-        <img
-          src={logoImg}
-          alt="Logo"
-          className="h-14 object-contain m-0"
+    <AntHeader className="sticky top-0 z-50 flex items-center justify-between bg-white px-3 sm:px-4 md:px-12 shadow-sm header">
+      {/* Cụm trái: Nút Hamburger + Logo */}
+      <div className="flex items-center gap-2 md:gap-3 shrink-0">
+        {/* Hamburger (chỉ hiển thị trên mobile/tablet nhỏ < md) */}
+        <Button
+          type="text"
+          aria-label="Mở menu"
+          icon={<MenuOutlined className="text-xl text-slate-700" />}
+          onClick={() => setMobileNavOpen(true)}
+          className="md:!hidden flex items-center justify-center w-9 h-9 p-0 rounded-lg hover:bg-slate-100"
         />
-      </Link>
+        <Link
+          to="/home"
+          className="flex items-center gap-3 cursor-pointer group shrink-0"
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        >
+          <img
+            src={logoImg}
+            alt="Logo"
+            className="h-8 sm:h-9 md:h-14 object-contain m-0 shrink-0"
+          />
+        </Link>
+      </div>
 
-      <Menu
-        mode="horizontal"
-        selectedKeys={[activeMenuKey]}
-        onClick={handleMenuClick}
-        items={items}
-        className="flex-1 justify-center border-none bg-transparent font-medium text-gray-700 hidden md:flex"
-      />
+      {/* Menu điều hướng desktop (ẩn 100% trên màn hình < md) */}
+      <div className="hidden md:flex flex-1 justify-center mx-2 lg:mx-6 min-w-0">
+        <Menu
+          mode="horizontal"
+          selectedKeys={[activeMenuKey]}
+          onClick={handleMenuClick}
+          items={items}
+          className="flex-1 justify-center border-none bg-transparent font-medium text-gray-700 max-w-2xl"
+        />
+      </div>
 
-      <div className="flex items-center gap-4">
+      {/* Drawer điều hướng cho mobile */}
+      <Drawer
+        placement="left"
+        open={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        width={280}
+        title={
+          <div className="flex items-center gap-2">
+            <img src={logoImg} alt="Logo" className="h-8 object-contain" />
+          </div>
+        }
+        styles={{ body: { padding: 12 } }}
+      >
+        {isLoggedIn && (
+          <div className="mb-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+            <Avatar
+              src={user?.avatar ? resolveMediaUrl(user.avatar) : undefined}
+              icon={!user?.avatar && <UserOutlined />}
+              size={40}
+              className="bg-blue-500 text-white shrink-0"
+              crossOrigin="anonymous"
+            >
+              {user?.fullName?.charAt(0)?.toUpperCase()}
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="font-bold text-slate-800 text-sm truncate">{user?.fullName}</div>
+              <div className="text-[11px] text-slate-400 capitalize">{user?.role || "Học viên"}</div>
+            </div>
+          </div>
+        )}
+
+        <Menu
+          mode="inline"
+          selectedKeys={[activeMenuKey]}
+          onClick={(e) => {
+            setMobileNavOpen(false);
+            handleMenuClick(e);
+          }}
+          items={items}
+          className="border-none font-medium text-slate-700"
+        />
+
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          {isLoggedIn ? (
+            <div className="space-y-2">
+              <Button
+                type="default"
+                block
+                className="rounded-xl text-xs font-semibold text-slate-700"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  navigate("/profile");
+                }}
+              >
+                Hồ sơ cá nhân
+              </Button>
+              <Button
+                danger
+                block
+                icon={<LogoutOutlined />}
+                className="rounded-xl text-xs font-semibold"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  handleLogout();
+                }}
+              >
+                Đăng xuất
+              </Button>
+            </div>
+          ) : (
+            <Link to="/login" onClick={() => setMobileNavOpen(false)}>
+              <Button
+                type="primary"
+                block
+                shape="round"
+                className="bg-blue-600 hover:bg-blue-700 font-semibold"
+              >
+                Đăng nhập
+              </Button>
+            </Link>
+          )}
+        </div>
+      </Drawer>
+
+      {/* Cụm phải: Thông báo + Avatar Profile / Đăng nhập */}
+      <div className="flex items-center gap-2 md:gap-4 shrink-0">
         {isLoggedIn ? (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {/* Notification Bell Badge & Popover (Student only) */}
             {isStudent && (
               <Popover
@@ -440,13 +540,13 @@ const Header = memo(function Header() {
                     type="text"
                     shape="circle"
                     icon={<BellOutlined className="text-lg text-slate-600 hover:text-indigo-600" />}
-                    className="flex items-center justify-center hover:bg-indigo-50 transition-colors"
+                    className="flex items-center justify-center hover:bg-indigo-50 transition-colors w-9 h-9"
                   />
                 </Badge>
               </Popover>
             )}
 
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 hidden lg:inline">
               Xin chào,{" "}
               <span className="font-semibold text-blue-600">
                 {user?.fullName}
@@ -454,12 +554,12 @@ const Header = memo(function Header() {
               !
             </span>
 
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={["click"]}>
               <Avatar
                 src={user?.avatar ? resolveMediaUrl(user.avatar) : undefined}
                 icon={!user?.avatar && <UserOutlined />}
                 size="large"
-                className="cursor-pointer bg-blue-500 text-white"
+                className="cursor-pointer bg-blue-500 text-white shrink-0 hover:ring-2 hover:ring-blue-300 transition-all"
                 crossOrigin="anonymous"
               >
                 {user?.fullName?.charAt(0)?.toUpperCase()}
@@ -467,12 +567,12 @@ const Header = memo(function Header() {
             </Dropdown>
           </div>
         ) : (
-          <Link to="/login">
+          <Link to="/login" className="shrink-0">
             <Button
               type="primary"
               shape="round"
-              size="large"
-              className="bg-blue-600 hover:bg-blue-700"
+              size="middle"
+              className="bg-blue-600 hover:bg-blue-700 !px-3 sm:!px-4 md:!px-6 md:!h-10 text-xs sm:text-sm font-semibold shadow-xs"
             >
               Đăng nhập
             </Button>

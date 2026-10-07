@@ -4,6 +4,10 @@ import {
   useDraggable,
   useDroppable,
   DragEndEvent,
+  useSensor,
+  useSensors,
+  PointerSensor,
+  TouchSensor,
 } from "@dnd-kit/core";
 import { motion } from "framer-motion";
 import { ExamQuestion, ExamMedia } from "../../types";
@@ -34,10 +38,11 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
     id,
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: transform
-      ? `translate(${transform.x}px, ${transform.y}px)`
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
       : undefined,
+    touchAction: "none",
   };
 
   return (
@@ -47,8 +52,8 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
       {...(!disabled ? listeners : {})}
       {...(!disabled ? attributes : {})}
       whileDrag={disabled ? undefined : { scale: 1.05 }}
-      className={`px-4 py-2 bg-white border rounded-xl shadow-sm text-sm font-semibold text-slate-700 hover:shadow-md transition ${
-        disabled ? "cursor-not-allowed opacity-70" : "cursor-grab"
+      className={`px-3.5 sm:px-4 py-2 bg-white border rounded-xl shadow-xs text-xs sm:text-sm font-semibold text-slate-700 hover:shadow-md transition select-none ${
+        disabled ? "cursor-not-allowed opacity-70" : "cursor-grab active:cursor-grabbing"
       }`}
     >
       {label}
@@ -190,12 +195,25 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
     });
   };
 
+  const pointerSensor = useSensor(PointerSensor, {
+    activationConstraint: {
+      distance: 4,
+    },
+  });
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: {
+      delay: 150,
+      tolerance: 5,
+    },
+  });
+  const sensors = useSensors(pointerSensor, touchSensor);
+
   const usedValues = Object.values(value);
 
   return (
     <div className="flex flex-col gap-6">
-      <DndContext onDragEnd={handleDragEnd}>
-        <div className="grid md:grid-cols-2 gap-6">
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-bold text-slate-500 uppercase">
               Match
@@ -235,7 +253,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
 
             <div
               ref={setChoicesRef}
-              className={`space-y-3 p-4 rounded-3xl border border-slate-200 bg-slate-50 min-h-[220px] transition ${
+              className={`space-y-3 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-200 bg-slate-50 min-h-[160px] sm:min-h-[220px] transition ${
                 isOverChoices ? "ring-2 ring-emerald-500/60" : ""
               }`}
             >

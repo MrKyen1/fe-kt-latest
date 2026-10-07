@@ -17,6 +17,7 @@ import {
   Statistic,
   Tooltip,
   message,
+  Pagination,
 } from "antd";
 import {
   TrophyOutlined,
@@ -30,6 +31,7 @@ import { Trophy, Medal } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import { leaderboardService } from "../../services/leaderboardService";
 import { useAuth } from "../../contexts/AuthContext";
+import { useResponsive } from "../../hooks/useResponsive";
 import type {
   LeaderboardData,
   LeaderboardEntry,
@@ -199,6 +201,7 @@ export default function Leaderboard() {
   const [specializationId, setSpecializationId] = useState<string | undefined>(undefined);
   const location = useLocation();
   const navigate = useNavigate();
+  const { isMobile } = useResponsive();
 
   const rolePrefix = useMemo(() => {
     if ((user as any)?.role === "student") return "student";
@@ -651,30 +654,86 @@ export default function Leaderboard() {
         </Card>
       )}
 
-      {/* Table */}
+      {/* Table / Mobile List */}
       {(loading || (leaderboard?.entries?.length ?? 0) > 0) && (
         <Card className="rounded-2xl border border-slate-100 shadow-sm mt-3" bodyStyle={{ padding: "0" }}>
-          <Table<LeaderboardEntry>
-            loading={loading}
-            dataSource={leaderboard?.entries ?? []}
-            columns={columns}
-            rowKey="studentId"
-            pagination={{
-              current: page,
-              pageSize: PAGE_SIZE,
-              total,
-              onChange: (p) => setPage(p),
-              showTotal: (t) => `${t} học sinh`,
-              size: "small",
-              showSizeChanger: false,
-            }}
-            rowClassName={(record) =>
-              record.isMe
-                ? "bg-indigo-50 hover:bg-indigo-100 font-medium"
-                : "hover:bg-slate-50"
-            }
-            size="middle"
-          />
+          {isMobile ? (
+            <div className="divide-y divide-slate-100 p-2">
+              {(leaderboard?.entries ?? []).map((record) => (
+                <div
+                  key={record.studentId}
+                  className={`flex items-center justify-between p-3 rounded-xl transition ${
+                    record.isMe ? "bg-indigo-50/80 font-medium" : "hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="shrink-0">{rankBadge(record.rank)}</div>
+                    <Avatar
+                      icon={<UserOutlined />}
+                      size={36}
+                      className="shrink-0 text-white"
+                      style={{ background: record.isMe ? "#6366f1" : "#94a3b8" }}
+                    />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-800 text-sm truncate max-w-[130px] sm:max-w-[200px] flex items-center gap-1">
+                        <span>{record.student.fullName}</span>
+                        {record.isMe && (
+                          <Tag color="indigo" className="text-[10px] px-1 py-0 rounded-md font-bold m-0 shrink-0">
+                            Bạn
+                          </Tag>
+                        )}
+                      </div>
+                      <div className="text-slate-400 text-xs truncate">
+                        {record.examsCounted} bài • {record.student.code}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className="font-bold text-base" style={{ color: METRIC_LABELS[metric].color }}>
+                      {metricValue(record, metric)}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {metricLabel(metric)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="p-3 flex justify-center">
+                <Pagination
+                  current={page}
+                  pageSize={PAGE_SIZE}
+                  total={total}
+                  onChange={(p) => setPage(p)}
+                  size="small"
+                  showSizeChanger={false}
+                />
+              </div>
+            </div>
+          ) : (
+            <Table<LeaderboardEntry>
+              loading={loading}
+              dataSource={leaderboard?.entries ?? []}
+              columns={columns}
+              rowKey="studentId"
+              scroll={{ x: 650 }}
+              pagination={{
+                current: page,
+                pageSize: PAGE_SIZE,
+                total,
+                onChange: (p) => setPage(p),
+                showTotal: (t) => `${t} học sinh`,
+                size: "small",
+                showSizeChanger: false,
+              }}
+              rowClassName={(record) =>
+                record.isMe
+                  ? "bg-indigo-50 hover:bg-indigo-100 font-medium"
+                  : "hover:bg-slate-50"
+              }
+              size="middle"
+            />
+          )}
         </Card>
       )}
     </div>

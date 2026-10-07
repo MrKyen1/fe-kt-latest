@@ -5,7 +5,7 @@ import { ExamData } from "../../types";
 import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import logoImg from "../../assets/logo/logo.png";
 import { motion, AnimatePresence } from "framer-motion";
-import { Modal } from "antd";
+import { Modal, Drawer, Button } from "antd";
 import { Trophy } from "lucide-react";
 import { studentLearningService } from "../../services/studentLearningService";
 import { parseBackendAnswer } from "./ExamDetail";
@@ -228,12 +228,138 @@ const checkIsCorrect = (question: any, answer: AnswerValue | undefined): boolean
   }
 };
 
+interface QuestionNavigatorProps {
+  isInitialExam: boolean;
+  isReviewMode: boolean;
+  currentMasteredCount: number;
+  currentIndex: number;
+  totalQuestions: number;
+  examData: ExamData;
+  progressPercent: number;
+  activeQuestions: any[];
+  userAnswers: Record<string, AnswerValue>;
+  getQuestionStatus: (q: any) => string;
+  onSelectQuestion: (idx: number) => void;
+}
+
+const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
+  isInitialExam,
+  isReviewMode,
+  currentMasteredCount,
+  currentIndex,
+  totalQuestions,
+  examData,
+  progressPercent,
+  activeQuestions,
+  userAnswers,
+  getQuestionStatus,
+  onSelectQuestion,
+}) => {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="p-4 sm:p-5 flex-1 overflow-y-auto">
+        <div className="mb-5 sm:mb-6">
+          <div className="flex justify-between items-end mb-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              {!isInitialExam && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
+            </span>
+            <span className="text-sm font-bold text-emerald-600">
+              {!isInitialExam && !isReviewMode
+                ? `${currentMasteredCount}/${examData.questions.length}`
+                : `${currentIndex + 1}/${totalQuestions}`}
+            </span>
+          </div>
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div
+              className="bg-emerald-500 h-full transition-all duration-500"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="mb-3 sm:mb-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+          {!isInitialExam && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
+        </div>
+        <div className="grid grid-cols-5 gap-2">
+          {activeQuestions.map((q, idx) => {
+            const originalIdx = examData.questions.findIndex((item) => item.id === q.id);
+            const questionNumber = originalIdx >= 0 ? originalIdx + 1 : idx + 1;
+            const isCurrent = idx === currentIndex;
+            const isSelected =
+              !!userAnswers[q.id] &&
+              (!Array.isArray(userAnswers[q.id]) ||
+                (userAnswers[q.id] as string[]).length > 0);
+            const questionStatus = getQuestionStatus(q);
+
+            let itemClass =
+              "w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg text-[13px] font-semibold border transition-all cursor-pointer select-none";
+            if (isCurrent) {
+              if (questionStatus === "correct") {
+                itemClass += " bg-emerald-500 text-white border-emerald-500";
+              } else if (questionStatus === "wrong") {
+                itemClass += " bg-rose-500 text-white border-rose-500";
+              } else if (isSelected) {
+                itemClass += " bg-blue-700 text-white border-blue-200";
+              } else {
+                itemClass += " border-2 border-blue-600 text-blue-600";
+              }
+            } else {
+              if (questionStatus === "correct") {
+                itemClass += " bg-emerald-500 text-white border-emerald-500";
+              } else if (questionStatus === "wrong") {
+                itemClass += " bg-rose-500 text-white border-rose-500";
+              } else if (isSelected) {
+                itemClass += " bg-blue-700 text-white border-blue-200";
+              } else {
+                itemClass += " border-slate-200 text-slate-600 hover:bg-slate-50";
+              }
+            }
+            return (
+              <div
+                key={q.id}
+                className={itemClass}
+                onClick={() => onSelectQuestion(idx)}
+              >
+                {questionNumber}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 shrink-0">
+        <div className="text-[10px] text-slate-400 italic mb-2 text-center underline uppercase">
+          Chú thích:
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-[10px]">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-200 border border-gray-300" />
+            Chưa chọn
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-blue-500" />
+            Đã chọn
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500" />
+            Đúng
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-rose-500" />
+            Sai
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ExamContainer: React.FC<ExamContainerProps> = ({
   examData,
 }) => {
   const navigate = useNavigate();
   const { courseId } = useParams();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   type AnswerValue = string | string[] | Record<string, string>;
 
   const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
@@ -1389,43 +1515,45 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   return (
     <div className="text-slate-800 flex flex-col h-screen overflow-hidden font-sans bg-slate-50 transition-colors">
-      <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
-        <div className="flex items-center gap-3">
+      <header className="h-14 sm:h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={handleBackClick}
-            className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+            className="p-1.5 sm:p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0"
             title="Quay lại"
           >
-            <ArrowLeftOutlined className="text-lg" />
+            <ArrowLeftOutlined className="text-base sm:text-lg" />
           </button>
           <img
             src={logoImg}
             alt="Logo"
-            className="h-14 object-contain"
+            className="h-9 sm:h-12 md:h-14 object-contain shrink-0"
           />
-          <h1 className="font-bold text-xl">{examData.title}</h1>
+          <h1 className="font-bold text-sm sm:text-base md:text-xl truncate max-w-[150px] sm:max-w-xs md:max-w-md">
+            {examData.title}
+          </h1>
         </div>
-        <div className="flex items-center gap-4 md:gap-8">
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-8 shrink-0">
           {isReviewMode ? (
-            <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
-              <span className="text-sm font-bold text-emerald-700">
+            <div className="flex items-center gap-2 bg-emerald-50 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-emerald-200">
+              <span className="text-xs sm:text-sm font-bold text-emerald-700">
                 {isExamType
-                  ? `Điểm: ${currentScoreDisplay.primaryText} / 10 đ (Đúng ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu)`
-                  : `Ôn tập: Đúng ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu (${formatPercentage(submitResult?.percentage ?? examData.percentage)}%)`}
+                  ? `Điểm: ${currentScoreDisplay.primaryText} / 10 đ`
+                  : `Ôn tập: ${formatScore(submitResult?.score ?? examData.score)}/${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)}`}
               </span>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-full border border-slate-200">
-                <ClockCircleOutlined className="text-emerald-600" />
-                <span className="font-mono font-bold text-emerald-700">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-slate-200">
+                <ClockCircleOutlined className="text-emerald-600 text-xs sm:text-base" />
+                <span className="font-mono font-bold text-emerald-700 text-xs sm:text-sm">
                   {formatTime(timeRemaining)}
                 </span>
               </div>
               <button
                 onClick={handleFinish}
                 disabled={isSubmitting}
-                className="px-4 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-xs font-semibold hover:bg-rose-100 transition-colors"
+                className="px-2.5 sm:px-4 py-1 sm:py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[11px] sm:text-xs font-semibold hover:bg-rose-100 transition-colors"
               >
                 {isSubmitting ? "ĐANG NỘP..." : "NỘP BÀI"}
               </button>
@@ -1434,120 +1562,81 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         </div>
       </header>
 
+      {/* ── Slim top bar cho Mobile / Tablet (< lg) ── */}
+      <div className="lg:hidden bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[140px]">
+            <div
+              className="bg-emerald-500 h-full transition-all duration-300"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <span className="text-xs font-bold text-slate-600 shrink-0">
+            {!isInitialExam && !isReviewMode
+              ? `${currentMasteredCount}/${examData.questions.length}`
+              : `${currentIndex + 1}/${totalQuestions}`}
+          </span>
+        </div>
+        <Button
+          size="small"
+          onClick={() => setNavDrawerOpen(true)}
+          className="text-xs font-medium text-slate-700 rounded-lg flex items-center gap-1.5"
+        >
+          <span>Danh sách câu</span>
+          <span className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[11px] font-bold">
+            {currentIndex + 1}/{totalQuestions}
+          </span>
+        </Button>
+      </div>
+
+      {/* ── Drawer danh sách câu hỏi cho Mobile / Tablet (< lg) ── */}
+      <Drawer
+        title="Danh sách câu hỏi"
+        placement="bottom"
+        height="72vh"
+        open={navDrawerOpen}
+        onClose={() => setNavDrawerOpen(false)}
+        styles={{ body: { padding: 0 } }}
+      >
+        <QuestionNavigator
+          isInitialExam={isInitialExam}
+          isReviewMode={isReviewMode}
+          currentMasteredCount={currentMasteredCount}
+          currentIndex={currentIndex}
+          totalQuestions={totalQuestions}
+          examData={examData}
+          progressPercent={progressPercent}
+          activeQuestions={activeQuestions}
+          userAnswers={userAnswers}
+          getQuestionStatus={getQuestionStatus}
+          onSelectQuestion={(idx) => {
+            handleSelectQuestion(idx);
+            setNavDrawerOpen(false);
+          }}
+        />
+      </Drawer>
+
       <main className="flex-1 flex overflow-hidden">
-        <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 transition-colors">
-          <div className="p-5 flex-1 overflow-y-auto">
-            <div className="mb-6">
-              <div className="flex justify-between items-end mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  {!isInitialExam && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
-                </span>
-                <span className="text-sm font-bold text-emerald-600">
-                  {!isInitialExam && !isReviewMode
-                    ? `${currentMasteredCount}/${examData.questions.length}`
-                    : `${currentIndex + 1}/${totalQuestions}`}
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-emerald-500 h-full transition-all duration-500"
-                  style={{ width: `${progressPercent}%` }}
-                ></div>
-              </div>
-            </div>
-
-            <div className="mb-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
-              {!isInitialExam && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
-            </div>
-            <div className="grid grid-cols-5 gap-2">
-              {activeQuestions.map((q, idx) => {
-                const originalIdx = examData.questions.findIndex((item) => item.id === q.id);
-                const questionNumber = originalIdx >= 0 ? originalIdx + 1 : idx + 1;
-                const isCurrent = idx === currentIndex;
-                const isSelected =
-                  !!userAnswers[q.id] &&
-                  (!Array.isArray(userAnswers[q.id]) ||
-                    (userAnswers[q.id] as string[]).length > 0);
-                const questionStatus = getQuestionStatus(q);
-
-                let itemClass =
-                  "w-9 h-9 flex items-center justify-center rounded-lg text-[13px] font-semibold border transition-all cursor-pointer";
-                // =======================
-                // CÂU HIỆN TẠI
-                // =======================
-                if (isCurrent) {
-                  if (questionStatus === "correct") {
-                    itemClass +=
-                      " bg-emerald-500 text-white border-emerald-500";
-                  } else if (questionStatus === "wrong") {
-                    itemClass +=
-                      " bg-rose-500 text-white border-rose-500";
-                  } else if (isSelected) {
-                    itemClass +=
-                      " bg-blue-700 text-white border-blue-200";
-                  } else {
-                    itemClass +=
-                      " border-2 border-blue-600 text-blue-600";
-                  }
-                }
-                // =======================
-                // KHÔNG PHẢI CÂU HIỆN TẠI
-                // =======================
-                else {
-                  if (questionStatus === "correct") {
-                    itemClass +=
-                      " bg-emerald-500 text-white border-emerald-500";
-                  } else if (questionStatus === "wrong") {
-                    itemClass +=
-                      " bg-rose-500 text-white border-rose-500";
-                  } else if (isSelected) {
-                    itemClass +=
-                      " bg-blue-700 text-white border-blue-200";
-                  } else {
-                    itemClass +=
-                      " border-slate-200 text-slate-600 hover:bg-slate-50";
-                  }
-                }
-                return (
-                  <div
-                    key={q.id}
-                    className={itemClass}
-                    onClick={() => handleSelectQuestion(idx)}
-                  >
-                    {questionNumber}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="p-4 border-t border-slate-200 bg-slate-50">
-            <div className="text-[10px] text-slate-400 italic mb-2 text-center underline uppercase">
-              Chú thích:
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-[10px]">
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="w-3 h-3 rounded-full bg-slate-200 border border-gray-300" />
-                Chưa chọn
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="w-3 h-3 rounded-full bg-blue-500" />
-                Đã chọn
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                Đúng
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="w-3 h-3 rounded-full bg-rose-500" />
-                Sai
-              </div>
-            </div>
-          </div>
+        {/* ── Aside Desktop (≥ lg) ── */}
+        <aside className="hidden lg:flex w-72 bg-white border-r border-slate-200 flex-col shrink-0 transition-colors">
+          <QuestionNavigator
+            isInitialExam={isInitialExam}
+            isReviewMode={isReviewMode}
+            currentMasteredCount={currentMasteredCount}
+            currentIndex={currentIndex}
+            totalQuestions={totalQuestions}
+            examData={examData}
+            progressPercent={progressPercent}
+            activeQuestions={activeQuestions}
+            userAnswers={userAnswers}
+            getQuestionStatus={getQuestionStatus}
+            onSelectQuestion={handleSelectQuestion}
+          />
         </aside>
 
-        <section className="flex-1 bg-slate-50 p-6 md:p-8 pt-10 flex flex-col items-center justify-center overflow-hidden relative transition-colors">
+        <section className="flex-1 bg-slate-50 p-2 sm:p-4 lg:p-8 pt-4 sm:pt-6 lg:pt-10 flex flex-col items-center overflow-y-auto lg:overflow-hidden relative transition-colors">
           <div
-            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 relative flex flex-col transition-all duration-500`}
+            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} min-h-[460px] lg:h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 relative flex flex-col transition-all duration-500`}
           >
             <div className="absolute -top-3.5 left-6 bg-emerald-600 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider z-20 shadow-md">
               CÂU HỎI {currentIndex + 1}
