@@ -78,6 +78,14 @@ export const learningCmsService = {
   tags: paginatedCrud<LearningTaxonomy>("/learning/tags"),
 
   mediaAssets: {
+    async uploadAvatar(file: File): Promise<MediaAsset> {
+      const formData = new FormData();
+      formData.append("file", file);
+      return unwrapData(await apiClient.post<ApiEnvelope<MediaAsset>>(
+        "/learning/media-assets/avatar", formData,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      ));
+    },
     async create(payload: Partial<MediaAsset>): Promise<MediaAsset> {
       return unwrapData(
         await apiClient.post<ApiEnvelope<MediaAsset>>("/learning/media-assets", payload),

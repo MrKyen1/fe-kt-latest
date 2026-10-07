@@ -53,7 +53,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [regradeModalOpen, setRegradeModalOpen] = React.useState(false);
   const [regradeLoading, setRegradeLoading] = React.useState(false);
   const [regradeForm] = Form.useForm();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasRole } = useAuth();
 
   React.useEffect(() => {
     if (regradeModalOpen) {
@@ -1123,7 +1123,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const renderFeedbackBox = () => {
     if (!showFeedback) return null;
-    const hasManagePerm = hasPermission(["learning.manage", "learning.write"], { mode: "any" });
+    const hasManagePerm = hasRole("admin") && hasPermission("learning.manage");
     const correctAnsText = formatCorrectAnswer(question.correctAnswer);
     const normalizedExplanation = normalizeLineBreaks(question.explanation || "");
     const hasExplanation = Boolean(normalizedExplanation && normalizedExplanation.trim());

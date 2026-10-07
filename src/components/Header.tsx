@@ -153,7 +153,7 @@ function NotificationPopoverContent({
 const Header = memo(function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isLoggedIn, logout, hasRole } = useAuth();
+  const { user, isLoggedIn, logout, hasRole, hasPermission } = useAuth();
   const isStudent = hasRole("student");
   const [current, setCurrent] = useState(location.pathname);
 
@@ -168,7 +168,7 @@ const Header = memo(function Header() {
   }, [location]);
 
   useEffect(() => {
-    if (!isLoggedIn || !isStudent) {
+    if (!isLoggedIn || !isStudent || !hasPermission("learning.attempt")) {
       setNotifications([]);
       return;
     }
@@ -289,7 +289,7 @@ const Header = memo(function Header() {
     return () => {
       isMounted = false;
     };
-  }, [isLoggedIn, isStudent, location.pathname, user?.id]);
+  }, [isLoggedIn, hasPermission, isStudent, location.pathname, user?.id]);
 
   const activeMenuKey = useMemo(() => {
     if (location.pathname === "/courses") {

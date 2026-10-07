@@ -52,66 +52,10 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ============================================================================
-// HARDCODED RBAC PERMISSIONS MATRIX
-// Phân quyền cố định (hardcoded) cho từng vai trò người dùng trong hệ thống
-// ============================================================================
-export const HARDCODED_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: [
-    "*",
-    "users.read", "users.write", "users.delete", "users.manage",
-    "classes.read", "classes.write", "classes.delete", "classes.manage",
-    "centers.read", "centers.write", "centers.delete", "centers.manage",
-    "specializations.read", "specializations.write", "specializations.delete", "specializations.manage",
-    "learning.read", "learning.write", "learning.delete", "learning.publish", "learning.assign", "learning.attempt", "learning.manage", "learning.media.upload",
-    "rbac.manage"
-  ],
-  teacher: [
-    "classes.read",
-    "centers.read",
-    "specializations.read",
-    "learning.read",
-    "learning.write",
-    "learning.delete",
-    "learning.assign",
-    "learning.publish",
-    "learning.media.upload",
-    "users.read",
-    "users.write",
-    "users.delete"
-  ],
-  student: [
-    "learning.read",
-    "learning.attempt"
-  ]
-};
-
-function checkSinglePermission(userPermissions: string[], userRole: string, requiredPerm: string): boolean {
-  if (userRole === "admin") return true;
-
-  const rolePerms = HARDCODED_ROLE_PERMISSIONS[userRole] || [];
-  const allPerms = Array.from(new Set([...userPermissions, ...rolePerms]));
-
-  if (allPerms.includes("*") || allPerms.includes(requiredPerm)) return true;
-
-  // Hierarchical super-permissions (matching Backend PermissionsGuard)
-  if (requiredPerm.startsWith("learning.") && (allPerms.includes("learning.manage") || (requiredPerm === "learning.read" && allPerms.includes("learning.write")))) {
-    return true;
-  }
-  if (
-    (requiredPerm === "classes.read" || requiredPerm === "centers.read" || requiredPerm === "specializations.read") &&
-    allPerms.includes("classes.manage")
-  ) {
-    return true;
-  }
-  if (requiredPerm === "users.read" && allPerms.includes("users.manage")) {
-    return true;
-  }
-  if (requiredPerm.startsWith("rbac.") && allPerms.includes("rbac.manage")) {
-    return true;
-  }
-
-  return false;
+function checkSinglePermission(userPermissions: string[], requiredPerm: string): boolean {
+  if (userPermissions.includes(requiredPerm)) return true;
+  if (requiredPerm.startsWith("learning.") && userPermissions.includes("learning.manage")) return true;
+  return requiredPerm.startsWith("students.") && userPermissions.includes("users.manage");
 }
 
 function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>>): User {
@@ -131,8 +75,7 @@ function mapStoredUser(user: NonNullable<ReturnType<typeof tokenStorage.getUser>
 
   const roleCode = typeof mapped.role === "object" ? (mapped.role as any)?.code : mapped.role;
   const dynamicPermissions = (mapped.role as any)?.permissions ?? (mapped as any).permissions ?? [];
-  const hardcodedPermissions = HARDCODED_ROLE_PERMISSIONS[roleCode] || [];
-  const permissions = Array.from(new Set([...dynamicPermissions, ...hardcodedPermissions]));
+  const permissions = Array.from(new Set<string>(dynamicPermissions));
 
   return {
     id: mapped.id,
@@ -160,8 +103,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchAndMergeDetails = useCallback(async (currentUser: User) => {
     const canFetchUserDetail =
-      currentUser.role === "admin" ||
-      currentUser.permissions?.includes("users.manage") ||
       currentUser.permissions?.includes("users.read");
 
     if (canFetchUserDetail) {
@@ -295,11 +236,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const mode = options?.mode || "all";
     if (mode === "any") {
       return permissionList.some((permission) =>
-        checkSinglePermission(user.permissions, user.role, permission)
+        checkSinglePermission(user.permissions, permission)
       );
     }
     return permissionList.every((permission) =>
-      checkSinglePermission(user.permissions, user.role, permission)
+      checkSinglePermission(user.permissions, permission)
     );
   }, [user]);
 

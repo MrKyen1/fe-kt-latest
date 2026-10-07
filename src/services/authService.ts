@@ -113,6 +113,12 @@ export const authService = {
     return unwrapData(await apiClient.patch("/auth/change-password", payload));
   },
 
+  async resetStudentPassword(payload: ResetPasswordRequest) {
+    return unwrapData(await apiClient.post<import("../types/api").ApiEnvelope<ResetPasswordResponse>>(
+      "/auth/reset-student-password", payload,
+    ));
+  },
+
   async resetPassword(payload: ResetPasswordRequest) {
     return unwrapData(
       await apiClient.post<import("../types/api").ApiEnvelope<ResetPasswordResponse>>(

@@ -299,7 +299,7 @@ function CurriculumAnalyticsModal({
 
 // ==================== MAIN COMPONENT ====================
 export default function TeacherAssignments() {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, hasPermission } = useAuth();
   const userRoleCode = typeof user?.role === "object" ? (user?.role as any)?.code : user?.role;
   const isTeacher = userRoleCode === "teacher";
   const [activeTab, setActiveTab] = useState("exam");
@@ -432,14 +432,14 @@ export default function TeacherAssignments() {
         centersRes,
         specializationsRes,
       ] = await Promise.allSettled([
-        learningCmsService.exams.list({ status: "published", limit: 100 }),
-        learningCmsService.curriculums.list({ status: "published", limit: 100 }),
-        academicService.classes.list({ limit: 100, isActive: true }),
-        userService.list({ roleCode: "student" }),
+        hasPermission("learning.read") ? learningCmsService.exams.list({ status: "published", limit: 100 }) : Promise.resolve({ data: [] }),
+        hasPermission("learning.read") ? learningCmsService.curriculums.list({ status: "published", limit: 100 }) : Promise.resolve({ data: [] }),
+        hasPermission("classes.read") ? academicService.classes.list({ limit: 100, isActive: true }) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "student" }) : Promise.resolve([]),
         teacherLearningService.examAssignments.list({ limit: 100 }),
         teacherLearningService.curriculumAssignments.list({ limit: 100 }),
-        academicService.centers.list({ limit: 100 }),
-        academicService.specializations.list({ limit: 100 }),
+        hasPermission("centers.read") ? academicService.centers.list({ limit: 100 }) : Promise.resolve([]),
+        hasPermission("specializations.read") ? academicService.specializations.list({ limit: 100 }) : Promise.resolve([]),
       ]);
 
       setExams(examsRes.status === "fulfilled" ? examsRes.value?.data ?? [] : []);

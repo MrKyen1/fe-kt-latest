@@ -1,3 +1,4 @@
+import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState } from "react";
 import { Form, Input, Modal, Select, Upload, Button, message, Spin } from "antd";
 import type { FormInstance } from "antd";
@@ -25,10 +26,13 @@ interface Props {
  * Create / Edit Curriculum modal with cover image upload support (Backend ## 2026-09-16).
  */
 export default function CurriculumFormModal({ open, onCancel, form, onFinish, isEditing, levels }: Props) {
+  const { hasPermission } = useAuth();
+  const canUpload = hasPermission("learning.media.upload");
   const [isUploading, setIsUploading] = useState(false);
   const imageUrl = Form.useWatch("image", form);
 
   const handleUploadImage = async (file: File) => {
+    if (!canUpload) return;
     try {
       setIsUploading(true);
       const media = await learningCmsService.mediaAssets.upload(file, `Cover: ${form.getFieldValue("title") || "Curriculum"}`);
@@ -100,6 +104,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                 />
                 <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
                   <Upload
+                    disabled={!canUpload}
                     beforeUpload={(file) => {
                       handleUploadImage(file);
                       return false;
@@ -109,6 +114,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                   >
                     <Button
                       size="small"
+                      disabled={!canUpload}
                       icon={<UploadOutlined />}
                       className="bg-white/90 backdrop-blur shadow-sm rounded-lg hover:bg-white text-xs"
                       loading={isUploading}
@@ -143,6 +149,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                     <div className="text-xs text-slate-400 max-w-xs">Định dạng PNG, JPG, WEBP. Ảnh hiển thị ở tỉ lệ khung chữ nhật đẹp mắt.</div>
                     <div className="mt-2">
                       <Upload
+                    disabled={!canUpload}
                         beforeUpload={(file) => {
                           handleUploadImage(file);
                           return false;
@@ -152,7 +159,8 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                       >
                         <Button
                           type="dashed"
-                          icon={<UploadOutlined />}
+                          disabled={!canUpload}
+                      icon={<UploadOutlined />}
                           className="rounded-xl border-purple-300 text-purple-600 hover:border-purple-500"
                         >
                           Chọn tệp ảnh

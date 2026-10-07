@@ -52,7 +52,6 @@ import {
 } from "@ant-design/icons";
 
 import { userService } from "../../../services/userService";
-import { rbacService } from "../../../services/rbacService";
 import { authService } from "../../../services/authService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { academicService } from "../../../services/academicService";
@@ -122,7 +121,7 @@ interface StudentFormValues {
 
 export default function CenterManagement() {
   const { isMobile } = useResponsive();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const isTeacher = user?.role === "teacher";
   const basePath = isTeacher ? "/teacher/centers" : "/admin/dashboard/centers";
 
@@ -139,6 +138,7 @@ export default function CenterManagement() {
   const [students, setStudents] = useState<any[]>([]);
   const [admins, setAdmins] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
+  const [studentRoleId, setStudentRoleId] = useState("");
   const [specializations, setSpecializations] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
   const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
@@ -294,22 +294,24 @@ export default function CenterManagement() {
         activeAdmins,
         inactiveAdmins,
         rolesData,
+        studentRoleData,
         specializationsData,
         curriculumsData,
         classCurriculumsData,
       ] = await Promise.all([
-        academicService.centers.list().catch(() => []),
-        academicService.classes.list().catch(() => []),
-        userService.list({ roleCode: "teacher", isActive: true }).catch(() => []),
-        userService.list({ roleCode: "teacher", isActive: false }).catch(() => []),
-        userService.list({ roleCode: "student", isActive: true }).catch(() => []),
-        userService.list({ roleCode: "student", isActive: false }).catch(() => []),
-        isTeacher ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: true }).catch(() => []),
-        isTeacher ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: false }).catch(() => []),
-        isTeacher ? Promise.resolve([]) : rbacService.roles.list().catch(() => []),
-        academicService.specializations.list().catch(() => []),
-        learningCmsService.curriculums.list({ status: "published", limit: 100 }).catch(() => null),
-        teacherLearningService.classCurriculums.list({ limit: 100 }).catch(() => null),
+        hasPermission("centers.read") ? academicService.centers.list().catch(() => []) : Promise.resolve([]),
+        hasPermission("classes.read") ? academicService.classes.list().catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "teacher", isActive: true }).catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "teacher", isActive: false }).catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "student", isActive: true }).catch(() => []) : Promise.resolve([]),
+        hasPermission("users.read") ? userService.list({ roleCode: "student", isActive: false }).catch(() => []) : Promise.resolve([]),
+        isTeacher || !hasPermission("users.read") ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: true }).catch(() => []),
+        isTeacher || !hasPermission("users.read") ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: false }).catch(() => []),
+        isTeacher || !hasPermission("users.manage") ? Promise.resolve([]) : userService.provisioningRoles().catch(() => []),
+        hasPermission("students.manage") ? userService.studentRole().catch(() => null) : Promise.resolve(null),
+        hasPermission("specializations.read") ? academicService.specializations.list().catch(() => []) : Promise.resolve([]),
+        hasPermission("learning.read") ? learningCmsService.curriculums.list({ status: "published", limit: 100 }).catch(() => null) : Promise.resolve(null),
+        hasPermission("learning.assign") ? teacherLearningService.classCurriculums.list({ limit: 100 }).catch(() => null) : Promise.resolve(null),
       ]);
 
       setCenters(centersData || []);
@@ -374,6 +376,7 @@ export default function CenterManagement() {
       setAdmins(uniqueAdmins);
 
       setRoles(rolesData || []);
+      setStudentRoleId(studentRoleData?.id || "");
       setSpecializations(specializationsData || []);
 
       // Autoselect the first center on load if not selected already
@@ -405,11 +408,7 @@ export default function CenterManagement() {
 
   const getTeacherRoleId = () => roles.find((r) => r.code?.toLowerCase() === "teacher")?.id || "";
   const getStudentRoleId = () =>
-    roles.find((r) => r.code?.toLowerCase() === "student")?.id ||
-    students.find((s) => s.role?.code?.toLowerCase() === "student")?.roleId ||
-    students.find((s) => s.role?.code?.toLowerCase() === "student")?.role?.id ||
-    students.find((s) => s.roleId)?.roleId ||
-    "";
+    studentRoleId || roles.find((r) => r.code?.toLowerCase() === "student")?.id || "";
   const getAdminRoleId = () => roles.find((r) => r.code?.toLowerCase() === "admin")?.id || "";
 
   const isUserActive = (record: any) => {
@@ -456,6 +455,7 @@ export default function CenterManagement() {
   };
 
   const handleCenterCreate = () => {
+    if (!hasPermission("classes.manage")) return;
     setEditingCenter(null);
     setSubImagesFileList([]);
     centerForm.resetFields();
@@ -463,6 +463,7 @@ export default function CenterManagement() {
   };
 
   const handleCenterEdit = (record: any, e: React.MouseEvent) => {
+    if (!hasPermission("classes.manage")) return;
     e.stopPropagation(); // Avoid triggering selectedCenterId change
     setEditingCenter(record);
 
@@ -495,6 +496,7 @@ export default function CenterManagement() {
   };
 
   const handleCenterDelete = (record: any, e: React.MouseEvent) => {
+    if (!hasPermission("classes.manage")) return;
     e.stopPropagation();
     Modal.confirm({
       title: "Xóa trung tâm",
@@ -616,6 +618,7 @@ export default function CenterManagement() {
 
   // ================= CLASS CRUD HANDLERS =================
   const handleClassCreate = () => {
+    if (!hasPermission("classes.manage")) return;
     setEditingClass(null);
     classForm.resetFields();
     if (selectedCenterId) {
@@ -625,6 +628,7 @@ export default function CenterManagement() {
   };
 
   const handleClassEdit = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     setEditingClass(record);
     const mapped = classCurriculums.filter((cc) => cc.classId === record.id);
     classForm.setFieldsValue({
@@ -638,6 +642,7 @@ export default function CenterManagement() {
   };
 
   const handleClassDelete = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     Modal.confirm({
       title: "Xóa lớp học",
       content: `Bạn có chắc muốn xóa lớp học ${record.name}?`,
@@ -657,6 +662,7 @@ export default function CenterManagement() {
   };
 
   const syncClassCurriculums = async (classId: string, targetCurriculumIds: string[]) => {
+    if (!hasPermission("learning.assign")) return;
     const currentMappings = classCurriculums.filter((cc) => cc.classId === classId);
     const currentIds = currentMappings.map((m) => m.curriculumId);
     const nextIds = targetCurriculumIds || [];
@@ -761,6 +767,7 @@ export default function CenterManagement() {
 
   // ================= TEACHER HANDLERS =================
   const handleTeacherCreate = () => {
+    if (!hasPermission("users.manage")) return;
     setEditingTeacher(null);
     const initialCenterIds = selectedCenterId ? [selectedCenterId] : [];
     setSelectedTeacherCenterIds(initialCenterIds);
@@ -774,6 +781,7 @@ export default function CenterManagement() {
   };
 
   const handleTeacherEdit = (record: any) => {
+    if (!hasPermission("users.manage")) return;
     setEditingTeacher(record);
     const profile = record.teacherProfile || {};
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
@@ -834,6 +842,7 @@ export default function CenterManagement() {
   };
 
   const handleTeacherDelete = (record: any) => {
+    if (!hasPermission("users.manage")) return;
     Modal.confirm({
       title: "Xóa giáo viên",
       content: `Bạn có chắc chắn muốn xóa giáo viên ${record.fullName}?`,
@@ -980,6 +989,7 @@ export default function CenterManagement() {
 
   // ================= STUDENT HANDLERS =================
   const handleStudentCreate = () => {
+    if (!hasPermission("students.manage")) return;
     setEditingStudent(null);
     setSelectedModalCenterId(selectedCenterId || undefined);
     studentForm.resetFields();
@@ -991,6 +1001,7 @@ export default function CenterManagement() {
   };
 
   const handleStudentEdit = (record: any) => {
+    if (!hasPermission("students.manage")) return;
     setEditingStudent(record);
     const profile = record.studentProfile || {};
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
@@ -1019,6 +1030,7 @@ export default function CenterManagement() {
   };
 
   const handleStudentDelete = (record: any) => {
+    if (!hasPermission("students.manage")) return;
     Modal.confirm({
       title: "Xóa học sinh",
       content: `Bạn có chắc chắn muốn xóa học sinh ${record.fullName}?`,
@@ -1082,7 +1094,7 @@ export default function CenterManagement() {
           startDate: formattedStartDate!,
           address: cleanAddress,
           citizenId: citizenIdVal,
-          roleId: getStudentRoleId(),
+          roleId: getStudentRoleId() || (await userService.studentRole()).id,
           studentProfile: profileData,
         });
         message.success(`Tạo học sinh thành công! Mã: ${createdUser.code}`);
@@ -1103,6 +1115,7 @@ export default function CenterManagement() {
 
   // ================= ADMIN HANDLERS =================
   const handleAdminCreate = () => {
+    if (!hasPermission("users.manage")) return;
     setEditingAdmin(null);
     adminForm.resetFields();
     adminForm.setFieldsValue({
@@ -1112,6 +1125,7 @@ export default function CenterManagement() {
   };
 
   const handleAdminEdit = (record: any) => {
+    if (!hasPermission("users.manage")) return;
     setEditingAdmin(record);
     adminForm.setFieldsValue({
       code: record.code,
@@ -1128,6 +1142,7 @@ export default function CenterManagement() {
   };
 
   const handleAdminDelete = (record: any) => {
+    if (!hasPermission("users.manage")) return;
     Modal.confirm({
       title: "Xóa quản trị viên",
       content: `Bạn có chắc chắn muốn xóa quản trị viên ${record.fullName}?`,
@@ -1211,7 +1226,7 @@ export default function CenterManagement() {
   const handleConfirmResetPassword = async () => {
     if (!resetPasswordUser) return;
     try {
-      const result = await authService.resetPassword({
+      const result = await (isTeacher ? authService.resetStudentPassword : authService.resetPassword)({
         identifier: resetPasswordUser.code,
       });
       setResetPasswordResult(result.password);
@@ -1230,12 +1245,14 @@ export default function CenterManagement() {
 
   // ================= SPECIALIZATION CRUD HANDLERS =================
   const handleSpecializationCreate = () => {
+    if (!hasPermission("classes.manage")) return;
     setEditingSpecialization(null);
     specializationForm.resetFields();
     setSpecializationModalOpen(true);
   };
 
   const handleSpecializationEdit = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     setEditingSpecialization(record);
     specializationForm.setFieldsValue({
       code: record.code,
@@ -1246,6 +1263,7 @@ export default function CenterManagement() {
   };
 
   const handleSpecializationDelete = (record: any) => {
+    if (!hasPermission("classes.manage")) return;
     Modal.confirm({
       title: "Xóa chuyên môn",
       content: `Bạn có chắc muốn xóa chuyên môn ${record.name}?`,
@@ -1500,6 +1518,7 @@ export default function CenterManagement() {
             type="text"
             size="small"
             icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("users.manage")}
             onClick={() => handleTeacherEdit(record)}
           />
           {isUserActive(record) ? (
@@ -1507,6 +1526,7 @@ export default function CenterManagement() {
               type="text"
               size="small"
               icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              disabled={!hasPermission("users.manage")}
               onClick={() => handleResetPassword(record)}
             />
           ) : (
@@ -1663,6 +1683,7 @@ export default function CenterManagement() {
             type="text"
             size="small"
             icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("students.manage")}
             onClick={() => handleStudentEdit(record)}
           />
           {isUserActive(record) ? (
@@ -1670,6 +1691,7 @@ export default function CenterManagement() {
               type="text"
               size="small"
               icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              disabled={!hasPermission(isTeacher ? "students.reset-password" : "users.manage")}
               onClick={() => handleResetPassword(record)}
             />
           ) : (
@@ -1711,6 +1733,7 @@ export default function CenterManagement() {
             type="text"
             size="small"
             icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("classes.manage")}
             onClick={() => handleSpecializationEdit(record)}
           />
           <Button
@@ -1718,6 +1741,7 @@ export default function CenterManagement() {
             size="small"
             danger
             icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+            disabled={!hasPermission("classes.manage")}
             onClick={() => handleSpecializationDelete(record)}
           />
         </Space>
@@ -1938,6 +1962,7 @@ export default function CenterManagement() {
             type="text"
             size="small"
             icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
+            disabled={!hasPermission("users.manage")}
             onClick={() => handleAdminEdit(record)}
           />
           {isUserActive(record) ? (
@@ -1945,6 +1970,7 @@ export default function CenterManagement() {
               type="text"
               size="small"
               icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
+              disabled={!hasPermission(isTeacher ? "students.reset-password" : "users.manage")}
               onClick={() => handleResetPassword(record)}
             />
           ) : (
@@ -2015,6 +2041,7 @@ export default function CenterManagement() {
                         type="primary"
                         size="small"
                         icon={<PlusOutlined />}
+                        disabled={!hasPermission("classes.manage")}
                         onClick={handleCenterCreate}
                         className="bg-indigo-600 hover:bg-indigo-700 rounded-lg flex items-center justify-center font-medium"
                       >
@@ -2140,6 +2167,7 @@ export default function CenterManagement() {
                           <Space>
                             <Button
                               icon={<EditOutlined />}
+                              disabled={!hasPermission("classes.manage")}
                               onClick={(e) => handleCenterEdit(selectedCenter, e)}
                               className="rounded-xl border-slate-200 hover:text-indigo-600 hover:border-indigo-600"
                             >
@@ -2148,6 +2176,7 @@ export default function CenterManagement() {
                             <Button
                               danger
                               icon={<DeleteOutlined />}
+                              disabled={!hasPermission("classes.manage")}
                               onClick={(e) => handleCenterDelete(selectedCenter, e)}
                               className="rounded-xl"
                             >
@@ -2322,6 +2351,7 @@ export default function CenterManagement() {
                           <Button
                             type="dashed"
                             icon={<PlusOutlined />}
+                            disabled={!hasPermission("classes.manage")}
                             onClick={handleClassCreate}
                             className="hover:text-indigo-600 hover:border-indigo-600 rounded-xl font-semibold text-xs"
                           >
@@ -2355,6 +2385,7 @@ export default function CenterManagement() {
                                           type="text"
                                           size="small"
                                           icon={<EditOutlined className="text-slate-400 hover:text-indigo-600 text-xs" />}
+                                          disabled={!hasPermission("classes.manage")}
                                           onClick={() => handleClassEdit(cls)}
                                         />
                                         <Button
@@ -2362,6 +2393,7 @@ export default function CenterManagement() {
                                           size="small"
                                           danger
                                           icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600 text-xs" />}
+                                          disabled={!hasPermission("classes.manage")}
                                           onClick={() => handleClassDelete(cls)}
                                         />
                                       </div>
@@ -2503,6 +2535,7 @@ export default function CenterManagement() {
                                     <Button
                                       type="primary"
                                       icon={<PlusOutlined />}
+                                      disabled={!hasPermission("users.manage")}
                                       onClick={handleTeacherCreate}
                                       className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto self-start sm:self-end"
                                     >
@@ -2693,6 +2726,7 @@ export default function CenterManagement() {
                                   <Button
                                     type="primary"
                                     icon={<PlusOutlined />}
+                                    disabled={!hasPermission("students.manage")}
                                     onClick={handleStudentCreate}
                                     className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto self-start sm:self-end"
                                   >
@@ -2842,6 +2876,7 @@ export default function CenterManagement() {
                                     <Button
                                       type="primary"
                                       icon={<PlusOutlined />}
+                                      disabled={!hasPermission("classes.manage")}
                                       onClick={handleSpecializationCreate}
                                       className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto"
                                     >
@@ -2951,6 +2986,7 @@ export default function CenterManagement() {
                                         <Button
                                           type="primary"
                                           icon={<PlusOutlined />}
+                                          disabled={!hasPermission("users.manage")}
                                           onClick={handleAdminCreate}
                                           className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto"
                                         >
@@ -3210,6 +3246,7 @@ export default function CenterManagement() {
 
                 <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
                   <SafeSelect
+                    disabled={!hasPermission("learning.assign")}
                     mode="multiple"
                     placeholder="Chọn giáo trình gắn với lớp"
                     allowClear

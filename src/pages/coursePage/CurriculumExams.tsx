@@ -47,7 +47,7 @@ type StudentCurriculumRow = {
 export default function CurriculumExams() {
   const { curriculumId } = useParams<{ curriculumId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
 
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,19 +78,21 @@ export default function CurriculumExams() {
     async function load() {
       try {
         setIsLoading(true);
+        setHasAccess(false);
+        setStudentAssignmentId(null);
 
         let cur: any = null;
-        if (isStudent) {
-          const [cmsRes, studentDetailRes, studentListRes] = await Promise.allSettled([
-            learningCmsService.curriculums.get(curriculumId!),
-            studentLearningService.curriculums.get(curriculumId!),
-            studentLearningService.curriculums.list({ limit: 100 }),
-          ]);
-
-          const cmsCur = cmsRes.status === "fulfilled" ? cmsRes.value : null;
-          const studentDetail = studentDetailRes.status === "fulfilled" ? studentDetailRes.value : null;
-          const rawStudentList = studentListRes.status === "fulfilled" ? studentListRes.value : [];
-          const studentList = Array.isArray(rawStudentList) ? rawStudentList : (rawStudentList as any)?.data ?? [];
+        if (isStudent && hasPermission("learning.attempt")) {
+          const cmsCur = await learningCmsService.curriculums.get(curriculumId!);
+          const studentList: any[] = [];
+          let page = 1;
+          let totalPages = 1;
+          do {
+            const result = await studentLearningService.curriculums.list({ page, limit: 100 });
+            studentList.push(...result.data);
+            totalPages = result.meta?.totalPages ?? 1;
+            page += 1;
+          } while (page <= totalPages);
 
           // Find if this curriculum is in student's assigned curriculum list
           const assignedInList = studentList.find((item: any) =>
@@ -99,7 +101,10 @@ export default function CurriculumExams() {
             (item as any)?.id === curriculumId
           );
 
-          const studentHasAccess = Boolean(studentDetail || assignedInList);
+          const studentDetail = assignedInList
+            ? await studentLearningService.curriculums.get(curriculumId!)
+            : null;
+          const studentHasAccess = Boolean(studentDetail);
           const studentAssignedId =
             studentDetail?.enrollmentId ||
             assignedInList?.enrollmentId ||
@@ -220,7 +225,7 @@ export default function CurriculumExams() {
                   (examDetail as any).questions ??
                   (examDetail as any).examQuestions ??
                   [];
-                counts[eid] = Array.isArray(qArr) ? qArr.length : 0;
+                counts[eid] = (examDetail as any).questionCount ?? (Array.isArray(qArr) ? qArr.length : 0);
               } catch {
                 counts[eid] = 0;
               }
@@ -245,7 +250,7 @@ export default function CurriculumExams() {
   }, [curriculumId, isStudent]);
 
   const handleStartExam = async (examId: string, restart = false) => {
-    if (!isStudent) {
+    if (!isStudent || !hasPermission("learning.attempt")) {
       message.info("Tài khoản giáo viên / quản trị viên chỉ có thể xem trước danh sách đề thi. Chỉ học sinh mới có quyền làm bài.");
       return;
     }
@@ -333,7 +338,7 @@ export default function CurriculumExams() {
     (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0),
   );
 
-  const canDoExam = isStudent && (!!studentAssignmentId || hasAccess);
+  const canDoExam = isStudent && hasPermission("learning.attempt") && (!!studentAssignmentId || hasAccess);
 
   return (
     <div className="w-full bg-slate-50 py-16 px-6 md:px-16 min-h-screen">

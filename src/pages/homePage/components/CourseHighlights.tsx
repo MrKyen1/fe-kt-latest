@@ -20,37 +20,9 @@ export default function CourseHighlights() {
     async function loadPopularCurriculums() {
       try {
         setLoading(true);
-        // Try popular endpoint first
-        let list: Curriculum[] = [];
-        try {
-          const res = await learningCmsService.curriculums.popular(5);
-          list = Array.isArray(res) ? res : (res as any)?.data ?? [];
-        } catch {
-          // Fallback to published curriculums list
-          const fallbackRes = await learningCmsService.curriculums.list({ status: "published", limit: 5 });
-          list = (fallbackRes as any)?.data ?? [];
-        }
+        const list = await learningCmsService.curriculums.popular(5);
+        if (active) setCurriculums(list);
 
-        if (!active) return;
-
-        // Fetch exam counts only if exams relation and examsCount are both missing
-        const fullList = await Promise.all(
-          list.map(async (item) => {
-            if (item.examsCount !== undefined || (item.exams && item.exams.length > 0)) {
-              return item;
-            }
-            try {
-              const detail = await learningCmsService.curriculums.get(item.id);
-              return { ...item, ...detail };
-            } catch {
-              return item;
-            }
-          })
-        );
-
-        if (active) {
-          setCurriculums(fullList);
-        }
       } catch (err) {
         console.warn("Failed to load popular curriculums:", err);
       } finally {

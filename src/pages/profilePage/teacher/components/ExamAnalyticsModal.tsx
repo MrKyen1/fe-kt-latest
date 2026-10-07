@@ -30,6 +30,7 @@ import {
 } from "@ant-design/icons";
 import { teacherLearningService } from "../../../../services/teacherLearningService";
 import { learningCmsService } from "../../../../services/learningCmsService";
+import { useAuth } from "../../../../contexts/AuthContext";
 import { getErrorMessage } from "../../../../services/apiClient";
 import { TeacherAttemptDetailModal, formatDateTime, formatDuration } from "./TeacherAttemptDetailModal";
 import { formatScore, formatPercentage } from "../../../../utils/studentExamUtils";
@@ -43,6 +44,7 @@ export function ExamAnalyticsModal({
   open: boolean;
   onClose: () => void;
 }) {
+  const { hasPermission } = useAuth();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [assignmentDetail, setAssignmentDetail] = useState<any>(null);
   const [attemptsList, setAttemptsList] = useState<any[]>([]);
@@ -94,7 +96,7 @@ export function ExamAnalyticsModal({
             .map((e: any) => e.examId || e.exam?.id)
             .filter(Boolean);
 
-          if (examIds.length > 0) {
+          if (examIds.length > 0 && hasPermission("learning.read")) {
             Promise.allSettled(
               examIds.map((id: string) => learningCmsService.exams.get(id)),
             ).then((results) => {

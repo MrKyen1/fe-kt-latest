@@ -1,3 +1,4 @@
+import { useAuth } from "../../../contexts/AuthContext";
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -212,6 +213,7 @@ function AttemptHistoryModal({
 
 // ==================== MAIN COMPONENT ====================
 export default function StudentMyExams() {
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("exam-assignments");
   const [loading, setLoading] = useState(false);
@@ -268,7 +270,7 @@ export default function StudentMyExams() {
             try {
               const [studentDetail, cmsDetail] = await Promise.allSettled([
                 studentLearningService.curriculums.get(item.curriculumId),
-                learningCmsService.curriculums.get(item.curriculumId),
+                hasPermission("learning.read") ? learningCmsService.curriculums.get(item.curriculumId) : Promise.resolve({}),
               ]);
               const sVal = studentDetail.status === "fulfilled" ? studentDetail.value : {};
               const cVal =
