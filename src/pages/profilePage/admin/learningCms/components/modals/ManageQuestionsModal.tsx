@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Badge,
   Button,
@@ -9,9 +9,11 @@ import {
   InputNumber,
   List,
   Modal,
+  Pagination,
   Row,
   Select,
   Segmented,
+  Spin,
   Tag,
   Tooltip,
   message,
@@ -19,6 +21,7 @@ import {
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
+  CheckOutlined,
   DeleteOutlined,
   PlusOutlined,
   SendOutlined,
@@ -32,7 +35,7 @@ import QuestionRowItem from "../QuestionRowItem";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { Can } from "../../../../../../components/Can";
 import { getErrorMessage } from "../../../../../../services/apiClient";
-import { RandomQuestionCriteria } from "../../../../../../types/learning";
+import { LearningListQuery, RandomQuestionCriteria } from "../../../../../../types/learning";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -111,104 +114,6 @@ interface Props {
   onBulkAttach?:    (items: { questionId: string; orderIndex?: number }[]) => Promise<void>;
 }
 
-// ── Filter helpers ────────────────────────────────────────────
-
-function filterAvailableQuestions(
-  allQuestions: Question[],
-  examQuestions: ExamQuestion[],
-  search: string,
-  typeFilter:   string | undefined,
-  skillFilter:  string | undefined,
-  levelFilter:  string | undefined,
-  topicFilter:  string | undefined,
-  tagFilter:    string | undefined,
-  tagsList:     TaxItem[],
-  questionDetailsCache: Record<string, any>,
-): Question[] {
-  const examIds = new Set(examQuestions.map((eq) => eq.questionId));
-  const targetTag = tagFilter ? tagsList.find((t) => t.id === tagFilter) : undefined;
-  const targetTagName = targetTag?.name?.trim().toLowerCase();
-
-  return allQuestions.filter((q: any) => {
-    if (q.status !== "published") return false;
-    if (examIds.has(q.id)) return false;
-
-    const detail = questionDetailsCache[q.id] ?? q;
-
-    if (search.trim()) {
-      const query = search.trim().toLowerCase();
-      const searchable = [
-        q.prompt, q.instruction, q.explanation,
-        detail.prompt, detail.instruction, detail.explanation,
-        ...(q.options ?? []).map((o: any) => o.content),
-        ...(detail.options ?? []).map((o: any) => o.content),
-      ].filter(Boolean).join(" ").toLowerCase();
-      if (!searchable.includes(query)) return false;
-    }
-
-    if (typeFilter && (q.type ?? detail.type) !== typeFilter) return false;
-
-    if (skillFilter) {
-      const qSkillId = q.skillId ?? q.skill?.id ?? detail.skillId ?? detail.skill?.id;
-      if (qSkillId !== skillFilter) return false;
-    }
-
-    if (levelFilter) {
-      const qLevelId = q.difficultyLevelId ?? q.levelId ?? q.difficultyLevel?.id ?? q.level?.id ??
-                       detail.difficultyLevelId ?? detail.levelId ?? detail.difficultyLevel?.id ?? detail.level?.id;
-      if (qLevelId !== levelFilter) return false;
-    }
-
-    if (topicFilter) {
-      const qTopicId = q.topicId ?? q.topic?.id ?? detail.topicId ?? detail.topic?.id;
-      if (qTopicId !== topicFilter) return false;
-    }
-
-    if (tagFilter) {
-      const sources = [q, detail];
-      let hasTagMatch = false;
-
-      for (const src of sources) {
-        if (!src) continue;
-
-        const tagIds = src.tagIds;
-        if (Array.isArray(tagIds) && tagIds.includes(tagFilter)) {
-          hasTagMatch = true;
-          break;
-        }
-
-        const tagsArr = src.tags;
-        if (Array.isArray(tagsArr)) {
-          for (const t of tagsArr) {
-            if (!t) continue;
-            if (typeof t === "string") {
-              if (t === tagFilter || (targetTagName && t.trim().toLowerCase() === targetTagName)) {
-                hasTagMatch = true;
-                break;
-              }
-            } else if (typeof t === "object") {
-              const tid = t.id ?? t.tagId ?? t.tag?.id;
-              if (tid && tid === tagFilter) {
-                hasTagMatch = true;
-                break;
-              }
-              const tName = (t.name ?? t.tag?.name)?.trim().toLowerCase();
-              if (targetTagName && tName && tName === targetTagName) {
-                hasTagMatch = true;
-                break;
-              }
-            }
-          }
-        }
-        if (hasTagMatch) break;
-      }
-
-      if (!hasTagMatch) return false;
-    }
-
-    return true;
-  });
-}
 
 // ── Component ────────────────────────────────────────────────
 
@@ -247,10 +152,126 @@ export default function ManageQuestionsModal({
   onRepublish,
   onBulkAttach,
 }: Props) {
+  const PAGE_SIZE = 10;
+
   const examQuestions = selectedExam?.questions ?? [];
+  const totalExamQuestions = examQuestions.length;
+  const totalExamPages = Math.ceil(totalExamQuestions / PAGE_SIZE) || 1;
 
   // Tab mode: "manual" (manual pick from question bank) | "random" (random criteria & bulk attach)
   const [tabMode, setTabMode] = useState<"manual" | "random">("manual");
+
+  // Exam questions pagination state (Left column)
+  const [examPage, setExamPage] = useState<number>(1);
+
+  // Published questions state from server (Right column)
+  const [publishedQuestions, setPublishedQuestions] = useState<Question[]>([]);
+  const [publishedTotal, setPublishedTotal] = useState<number>(0);
+  const [isPublishedLoading, setIsPublishedLoading] = useState<boolean>(false);
+  const [publishedPage, setPublishedPage] = useState<number>(1);
+
+  // Debounced search for published questions
+  const [debouncedSearch, setDebouncedSearch] = useState(examQSearch);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(examQSearch);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [examQSearch]);
+
+  // Set of question IDs currently in the exam (for quick duplicate check)
+  const examQuestionIds = useMemo(() => {
+    return new Set(examQuestions.map((eq: any) => eq.questionId));
+  }, [examQuestions]);
+
+  // Sliced questions for current exam page
+  const paginatedExamQuestions = useMemo(() => {
+    const start = (examPage - 1) * PAGE_SIZE;
+    return examQuestions.slice(start, start + PAGE_SIZE);
+  }, [examQuestions, examPage]);
+
+  // Ensure examPage is valid if questions are removed
+  useEffect(() => {
+    if (examPage > totalExamPages) {
+      setExamPage(Math.max(1, totalExamPages));
+    }
+  }, [totalExamPages, examPage]);
+
+  // Reset pagination when modal opens or exam changes
+  useEffect(() => {
+    if (open) {
+      setExamPage(1);
+      setPublishedPage(1);
+    }
+  }, [open, selectedExam?.id]);
+
+  // Reset published page to 1 when filters or search change
+  useEffect(() => {
+    setPublishedPage(1);
+  }, [
+    debouncedSearch,
+    examQTypeFilter,
+    examQSkillFilter,
+    examQLevelFilter,
+    examQTopicFilter,
+    examQTagFilter,
+    selectedExam?.specializationId,
+  ]);
+
+  // Fetch published questions from server with pagination and filters
+  useEffect(() => {
+    if (!open) return;
+
+    let isMounted = true;
+    const fetchQuestions = async () => {
+      setIsPublishedLoading(true);
+      try {
+        const queryParams: LearningListQuery = {
+          page: publishedPage,
+          limit: PAGE_SIZE,
+          status: "published",
+          specializationId: selectedExam?.specializationId,
+          search: debouncedSearch.trim() || undefined,
+          type: examQTypeFilter || undefined,
+          skillId: examQSkillFilter || undefined,
+          levelId: examQLevelFilter || undefined,
+          topicId: examQTopicFilter || undefined,
+          tagIds: examQTagFilter || undefined,
+          sortBy: "createdAt",
+          sortOrder: "DESC",
+        };
+
+        const res = await learningCmsService.questions.list(queryParams);
+        if (isMounted) {
+          setPublishedQuestions((res.data || []) as Question[]);
+          setPublishedTotal(res.meta?.total ?? res.data?.length ?? 0);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          message.error("Lỗi khi tải danh sách câu hỏi từ ngân hàng");
+        }
+      } finally {
+        if (isMounted) {
+          setIsPublishedLoading(false);
+        }
+      }
+    };
+
+    fetchQuestions();
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    open,
+    publishedPage,
+    debouncedSearch,
+    examQTypeFilter,
+    examQSkillFilter,
+    examQLevelFilter,
+    examQTopicFilter,
+    examQTagFilter,
+    selectedExam?.specializationId,
+  ]);
 
   // Random criteria state
   interface CriteriaItem {
@@ -290,19 +311,6 @@ export default function ManageQuestionsModal({
   const hasActiveFilters = !!(
     examQSearch || examQTypeFilter || examQSkillFilter ||
     examQLevelFilter || examQTopicFilter || examQTagFilter
-  );
-
-  const available = filterAvailableQuestions(
-    allQuestions,
-    examQuestions,
-    examQSearch,
-    examQTypeFilter,
-    examQSkillFilter,
-    examQLevelFilter,
-    examQTopicFilter,
-    examQTagFilter,
-    tags,
-    questionDetails,
   );
 
   const getQuestionObj = (questionId: string) => {
@@ -471,60 +479,121 @@ export default function ManageQuestionsModal({
             title={
               <div className="flex items-center justify-between">
                 <span>Câu hỏi trong đề thi</span>
-                <Badge count={examQuestions.length} color="indigo" />
+                <Badge count={totalExamQuestions} color="indigo" />
               </div>
             }
-            className="rounded-2xl border-slate-100 shadow-sm"
+            className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
             size="small"
+            styles={{
+              body: {
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                padding: "12px",
+                overflow: "hidden",
+              },
+            }}
           >
-            <List
-              style={{ maxHeight: 460, overflowY: "auto" }}
-              dataSource={examQuestions}
-              renderItem={(eq: ExamQuestion, index) => {
-                const q = allQuestions.find((q) => q.id === eq.questionId);
-                const detail = q
-                  ? { ...q, ...(questionDetails[q.id] ?? {}) }
-                  : questionDetails[eq.questionId] ?? { id: eq.questionId };
-                return (
-                  <List.Item
-                    actions={[
-                      <Button type="text" size="small" disabled={index === 0} icon={<ArrowUpOutlined />} onClick={() => onReorder(index, "up")} />,
-                      <Button type="text" size="small" disabled={index === examQuestions.length - 1} icon={<ArrowDownOutlined />} onClick={() => onReorder(index, "down")} />,
-                      <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => onRemoveQuestion(eq.questionId)} />,
-                    ]}
-                  >
-                    <QuestionPopover
-                      question={detail}
-                      skills={skills}
-                      levels={levels}
-                      topics={topics}
-                      tags={tags}
-                      placement="right"
+            <div className="flex-1 overflow-y-auto pr-1">
+              <List
+                dataSource={paginatedExamQuestions}
+                renderItem={(eq: ExamQuestion, localIndex) => {
+                  const globalIndex = (examPage - 1) * PAGE_SIZE + localIndex;
+                  const q = (eq as any).question ?? allQuestions.find((q) => q.id === eq.questionId);
+                  const detail = q
+                    ? { ...q, ...(questionDetails[eq.questionId] ?? {}) }
+                    : questionDetails[eq.questionId] ?? { id: eq.questionId };
+                  return (
+                    <List.Item
+                      actions={[
+                        <Button
+                          type="text"
+                          size="small"
+                          disabled={globalIndex === 0}
+                          icon={<ArrowUpOutlined />}
+                          onClick={() => onReorder(globalIndex, "up")}
+                        />,
+                        <Button
+                          type="text"
+                          size="small"
+                          disabled={globalIndex === totalExamQuestions - 1}
+                          icon={<ArrowDownOutlined />}
+                          onClick={() => onReorder(globalIndex, "down")}
+                        />,
+                        <Button
+                          type="text"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => onRemoveQuestion(eq.questionId)}
+                        />,
+                      ]}
                     >
-                      <div className="cursor-pointer flex-1 pr-2">
-                        <List.Item.Meta
-                          avatar={<div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">{index + 1}</div>}
-                          title={
-                            <div
-                              className="text-xs font-semibold line-clamp-1 text-slate-800"
-                              dangerouslySetInnerHTML={{ __html: q?.prompt ?? "(Câu hỏi không tìm thấy)" }}
-                            />
-                          }
-                          description={
-                            q && (
-                              <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">
-                                {QUESTION_TYPE_LABELS[q.type]}
-                              </Tag>
-                            )
-                          }
-                        />
-                      </div>
-                    </QuestionPopover>
-                  </List.Item>
-                );
-              }}
-              locale={{ emptyText: <Empty description="Đề thi chưa có câu hỏi nào" styles={{ image: { height: 40 } }} /> }}
-            />
+                      <QuestionPopover
+                        question={detail}
+                        skills={skills}
+                        levels={levels}
+                        topics={topics}
+                        tags={tags}
+                        placement="right"
+                      >
+                        <div className="cursor-pointer flex-1 pr-2">
+                          <List.Item.Meta
+                            avatar={
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">
+                                {globalIndex + 1}
+                              </div>
+                            }
+                            title={
+                              <div
+                                className="text-xs font-semibold line-clamp-1 text-slate-800"
+                                dangerouslySetInnerHTML={{
+                                  __html: detail?.prompt ?? q?.prompt ?? "(Câu hỏi không tìm thấy)",
+                                }}
+                              />
+                            }
+                            description={
+                              (detail?.type || q?.type) && (
+                                <Tag
+                                  color={QUESTION_TYPE_COLORS[detail?.type || q?.type]}
+                                  className="text-[9px] border-none"
+                                >
+                                  {QUESTION_TYPE_LABELS[detail?.type || q?.type]}
+                                </Tag>
+                              )
+                            }
+                          />
+                        </div>
+                      </QuestionPopover>
+                    </List.Item>
+                  );
+                }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      description="Đề thi chưa có câu hỏi nào"
+                      styles={{ image: { height: 40 } }}
+                    />
+                  ),
+                }}
+              />
+            </div>
+
+            <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
+              <span className="text-[11px] text-slate-400">
+                Tổng: <strong>{totalExamQuestions}</strong> câu
+              </span>
+              {totalExamQuestions > PAGE_SIZE && (
+                <Pagination
+                  size="small"
+                  current={examPage}
+                  pageSize={PAGE_SIZE}
+                  total={totalExamQuestions}
+                  onChange={(p) => setExamPage(p)}
+                  showSizeChanger={false}
+                />
+              )}
+            </div>
           </Card>
         </Col>
 
@@ -542,21 +611,31 @@ export default function ManageQuestionsModal({
                   onChange={(v) => setTabMode(v as "manual" | "random")}
                   size="small"
                 />
-                {tabMode === "manual" && <Badge count={available.length} color="green" />}
+                {tabMode === "manual" && (
+                  <Badge count={publishedTotal} color="green" overflowCount={999} />
+                )}
                 {tabMode === "random" && randomResult && (
                   <Badge count={randomResult.totalCount} color="purple" overflowCount={999} />
                 )}
               </div>
             }
-            className="rounded-2xl border-slate-100 shadow-sm"
+            className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
             size="small"
-            styles={{ body: { paddingTop: 8 } }}
+            styles={{
+              body: {
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                padding: "12px",
+                overflow: "hidden",
+              },
+            }}
           >
             {tabMode === "manual" ? (
-              <>
+              <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Filter panel */}
-                <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden">
-                  <div className="px-3 pt-3 pb-2">
+                <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden shrink-0">
+                  <div className="px-3 pt-2.5 pb-2">
                     <Input
                       placeholder="Tìm theo đề bài, đáp án, giải thích..."
                       prefix={<Search size={13} className="text-slate-400 mr-1" />}
@@ -592,10 +671,13 @@ export default function ManageQuestionsModal({
                     <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
                       <span className="text-[11px] text-indigo-600 flex items-center gap-1">
                         <Search size={12} />
-                        <span>Tìm thấy <strong>{available.length}</strong> câu hỏi</span>
+                        <span>Tìm thấy <strong>{publishedTotal}</strong> câu hỏi</span>
                       </span>
                       <button
-                        onClick={onResetFilters}
+                        onClick={() => {
+                          onResetFilters();
+                          setPublishedPage(1);
+                        }}
                         className="text-[11px] text-indigo-500 hover:text-indigo-700 underline underline-offset-2 bg-transparent border-none cursor-pointer p-0 font-medium"
                       >
                         Xóa bộ lọc
@@ -605,49 +687,96 @@ export default function ManageQuestionsModal({
                 </div>
 
                 {/* Question list */}
-                <List
-                  split={false}
-                  style={{ maxHeight: 340, overflowY: "auto" }}
-                  dataSource={available}
-                  renderItem={(q: Question, index) => (
-                    <QuestionRowItem
-                      key={q.id}
-                      index={index + 1}
-                      question={questionDetails[q.id] ? { ...q, ...questionDetails[q.id] } : q}
-                      skills={skills}
-                      levels={levels}
-                      topics={topics}
-                      tags={tags}
-                      variant="indigo"
-                      placement="left"
-                      action={
-                        <Button
-                          type="dashed"
-                          size="small"
-                          icon={<PlusOutlined />}
-                          loading={addingQuestionId === q.id}
-                          disabled={addingQuestionId !== null}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              setAddingQuestionId(q.id);
-                              await onAddQuestion(q.id);
-                            } finally {
-                              setAddingQuestionId(null);
+                <div className="flex-1 overflow-y-auto pr-1">
+                  <Spin spinning={isPublishedLoading}>
+                    <List
+                      split={false}
+                      dataSource={publishedQuestions}
+                      renderItem={(q: Question, localIndex) => {
+                        const globalIndex = (publishedPage - 1) * PAGE_SIZE + localIndex;
+                        const isAlreadyInExam = examQuestionIds.has(q.id);
+                        return (
+                          <QuestionRowItem
+                            key={q.id}
+                            index={globalIndex + 1}
+                            question={questionDetails[q.id] ? { ...q, ...questionDetails[q.id] } : q}
+                            skills={skills}
+                            levels={levels}
+                            topics={topics}
+                            tags={tags}
+                            variant="indigo"
+                            placement="left"
+                            action={
+                              isAlreadyInExam ? (
+                                <Button
+                                  type="dashed"
+                                  size="small"
+                                  disabled
+                                  icon={<CheckOutlined className="text-emerald-500" />}
+                                  className="text-xs text-emerald-600 bg-emerald-50/70 border-emerald-200 cursor-not-allowed opacity-90"
+                                >
+                                  Đã thêm
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="dashed"
+                                  size="small"
+                                  icon={<PlusOutlined />}
+                                  loading={addingQuestionId === q.id}
+                                  disabled={addingQuestionId !== null}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      setAddingQuestionId(q.id);
+                                      await onAddQuestion(q.id);
+                                    } finally {
+                                      setAddingQuestionId(null);
+                                    }
+                                  }}
+                                  className="text-xs hover:border-indigo-500 hover:text-indigo-600"
+                                >
+                                  Thêm
+                                </Button>
+                              )
                             }
-                          }}
-                          className="text-xs"
-                        >
-                          Thêm
-                        </Button>
-                      }
+                          />
+                        );
+                      }}
+                      locale={{
+                        emptyText: (
+                          <Empty
+                            description={
+                              isPublishedLoading
+                                ? "Đang tải câu hỏi..."
+                                : "Không tìm thấy câu hỏi đã duyệt phù hợp"
+                            }
+                            styles={{ image: { height: 40 } }}
+                          />
+                        ),
+                      }}
+                    />
+                  </Spin>
+                </div>
+
+                {/* Pagination */}
+                <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
+                  <span className="text-[11px] text-slate-400">
+                    Tổng: <strong>{publishedTotal}</strong> câu
+                  </span>
+                  {publishedTotal > PAGE_SIZE && (
+                    <Pagination
+                      size="small"
+                      current={publishedPage}
+                      pageSize={PAGE_SIZE}
+                      total={publishedTotal}
+                      onChange={(p) => setPublishedPage(p)}
+                      showSizeChanger={false}
                     />
                   )}
-                  locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" styles={{ image: { height: 40 } }} /> }}
-                />
-              </>
+                </div>
+              </div>
             ) : (
-              <div style={{ maxHeight: 460, overflowY: "auto" }} className="pr-1 space-y-3">
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
                 {/* Random Criteria configuration */}
                 <div className="space-y-2">
                   {criteriaList.map((crit, idx) => (
