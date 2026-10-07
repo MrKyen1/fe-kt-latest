@@ -21,9 +21,16 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
   hint_rewrite: "Viết lại có gợi ý",
   word_ordering: "Sắp xếp từ",
   fill_in: "Điền vào chỗ trống",
+  fill_blank: "Điền vào chỗ trống",
+  "fill-in-the-blank": "Điền vào chỗ trống",
   short_answer: "Trả lời ngắn",
   essay: "Tự luận",
   error_correction: "Sửa lỗi sai",
+  audio_fill_blanks: "Nghe & Điền từ",
+  "audio-fill-blanks": "Nghe & Điền từ",
+  audio_image_choice: "Trắc nghiệm âm thanh & hình ảnh",
+  true_false: "Đúng / Sai",
+  "true-false": "Đúng / Sai",
 };
 
 export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
@@ -63,7 +70,12 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
 
   // Media
   const mediaList: any[] = (() => {
-    const m = ans.questionSnapshot?.media || ans.question?.media;
+    const m =
+      ans.questionSnapshot?.media ||
+      ans.question?.media ||
+      ans.media ||
+      ans.questionSnapshot?.detail?.media ||
+      ans.question?.detail?.media;
     if (!m) return [];
     if (Array.isArray(m)) return m;
     return [m];
@@ -648,24 +660,251 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
     );
   };
 
-  // -------- F) Generic Fallback --------
+  // -------- F) Audio Fill Blanks (Nghe & Điền từ) --------
+  const renderAudioFillBlanks = () => {
+    const qSnapshot = ans.questionSnapshot || ans.question || {};
+    const detail = qSnapshot.detail || ans.detail || {};
+    const passageText =
+      detail.passageText ||
+      qSnapshot.passageText ||
+      ans.passageText ||
+      qSnapshot.passage ||
+      detail.passage ||
+      "";
+
+    // 1. Map câu trả lời của học sinh
+    const studentMap: Record<string, string> = {};
+    if (studentAns && typeof studentAns === "object") {
+      if (Array.isArray(studentAns.blanks)) {
+        studentAns.blanks.forEach((b: any, bIdx: number) => {
+          const id = b?.id || `blank${bIdx + 1}`;
+          studentMap[id] = String(b?.value ?? "").trim();
+        });
+      } else if (Array.isArray(studentAns)) {
+        studentAns.forEach((b: any, bIdx: number) => {
+          const id = b?.id || `blank${bIdx + 1}`;
+          studentMap[id] = typeof b === "string" ? b.trim() : String(b?.value ?? "").trim();
+        });
+      } else {
+        Object.entries(studentAns).forEach(([k, v]) => {
+          if (k !== "gradingMode") {
+            studentMap[k] = typeof v === "string" ? v.trim() : String((v as any)?.value ?? v ?? "").trim();
+          }
+        });
+      }
+    } else if (typeof studentAns === "string") {
+      studentMap["blank1"] = studentAns.trim();
+    }
+
+    // 2. Map đáp án đúng
+    const correctMap: Record<string, string[]> = {};
+    const extractAccepted = (raw: any): string[] => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.filter(Boolean).map(String);
+      if (typeof raw === "string") return raw.split(",").map((s) => s.trim()).filter(Boolean);
+      if (typeof raw === "object") {
+        if (Array.isArray(raw.acceptedAnswers)) return raw.acceptedAnswers.filter(Boolean).map(String);
+        if (raw.acceptedAnswers) return [String(raw.acceptedAnswers).trim()];
+        if (raw.value) return [String(raw.value).trim()];
+      }
+      return [String(raw).trim()];
+    };
+
+    if (correctAns && typeof correctAns === "object") {
+      if (Array.isArray(correctAns.blanks)) {
+        correctAns.blanks.forEach((b: any, bIdx: number) => {
+          const id = b?.id || `blank${bIdx + 1}`;
+          const list = extractAccepted(b?.acceptedAnswers || b?.value || b);
+          if (list.length > 0) correctMap[id] = list;
+        });
+      } else if (Array.isArray(correctAns)) {
+        correctAns.forEach((b: any, bIdx: number) => {
+          const id = b?.id || `blank${bIdx + 1}`;
+          const list = extractAccepted(b);
+          if (list.length > 0) correctMap[id] = list;
+        });
+      } else {
+        Object.entries(correctAns).forEach(([k, v]) => {
+          if (k !== "gradingMode") {
+            const list = extractAccepted(v);
+            if (list.length > 0) correctMap[k] = list;
+          }
+        });
+      }
+    }
+
+    // Bổ sung từ detail.blanks nếu có
+    const blanksList: any[] = detail.blanks || qSnapshot.blanks || [];
+    blanksList.forEach((b: any, bIdx: number) => {
+      const id = b?.id || `blank${bIdx + 1}`;
+      if (!correctMap[id] || correctMap[id].length === 0) {
+        const list = extractAccepted(b?.acceptedAnswers || b?.value);
+        if (list.length > 0) correctMap[id] = list;
+      }
+    });
+
+    // 3. Hợp nhất danh sách các ô trống
+    const blankIds = Array.from(
+      new Set([
+        ...blanksList.map((b: any, i: number) => b?.id || `blank${i + 1}`),
+        ...Object.keys(correctMap),
+        ...Object.keys(studentMap),
+      ])
+    ).filter(Boolean);
+
+    const blankItems = blankIds.map((id, bIdx) => {
+      const studentVal = studentMap[id] ?? studentMap[`blank${bIdx + 1}`] ?? "";
+      const acceptedAnswers = correctMap[id] ?? correctMap[`blank${bIdx + 1}`] ?? [];
+      const normStudent = studentVal.trim().toLowerCase();
+      const isBlankCorrect = acceptedAnswers.length > 0
+        ? acceptedAnswers.some((ans) => ans.trim().toLowerCase() === normStudent)
+        : (isCorrect ?? false);
+
+      return {
+        id,
+        bIndex: bIdx + 1,
+        studentVal,
+        acceptedAnswers,
+        isCorrect: isBlankCorrect,
+      };
+    });
+
+    const summaryCorrectText = blankItems
+      .map((item) => `(${item.bIndex}) ${item.acceptedAnswers.join(" / ") || "—"}`)
+      .join("  |  ");
+
+    return (
+      <div className="mt-3 space-y-3">
+        {/* Đoạn văn có chỗ trống */}
+        {passageText && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              Đoạn văn có chỗ trống
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 leading-relaxed font-mono whitespace-pre-wrap">
+              {passageText}
+            </div>
+          </div>
+        )}
+
+        {/* Chi tiết từng ô trống */}
+        {blankItems.length > 0 && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Chi tiết kết quả từng ô trống
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {blankItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={`p-3 rounded-xl border transition-all text-xs ${
+                    item.isCorrect
+                      ? "bg-emerald-50/60 border-emerald-200 text-slate-800"
+                      : "bg-rose-50/60 border-rose-200 text-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-200/50">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                          item.isCorrect ? "bg-emerald-200 text-emerald-800" : "bg-rose-200 text-rose-800"
+                        }`}
+                      >
+                        {item.bIndex}
+                      </span>
+                      <span className="text-slate-700">Ô trống ({item.bIndex})</span>
+                    </div>
+                    {item.isCorrect ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <CheckOutlined /> Đúng
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-bold flex items-center gap-1">
+                        <CloseOutlined /> Chưa đúng
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-slate-500 font-medium shrink-0">Học sinh điền:</span>
+                      <span
+                        className={`font-semibold ${
+                          item.isCorrect ? "text-emerald-800" : "text-rose-700 line-through"
+                        }`}
+                      >
+                        {item.studentVal || "(Bỏ trống)"}
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-slate-500 font-medium shrink-0">Đáp án đúng:</span>
+                      <span className="font-bold text-emerald-800">
+                        {item.acceptedAnswers.join(" / ") || "(Chưa có đáp án)"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tổng hợp câu trả lời đúng */}
+        {summaryCorrectText && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              Câu trả lời đúng
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
+              <CheckOutlined className="text-emerald-600 shrink-0" />
+              <span>{summaryCorrectText}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // -------- G) Generic Fallback (Thân thiện, loại bỏ hoàn toàn JSON thô) --------
+  const formatGenericAnswer = (val: any): string => {
+    if (val == null) return "—";
+    if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") return String(val);
+    if (Array.isArray(val)) {
+      return val.map((item) => formatGenericAnswer(item)).join(", ");
+    }
+    if (typeof val === "object") {
+      if (Array.isArray(val.blanks)) {
+        return val.blanks
+          .map((b: any, idx: number) => {
+            const v = b?.value ?? (Array.isArray(b?.acceptedAnswers) ? b.acceptedAnswers.join(" / ") : b?.acceptedAnswers);
+            return `(${idx + 1}) ${v || "—"}`;
+          })
+          .join(" | ");
+      }
+      if (val.text || val.value || val.answer) {
+        return String(val.text || val.value || val.answer);
+      }
+      return Object.entries(val)
+        .filter(([k]) => k !== "gradingMode")
+        .map(([k, v]) => `${k}: ${formatGenericAnswer(v)}`)
+        .join(", ");
+    }
+    return String(val);
+  };
+
   const renderGeneric = () => (
     <div className="mt-3 space-y-2 text-xs">
       <div className="flex items-start gap-2">
         <span className="text-slate-500 shrink-0 font-medium">Học sinh:</span>
-        <span className={`font-semibold break-all ${isCorrect ? "text-emerald-700" : "text-rose-600"}`}>
-          {typeof studentAns === "object"
-            ? studentAns?.text || studentAns?.value || JSON.stringify(studentAns, null, 2)
-            : String(studentAns ?? "—")}
+        <span className={`font-semibold break-words ${isCorrect ? "text-emerald-700" : "text-rose-600"}`}>
+          {formatGenericAnswer(studentAns)}
         </span>
       </div>
       {correctAns != null && (
         <div className="flex items-start gap-2">
           <span className="text-slate-500 shrink-0 font-medium">Đáp án:</span>
-          <span className="font-semibold text-emerald-700 break-all">
-            {typeof correctAns === "object"
-              ? correctAns?.text || correctAns?.answer || JSON.stringify(correctAns, null, 2)
-              : String(correctAns)}
+          <span className="font-semibold text-emerald-700 break-words">
+            {formatGenericAnswer(correctAns)}
           </span>
         </div>
       )}
@@ -689,6 +928,8 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
   const isTextType = ["sentence_rewrite", "hint_rewrite", "fill_in", "short_answer", "essay"].includes(
     questionType,
   );
+  const isAudioFillBlanksType =
+    questionType === "audio_fill_blanks" || questionType === "audio-fill-blanks";
 
   return (
     <div className={`rounded-2xl border p-4 transition-all shadow-2xs ${cardBorderBg}`}>
@@ -741,11 +982,23 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
       {mediaList.length > 0 && (
         <div className="my-2.5 flex flex-wrap gap-3 items-center">
           {mediaList.map((mItem: any, mIdx: number) => {
-            const mUrl = mItem?.url || mItem?.path || (typeof mItem === "string" ? mItem : null);
-            const mType = mItem?.type || (mUrl && (mUrl.endsWith(".mp3") || mUrl.endsWith(".wav") || mUrl.endsWith(".ogg")) ? "audio" : "image");
+            const mUrl =
+              mItem?.url ||
+              mItem?.path ||
+              mItem?.media?.url ||
+              mItem?.media?.path ||
+              (typeof mItem === "string" ? mItem : null);
+            const rawType = String(mItem?.type || mItem?.media?.type || mItem?.role || "").toLowerCase();
+            const isAudio =
+              rawType.includes("audio") ||
+              (mUrl &&
+                (mUrl.endsWith(".mp3") ||
+                  mUrl.endsWith(".wav") ||
+                  mUrl.endsWith(".ogg") ||
+                  mUrl.endsWith(".m4a")));
             if (!mUrl) return null;
 
-            if (mType === "audio") {
+            if (isAudio) {
               return (
                 <div key={mIdx} className="w-full max-w-md bg-slate-50 p-2 rounded-xl border border-slate-200">
                   <audio controls src={resolveMediaUrl(mUrl)} className="w-full h-8" />
@@ -780,6 +1033,8 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
         ? renderWordOrdering()
         : isTextType
         ? renderTextAnswer()
+        : isAudioFillBlanksType
+        ? renderAudioFillBlanks()
         : options.length > 0
         ? renderChoiceOptions()
         : renderGeneric()}

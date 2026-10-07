@@ -52,6 +52,12 @@ import { formatTextForBackend } from "../../../utils/textFormatters";
 import {
   CHOICE_TYPES,
   LIST_LIMIT,
+  PAGE_SIZE_CURRICULUMS,
+  PAGE_SIZE_DEFAULT,
+  PAGE_SIZE_EXAMS,
+  PAGE_SIZE_MEDIA,
+  PAGE_SIZE_PASSAGES,
+  PAGE_SIZE_QUESTIONS,
   QUESTION_TYPE_COLORS,
   QUESTION_TYPE_LABELS,
 } from "./learningCms/constants";
@@ -173,6 +179,39 @@ export default function LearningCms() {
   const [exams, setExams] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
   const [specializations, setSpecializations] = useState<any[]>([]);
+
+  // ── Pagination & Filter states ─────────────────────────────
+  const [questionsPage, setQuestionsPage] = useState(1);
+  const [questionsPageSize, setQuestionsPageSize] = useState(PAGE_SIZE_QUESTIONS);
+  const [questionsTotal, setQuestionsTotal] = useState(0);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+
+  const [passagesPage, setPassagesPage] = useState(1);
+  const [passagesPageSize, setPassagesPageSize] = useState(PAGE_SIZE_PASSAGES);
+  const [passagesTotal, setPassagesTotal] = useState(0);
+  const [passagesLoading, setPassagesLoading] = useState(false);
+
+  const [examsPage, setExamsPage] = useState(1);
+  const [examsPageSize, setExamsPageSize] = useState(PAGE_SIZE_EXAMS);
+  const [examsTotal, setExamsTotal] = useState(0);
+  const [examsLoading, setExamsLoading] = useState(false);
+
+  const [curriculumsPage, setCurriculumsPage] = useState(1);
+  const [curriculumsPageSize, setCurriculumsPageSize] = useState(PAGE_SIZE_CURRICULUMS);
+  const [curriculumsTotal, setCurriculumsTotal] = useState(0);
+  const [curriculumsLoading, setCurriculumsLoading] = useState(false);
+
+  const [mediaPage, setMediaPage] = useState(1);
+  const [mediaPageSize, setMediaPageSize] = useState(PAGE_SIZE_MEDIA);
+  const [mediaTotal, setMediaTotal] = useState(0);
+  const [mediaTypeFilter, setMediaTypeFilter] = useState("all");
+  const [mediaLoading, setMediaLoading] = useState(false);
+
+  const [taxPage, setTaxPage] = useState(1);
+  const [taxPageSize, setTaxPageSize] = useState(PAGE_SIZE_DEFAULT);
+  const [taxTotal, setTaxTotal] = useState(0);
+
+  const [allQuestionsForModal, setAllQuestionsForModal] = useState<any[]>([]);
 
   const selectedSpecializationId = useMemo(() => {
     if (urlSubjectId && specializations.some((s) => s.id === urlSubjectId)) {
@@ -341,7 +380,7 @@ export default function LearningCms() {
   const getFilteredMedia = () => {
     if (currentQuestionType === "image_choice")
       return media.filter((m) => m.type === "image" || m.mimeType?.startsWith("image"));
-    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice")
+    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice" || currentQuestionType === "audio_fill_blanks")
       return media.filter((m) => m.type === "audio" || m.mimeType?.startsWith("audio"));
     return media;
   };
@@ -349,7 +388,7 @@ export default function LearningCms() {
   const getAvailableRoles = () => {
     if (currentQuestionType === "image_choice")
       return [{ value: "prompt_image", label: "Hình ảnh đề bài" }];
-    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice")
+    if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice" || currentQuestionType === "audio_fill_blanks")
       return [{ value: "prompt_audio", label: "Âm thanh đề bài" }];
     return [
       { value: "prompt_audio", label: "Âm thanh đề bài" },
@@ -420,18 +459,25 @@ export default function LearningCms() {
   // DATA LOADING
   // ============================================================
 
-  const loadTaxonomyData = async (tab: string, searchVal: string) => {
+  const loadTaxonomyData = async (
+    tab: string,
+    searchVal: string,
+    page = taxPage,
+    limit = taxPageSize,
+  ) => {
     try {
       setTaxLoading(true);
       lastFetchedSearchRef.current = searchVal;
       const res = await getTaxService(tab).list({
         specializationId: tab !== "tags" ? selectedSpecializationId : undefined,
-        limit: LIST_LIMIT,
+        page,
+        limit,
         search: searchVal || undefined,
         sortBy: "name",
         sortOrder: "ASC",
       });
       const data = res.data ?? [];
+      setTaxTotal(res.meta?.total ?? data.length);
 
       switch (tab) {
         case "levels": setFilteredLevels(data); break;
@@ -446,6 +492,165 @@ export default function LearningCms() {
     }
   };
 
+  const loadMediaData = async (
+    page = mediaPage,
+    limit = mediaPageSize,
+    type = mediaTypeFilter,
+  ) => {
+    try {
+      setMediaLoading(true);
+      const res = await learningCmsService.mediaAssets.list({
+        page,
+        limit,
+        type: type === "all" ? undefined : type,
+      });
+      setMedia(res.data ?? []);
+      setMediaTotal(res.meta?.total ?? res.data?.length ?? 0);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải danh sách tệp thất bại"));
+    } finally {
+      setMediaLoading(false);
+    }
+  };
+
+  const loadPassagesData = async (page = passagesPage, limit = passagesPageSize) => {
+    try {
+      setPassagesLoading(true);
+      const res = await learningCmsService.readingPassages.list({
+        specializationId: selectedSpecializationId,
+        page,
+        limit,
+        sortBy: "title",
+        sortOrder: "ASC",
+      });
+      setPassages(res.data ?? []);
+      setPassagesTotal(res.meta?.total ?? res.data?.length ?? 0);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải danh sách bài đọc thất bại"));
+    } finally {
+      setPassagesLoading(false);
+    }
+  };
+
+  const loadQuestionsData = async (page = questionsPage, limit = questionsPageSize) => {
+    try {
+      setQuestionsLoading(true);
+      const res = await learningCmsService.questions.list({
+        specializationId: selectedSpecializationId,
+        page,
+        limit,
+      });
+      setQuestions(res.data ?? []);
+      setQuestionsTotal(res.meta?.total ?? res.data?.length ?? 0);
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải danh sách câu hỏi thất bại"));
+    } finally {
+      setQuestionsLoading(false);
+    }
+  };
+
+  const loadExamsData = async (page = examsPage, limit = examsPageSize) => {
+    try {
+      setExamsLoading(true);
+      const res = await learningCmsService.exams.list({
+        specializationId: selectedSpecializationId,
+        page,
+        limit,
+      });
+      const examList = res.data ?? [];
+      setExamsTotal(res.meta?.total ?? examList.length);
+
+      if (examList.length > 0) {
+        const detailResults = await Promise.allSettled(
+          examList.map((e) => learningCmsService.exams.get(e.id)),
+        );
+        const fullExams = detailResults.map((r, i) =>
+          r.status === "fulfilled" ? r.value : examList[i],
+        );
+        setExams(fullExams);
+      } else {
+        setExams([]);
+      }
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải danh sách đề thi thất bại"));
+    } finally {
+      setExamsLoading(false);
+    }
+  };
+
+  const loadCurriculumsData = async (page = curriculumsPage, limit = curriculumsPageSize) => {
+    try {
+      setCurriculumsLoading(true);
+      const res = await learningCmsService.curriculums.list({
+        specializationId: selectedSpecializationId,
+        page,
+        limit,
+      });
+      const curriculumList = res.data ?? [];
+      setCurriculumsTotal(res.meta?.total ?? curriculumList.length);
+
+      if (curriculumList.length > 0) {
+        const detailResults = await Promise.allSettled(
+          curriculumList.map((c) => learningCmsService.curriculums.get(c.id)),
+        );
+        const fullCurriculums = detailResults.map((r, i) =>
+          r.status === "fulfilled" ? r.value : curriculumList[i],
+        );
+        setCurriculums(fullCurriculums);
+      } else {
+        setCurriculums([]);
+      }
+    } catch (error: any) {
+      message.error(extractErrorMsg(error, "Tải danh sách giáo trình thất bại"));
+    } finally {
+      setCurriculumsLoading(false);
+    }
+  };
+
+  // ── Pagination change handlers ─────────────────────────────
+
+  const handleQuestionsPageChange = (page: number, pageSize: number) => {
+    setQuestionsPage(page);
+    setQuestionsPageSize(pageSize);
+    loadQuestionsData(page, pageSize);
+  };
+
+  const handlePassagesPageChange = (page: number, pageSize: number) => {
+    setPassagesPage(page);
+    setPassagesPageSize(pageSize);
+    loadPassagesData(page, pageSize);
+  };
+
+  const handleExamsPageChange = (page: number, pageSize: number) => {
+    setExamsPage(page);
+    setExamsPageSize(pageSize);
+    loadExamsData(page, pageSize);
+  };
+
+  const handleCurriculumsPageChange = (page: number, pageSize: number) => {
+    setCurriculumsPage(page);
+    setCurriculumsPageSize(pageSize);
+    loadCurriculumsData(page, pageSize);
+  };
+
+  const handleMediaPageChange = (page: number, pageSize: number) => {
+    setMediaPage(page);
+    setMediaPageSize(pageSize);
+    loadMediaData(page, pageSize, mediaTypeFilter);
+  };
+
+  const handleMediaTypeFilterChange = (type: string) => {
+    setMediaTypeFilter(type);
+    setMediaPage(1);
+    loadMediaData(1, mediaPageSize, type);
+  };
+
+  const handleTaxPageChange = (page: number, pageSize: number) => {
+    setTaxPage(page);
+    setTaxPageSize(pageSize);
+    loadTaxonomyData(taxTab, taxSearch, page, pageSize);
+  };
+
   const loadAllData = async () => {
     try {
       setLoading(true);
@@ -455,11 +660,11 @@ export default function LearningCms() {
         learningCmsService.skills.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
         learningCmsService.topics.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
         learningCmsService.tags.list({ limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
-        learningCmsService.mediaAssets.list({ limit: LIST_LIMIT }),
-        learningCmsService.readingPassages.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "title", sortOrder: "ASC" }),
-        learningCmsService.questions.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT }),
-        learningCmsService.exams.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT }),
-        learningCmsService.curriculums.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT }),
+        learningCmsService.mediaAssets.list({ page: mediaPage, limit: mediaPageSize, type: mediaTypeFilter === "all" ? undefined : mediaTypeFilter }),
+        learningCmsService.readingPassages.list({ specializationId: selectedSpecializationId, page: passagesPage, limit: passagesPageSize, sortBy: "title", sortOrder: "ASC" }),
+        learningCmsService.questions.list({ specializationId: selectedSpecializationId, page: questionsPage, limit: questionsPageSize }),
+        learningCmsService.exams.list({ specializationId: selectedSpecializationId, page: examsPage, limit: examsPageSize }),
+        learningCmsService.curriculums.list({ specializationId: selectedSpecializationId, page: curriculumsPage, limit: curriculumsPageSize }),
       ]);
 
       const get = (i: number) =>
@@ -476,10 +681,15 @@ export default function LearningCms() {
         message.warning(`Một số API bị lỗi: ${failed.join(", ")}. Vui lòng kiểm tra backend.`);
       }
 
-      const levelsData = get(0)?.data ?? [];
-      const skillsData = get(1)?.data ?? [];
-      const topicsData = get(2)?.data ?? [];
-      const tagsData = get(3)?.data ?? [];
+      const levelsRes = get(0);
+      const skillsRes = get(1);
+      const topicsRes = get(2);
+      const tagsRes = get(3);
+
+      const levelsData = levelsRes?.data ?? [];
+      const skillsData = skillsRes?.data ?? [];
+      const topicsData = topicsRes?.data ?? [];
+      const tagsData = tagsRes?.data ?? [];
 
       setLevels(levelsData);
       setSkills(skillsData);
@@ -492,20 +702,31 @@ export default function LearningCms() {
         setFilteredTopics(topicsData);
         setFilteredTags(tagsData);
         lastFetchedSearchRef.current = "";
+        const currentTaxRes = taxTab === "levels" ? levelsRes : taxTab === "skills" ? skillsRes : taxTab === "topics" ? topicsRes : tagsRes;
+        setTaxTotal(currentTaxRes?.meta?.total ?? currentTaxRes?.data?.length ?? 0);
       } else {
         if (taxTab !== "levels") setFilteredLevels(levelsData);
         if (taxTab !== "skills") setFilteredSkills(skillsData);
         if (taxTab !== "topics") setFilteredTopics(topicsData);
         if (taxTab !== "tags") setFilteredTags(tagsData);
-        loadTaxonomyData(taxTab, taxSearch);
+        loadTaxonomyData(taxTab, taxSearch, taxPage, taxPageSize);
       }
 
-      setMedia(get(4)?.data ?? []);
-      setPassages(get(5)?.data ?? []);
-      setQuestions(get(6)?.data ?? []);
+      const mediaRes = get(4);
+      setMedia(mediaRes?.data ?? []);
+      setMediaTotal(mediaRes?.meta?.total ?? mediaRes?.data?.length ?? 0);
+
+      const passagesRes = get(5);
+      setPassages(passagesRes?.data ?? []);
+      setPassagesTotal(passagesRes?.meta?.total ?? passagesRes?.data?.length ?? 0);
+
+      const questionsRes = get(6);
+      setQuestions(questionsRes?.data ?? []);
+      setQuestionsTotal(questionsRes?.meta?.total ?? questionsRes?.data?.length ?? 0);
 
       // Fetch full exam details to get question counts
       const examList: any[] = get(7)?.data ?? [];
+      setExamsTotal(get(7)?.meta?.total ?? examList.length);
       if (examList.length > 0) {
         const detailResults = await Promise.allSettled(
           examList.map((e) => learningCmsService.exams.get(e.id)),
@@ -520,6 +741,7 @@ export default function LearningCms() {
 
       // Fetch full curriculum details to get exams and level
       const curriculumList: any[] = get(8)?.data ?? [];
+      setCurriculumsTotal(get(8)?.meta?.total ?? curriculumList.length);
       if (curriculumList.length > 0) {
         const detailResults = await Promise.allSettled(
           curriculumList.map((c) => learningCmsService.curriculums.get(c.id)),
@@ -585,12 +807,14 @@ export default function LearningCms() {
     if (prevTabRef.current !== taxTab) {
       prevTabRef.current = taxTab;
       setTaxSearch("");
-      loadTaxonomyData(taxTab, "");
+      setTaxPage(1);
+      loadTaxonomyData(taxTab, "", 1, taxPageSize);
       return;
     }
     if (isInitialMount.current) { isInitialMount.current = false; return; }
     if (debouncedTaxSearch === lastFetchedSearchRef.current) return;
-    loadTaxonomyData(taxTab, debouncedTaxSearch);
+    setTaxPage(1);
+    loadTaxonomyData(taxTab, debouncedTaxSearch, 1, taxPageSize);
   }, [taxTab, debouncedTaxSearch]);
 
   // ============================================================
@@ -826,6 +1050,17 @@ export default function LearningCms() {
             orderIndex: p.orderIndex,
           }));
         }
+        if (fullRecord.type === "audio_fill_blanks") {
+          const det = fullRecord.detail as any;
+          detailFields.passageText = det?.passageText;
+          detailFields.gradingMode = det?.gradingMode ?? "normalized";
+          detailFields.blanks = (det?.blanks ?? []).map((b: any) => ({
+            id: b.id,
+            acceptedAnswers: Array.isArray(b.acceptedAnswers)
+              ? b.acceptedAnswers.join(", ")
+              : (b.acceptedAnswers ?? ""),
+          }));
+        }
       }
 
       const mediaIds = (fullRecord.media ?? []).map((m: any) => ({
@@ -913,6 +1148,16 @@ export default function LearningCms() {
             } : undefined,
             rightMediaId: p.rightMediaId || p.rightMedia?.id,
             orderIndex: p.orderIndex,
+          }));
+        }
+        if (cloneData.type === "audio_fill_blanks") {
+          detailFields.passageText = (cloneData.detail as any)?.passageText;
+          detailFields.gradingMode = (cloneData.detail as any)?.gradingMode ?? "normalized";
+          detailFields.blanks = ((cloneData.detail as any)?.blanks ?? []).map((b: any) => ({
+            id: b.id,
+            acceptedAnswers: Array.isArray(b.acceptedAnswers)
+              ? b.acceptedAnswers.join(", ")
+              : (b.acceptedAnswers ?? ""),
           }));
         }
       }
@@ -1040,6 +1285,46 @@ export default function LearningCms() {
       }
     }
 
+    if (qType === "audio_fill_blanks") {
+      if (!values.passageText?.trim()) {
+        message.error({
+          content: "Vui lòng nhập đoạn văn có chứa ô trống!",
+          key: "question-form-validation-error",
+        });
+        return;
+      }
+      const tokenMatches = values.passageText.match(/\{\{([a-zA-Z0-9_]+)\}\}/g) || [];
+      if (tokenMatches.length === 0) {
+        message.error({
+          content: "Đoạn văn phải chứa ít nhất một ô trống có định dạng {{blank1}}!",
+          key: "question-form-validation-error",
+        });
+        return;
+      }
+      const blanks = values.blanks ?? [];
+      if (blanks.length === 0) {
+        message.error({
+          content: "Vui lòng cấu hình đáp án cho các ô trống!",
+          key: "question-form-validation-error",
+        });
+        return;
+      }
+      for (const b of blanks) {
+        const answers = Array.isArray(b.acceptedAnswers)
+          ? b.acceptedAnswers
+          : typeof b.acceptedAnswers === "string"
+            ? b.acceptedAnswers.split(",").map((s: string) => s.trim()).filter(Boolean)
+            : [];
+        if (answers.length === 0) {
+          message.error({
+            content: `Ô trống {{${b.id || "..."}}} chưa có đáp án chấp nhận!`,
+            key: "question-form-validation-error",
+          });
+          return;
+        }
+      }
+    }
+
     try {
       const payload: any = {
         type: qType,
@@ -1055,7 +1340,7 @@ export default function LearningCms() {
           .filter((m: any) => m?.mediaId)
           .map((m: any, idx: number) => ({
             mediaId: m.mediaId,
-            role: m.role || (qType === "image_choice" ? "prompt_image" : (qType === "audio_choice" || qType === "audio_image_choice") ? "prompt_audio" : "prompt_image"),
+            role: m.role || (qType === "image_choice" ? "prompt_image" : (qType === "audio_choice" || qType === "audio_image_choice" || qType === "audio_fill_blanks") ? "prompt_audio" : "prompt_image"),
             orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
           })),
       };
@@ -1066,9 +1351,20 @@ export default function LearningCms() {
           payload.mediaIds[0].role = "prompt_image";
         }
       }
-      if ((qType === "audio_choice" || qType === "audio_image_choice") && payload.mediaIds.length > 0) {
+      if ((qType === "audio_choice" || qType === "audio_image_choice" || qType === "audio_fill_blanks") && payload.mediaIds.length > 0) {
         if (!payload.mediaIds.some((m: any) => m.role === "prompt_audio")) {
           payload.mediaIds[0].role = "prompt_audio";
+        }
+      }
+
+      if (qType === "audio_fill_blanks") {
+        const hasAudio = payload.mediaIds.some((m: any) => m.role === "prompt_audio");
+        if (!hasAudio) {
+          message.error({
+            content: "Câu hỏi Nghe và điền từ cần một tệp âm thanh đề bài!",
+            key: "question-form-validation-error",
+          });
+          return;
         }
       }
 
@@ -1107,6 +1403,22 @@ export default function LearningCms() {
             rightMediaId: p.rightMediaId || undefined,
             orderIndex: i,
           })),
+        };
+      } else if (qType === "audio_fill_blanks") {
+        payload.options = [];
+        const blanks = (values.blanks ?? []).map((b: any) => ({
+          id: String(b.id || "").trim(),
+          acceptedAnswers: Array.isArray(b.acceptedAnswers)
+            ? b.acceptedAnswers.map((s: string) => s.trim()).filter(Boolean)
+            : String(b.acceptedAnswers ?? "")
+                .split(",")
+                .map((s: string) => s.trim())
+                .filter(Boolean),
+        }));
+        payload.detail = {
+          passageText: formatTextForBackend(values.passageText),
+          blanks,
+          gradingMode: values.gradingMode ?? "normalized",
         };
       }
 
@@ -1373,6 +1685,14 @@ export default function LearningCms() {
     }
     setManageQuestionsOpen(true);
 
+    // Fetch published question pool for ManageQuestionsModal
+    learningCmsService.questions
+      .list({ specializationId: selectedSpecializationId, status: "published", limit: LIST_LIMIT })
+      .then((res) => {
+        if (res.data) setAllQuestionsForModal(res.data);
+      })
+      .catch(() => {});
+
     // Prefetch question details for hover popover
     const publishedQs = questions.filter((q) => q.status === "published");
     const idsToFetch = publishedQs.map((q) => q.id).filter((id) => !questionDetails[id]);
@@ -1616,6 +1936,12 @@ export default function LearningCms() {
           columns={taxColumns}
           dataSource={getTaxData()}
           loading={taxLoading}
+          pagination={{
+            current: taxPage,
+            pageSize: taxPageSize,
+            total: taxTotal,
+            onChange: handleTaxPageChange,
+          }}
           onCreateClick={handleTaxCreate}
         />
       ),
@@ -1626,6 +1952,15 @@ export default function LearningCms() {
       children: (
         <MediaTab
           media={media}
+          loading={mediaLoading}
+          typeFilter={mediaTypeFilter}
+          onTypeFilterChange={handleMediaTypeFilterChange}
+          pagination={{
+            current: mediaPage,
+            pageSize: mediaPageSize,
+            total: mediaTotal,
+            onChange: handleMediaPageChange,
+          }}
           onUploadClick={() => { setUploadFile(null); setMediaAlt(""); setMediaModalOpen(true); }}
           onDeleteClick={handleMediaDelete}
           onPreviewClick={handlePreviewAsset}
@@ -1638,6 +1973,13 @@ export default function LearningCms() {
       children: (
         <PassagesTab
           passages={passages}
+          loading={passagesLoading}
+          pagination={{
+            current: passagesPage,
+            pageSize: passagesPageSize,
+            total: passagesTotal,
+            onChange: handlePassagesPageChange,
+          }}
           onCreateClick={handlePassageCreate}
           onEditClick={handlePassageEdit}
           onDeleteClick={handlePassageDelete}
@@ -1649,7 +1991,7 @@ export default function LearningCms() {
       label: (
         <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
           <QuestionCircleOutlined /> Câu hỏi
-          <Badge count={questions.length} color="indigo" style={{ marginLeft: 4 }} />
+          <Badge count={questionsTotal} color="indigo" style={{ marginLeft: 4 }} />
         </span>
       ),
       children: (
@@ -1660,6 +2002,13 @@ export default function LearningCms() {
           topics={topics}
           tags={tags}
           questionDetails={questionDetails}
+          loading={questionsLoading}
+          pagination={{
+            current: questionsPage,
+            pageSize: questionsPageSize,
+            total: questionsTotal,
+            onChange: handleQuestionsPageChange,
+          }}
           onCreateClick={handleQuestionCreate}
           onEditClick={handleQuestionEdit}
           onDuplicateClick={handleQuestionDuplicate}
@@ -1673,12 +2022,19 @@ export default function LearningCms() {
       label: (
         <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
           <BookOutlined /> Đề thi
-          <Badge count={exams.length} color="blue" style={{ marginLeft: 4 }} />
+          <Badge count={examsTotal} color="blue" style={{ marginLeft: 4 }} />
         </span>
       ),
       children: (
         <ExamsTab
           exams={exams}
+          loading={examsLoading}
+          pagination={{
+            current: examsPage,
+            pageSize: examsPageSize,
+            total: examsTotal,
+            onChange: handleExamsPageChange,
+          }}
           onCreateClick={handleExamCreate}
           onEditClick={handleExamEdit}
           onDeleteClick={handleExamDelete}
@@ -1694,13 +2050,20 @@ export default function LearningCms() {
       label: (
         <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
           <FileTextOutlined /> Giáo trình
-          <Badge count={curriculums.length} color="purple" style={{ marginLeft: 4 }} />
+          <Badge count={curriculumsTotal} color="purple" style={{ marginLeft: 4 }} />
         </span>
       ),
       children: (
         <CurriculumsTab
           curriculums={curriculums}
           exams={exams}
+          loading={curriculumsLoading}
+          pagination={{
+            current: curriculumsPage,
+            pageSize: curriculumsPageSize,
+            total: curriculumsTotal,
+            onChange: handleCurriculumsPageChange,
+          }}
           onCreateClick={handleCurriculumCreate}
           onEditClick={handleCurriculumEdit}
           onDeleteClick={handleCurriculumDelete}
@@ -1885,7 +2248,7 @@ export default function LearningCms() {
               selectedExam={selectedExam}
               onCancel={() => { setManageQuestionsOpen(false); setSelectedExam(null); }}
               onDone={() => { setManageQuestionsOpen(false); setSelectedExam(null); }}
-              allQuestions={questions}
+              allQuestions={allQuestionsForModal.length > 0 ? allQuestionsForModal : questions}
               questionDetails={questionDetails}
               skills={skills}
               levels={levels}

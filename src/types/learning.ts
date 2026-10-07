@@ -3,6 +3,7 @@ import { PaginationQuery } from "./api";
 export type QuestionType =
   | "multiple_choice"
   | "audio_choice"
+  | "audio_fill_blanks"
   | "image_choice"
   | "true_false"
   | "audio_image_choice"
@@ -23,7 +24,7 @@ export interface LearningListQuery extends PaginationQuery {
   skillId?: string;
   topicId?: string;
   tagIds?: string | string[];
-  type?: QuestionType;
+  type?: QuestionType | string;
   parentId?: string;
   specializationId?: string;
   [key: string]: unknown;

@@ -132,6 +132,42 @@ export function parseBackendAnswer(type: string, ansObj: any): any {
       });
       return Object.keys(pairsObj).length > 0 ? pairsObj : ansObj;
     }
+
+    case "audio_fill_blanks":
+    case "audio-fill-blanks": {
+      if (ansObj && typeof ansObj === "object") {
+        if (Array.isArray(ansObj.blanks)) {
+          const dict: Record<string, string> = {};
+          ansObj.blanks.forEach((b: any, idx: number) => {
+            const id = b?.id || `blank${idx + 1}`;
+            const val = b?.value ?? (Array.isArray(b?.acceptedAnswers) ? b.acceptedAnswers.join(" / ") : b?.acceptedAnswers);
+            dict[id] = val || "";
+          });
+          return dict;
+        }
+        if (Array.isArray(ansObj)) {
+          const dict: Record<string, string> = {};
+          ansObj.forEach((b: any, idx: number) => {
+            const id = b?.id || `blank${idx + 1}`;
+            const val = b?.value ?? (Array.isArray(b?.acceptedAnswers) ? b.acceptedAnswers.join(" / ") : b?.acceptedAnswers);
+            dict[id] = val || (typeof b === "string" ? b : "");
+          });
+          return dict;
+        }
+        const dict: Record<string, string> = {};
+        Object.entries(ansObj).forEach(([k, v]) => {
+          if (Array.isArray(v)) {
+            dict[k] = v.join(" / ");
+          } else if (typeof v === "object" && v !== null) {
+            dict[k] = (v as any).value || ((v as any).acceptedAnswers ? ((v as any).acceptedAnswers.join ? (v as any).acceptedAnswers.join(" / ") : String((v as any).acceptedAnswers)) : "");
+          } else {
+            dict[k] = String(v ?? "");
+          }
+        });
+        return dict;
+      }
+      return ansObj;
+    }
   }
   return ansObj;
 }
@@ -167,7 +203,8 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         (detail as any).correctOptionIds ||
         (detail as any).correctAnswer ||
         (detail as any).correctTokens ||
-        (detail as any).acceptedAnswers;
+        (detail as any).acceptedAnswers ||
+        (detail as any).blanks;
 
       const backendCorrectAnswer =
         parseBackendAnswer(answer.questionType, answer.correctAnswer) ??
@@ -301,6 +338,9 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         questionVersionId: answer.questionVersionId,
         questionContent: attemptContent,
         passage: detail.passage?.content || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
+        passageText: detail.passageText || (snapshot as any).passageText,
+        blanks: detail.blanks || (snapshot as any).blanks,
+        detail,
         media,
         options,
         leftItems,

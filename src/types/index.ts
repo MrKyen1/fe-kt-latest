@@ -1,6 +1,7 @@
 export type QuestionType =
   | "multiple_choice"
   | "audio_choice"
+  | "audio_fill_blanks"
   | "image_choice"
   | "true_false"
   | "audio_image_choice"
@@ -14,7 +15,8 @@ export type QuestionType =
   | "listening"
   | "word-ordering"
   | "true-false"
-  | "fill-in-the-blank";
+  | "fill-in-the-blank"
+  | "audio-fill-blanks";
 
 export interface ExamMedia {
   type: "image" | "audio" | "video";
@@ -43,6 +45,10 @@ export interface ExamQuestion {
   
   leftItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
   rightItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
+
+  detail?: Record<string, any>;
+  passageText?: string;
+  blanks?: Array<{ id: string; acceptedAnswers?: string[] }>;
 
   correctAnswer?: string | string[] | Record<string, string>;
 
