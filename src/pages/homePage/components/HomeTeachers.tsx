@@ -3,10 +3,7 @@ import { UserOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { homepageService } from "../../../services/homepageService";
-import { userService } from "../../../services/userService";
-import { academicService } from "../../../services/academicService";
 import { resolveMediaUrl } from "../../../services/apiClient";
-import { Specialization, User } from "../../../types/backend";
 
 const { Title, Paragraph } = Typography;
 
@@ -24,6 +21,7 @@ export default function HomeTeachers() {
   const [customText, setCustomText] = useState<string | null>(null);
   const [teachers, setTeachers] = useState<TeacherItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("admin_teachers");
@@ -37,112 +35,35 @@ export default function HomeTeachers() {
       try {
         setLoading(true);
 
-        // 1. Thử gọi API Public dành riêng cho trang chủ (không yêu cầu token)
-        try {
-          const publicTeachers = await homepageService.getTeachers();
-          if (Array.isArray(publicTeachers) && publicTeachers.length > 0) {
-            const mapped: TeacherItem[] = publicTeachers.map((t) => {
-              const specNames = (t.specializations || []).map((s) => s.name).filter(Boolean);
-              const subjectText = specNames.length > 0 ? specNames.join(" • ") : "Giáo viên chuyên môn";
-              const descText =
-                t.description ||
-                (t.yearsOfExperience
-                  ? `${t.yearsOfExperience} năm kinh nghiệm giảng dạy`
-                  : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
-              const centerNames = (t.centers || []).map((c: any) => c.name).filter(Boolean);
-              const centerName = centerNames.length > 0 ? centerNames.join(" • ") : undefined;
+        setLoadError(false);
+        const publicTeachers = await homepageService.getTeachers();
+        const mapped: TeacherItem[] = publicTeachers.map((t) => {
+          const specNames = (t.specializations || []).map((s) => s.name).filter(Boolean);
+          const subjectText = specNames.length > 0 ? specNames.join(" • ") : "Giáo viên chuyên môn";
+          const descText =
+            t.description ||
+            (t.yearsOfExperience
+              ? `${t.yearsOfExperience} năm kinh nghiệm giảng dạy`
+              : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
+          const centerNames = (t.centers || []).map((c: any) => c.name).filter(Boolean);
+          const centerName = centerNames.length > 0 ? centerNames.join(" • ") : undefined;
 
-              return {
-                id: t.id,
-                name: t.fullName || "Giáo viên",
-                avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
-                subject: subjectText,
-                desc: descText,
-                centerName,
-                centerNames,
-              };
-            });
-
-            if (active) {
-              setTeachers(mapped);
-              return;
-            }
-          }
-        } catch {
-          // Fallback sang endpoint quản lý nếu API public chưa sẵn sàng
-        }
-
-        if (!active) return;
-
-        // 2. Fallback: Gọi qua userService (yêu cầu quyền users.read)
-        const [teachersRes, specsRes, centersRes] = await Promise.allSettled([
-          userService.list({ roleCode: "teacher", isActive: true }),
-          academicService.specializations.list().catch(() => []),
-          academicService.centers.publicList().catch(() => []),
-        ]);
-
-        if (!active) return;
-
-        const rawTeachers: User[] =
-          teachersRes.status === "fulfilled" && Array.isArray(teachersRes.value)
-            ? teachersRes.value
-            : [];
-
-        const specsList: Specialization[] =
-          specsRes.status === "fulfilled" && Array.isArray(specsRes.value)
-            ? specsRes.value
-            : [];
-
-        const centersList: any[] =
-          centersRes.status === "fulfilled" && Array.isArray(centersRes.value)
-            ? centersRes.value
-            : [];
-
-        if (rawTeachers.length > 0) {
-          const mapped: TeacherItem[] = rawTeachers.map((t) => {
-            const rawSpecs = t.teacherProfile?.specializations || [];
-            const specNamesFromObj = rawSpecs
-              .map((s: any) => s.name || s.specialization?.name)
-              .filter(Boolean);
-            const specNamesFromIds = (t.teacherProfile?.specializationIds || [])
-              .map((id) => specsList.find((s) => s.id === id)?.name)
-              .filter(Boolean);
-            const combinedSpecs = Array.from(new Set([...specNamesFromObj, ...specNamesFromIds]));
-            const subjectText = combinedSpecs.length > 0 ? combinedSpecs.join(" • ") : "Giáo viên chuyên môn";
-
-            const descText =
-              t.teacherProfile?.description ||
-              (t.teacherProfile?.yearsOfExperience
-                ? `${t.teacherProfile.yearsOfExperience} năm kinh nghiệm giảng dạy`
-                : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
-
-            const teacherClasses = t.teacherProfile?.classes || [];
-            const teacherCenterNames = Array.from(
-              new Set([
-                ...teacherClasses.map((c: any) => c.center?.name || centersList.find((cen: any) => cen.id === c.centerId)?.name),
-                ...(t.centerIds || []).map((cid: string) => centersList.find((cen: any) => cen.id === cid)?.name),
-                centersList.find((c: any) => c.id === (t.centerId || (t as any).teacherProfile?.centerId))?.name,
-              ].filter(Boolean))
-            );
-            const centerName = teacherCenterNames.length > 0 ? teacherCenterNames.join(" • ") : undefined;
-
-            return {
-              id: t.id,
-              name: t.fullName || (t as any).name || t.code || "Giáo viên",
-              avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
-              subject: subjectText,
-              desc: descText,
-              centerName,
-              centerNames: teacherCenterNames,
-            };
-          });
-
-          setTeachers(mapped);
-        } else {
-          setTeachers([]);
-        }
+          return {
+            id: t.id,
+            name: t.fullName || "Giáo viên",
+            avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
+            subject: subjectText,
+            desc: descText,
+            centerName,
+            centerNames,
+          };
+        });
+        if (active) setTeachers(mapped);
       } catch {
-        if (active) setTeachers([]);
+        if (active) {
+          setTeachers([]);
+          setLoadError(true);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -265,7 +186,7 @@ export default function HomeTeachers() {
         </Row>
       ) : (
         <div className="py-12">
-          <Empty description="Chưa có thông tin giáo viên từ hệ thống" />
+          <Empty description={loadError ? "Không tải được danh sách giáo viên. Vui lòng thử lại sau." : "Chưa có thông tin giáo viên từ hệ thống"} />
         </div>
       )}
     </section>

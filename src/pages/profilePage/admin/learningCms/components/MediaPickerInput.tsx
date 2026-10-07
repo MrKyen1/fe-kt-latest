@@ -1,3 +1,4 @@
+import { useAuth } from "../../../../../contexts/AuthContext";
 import React, { useState, useEffect } from "react";
 import { Button, Segmented, Select, Tooltip, Upload, message, Tag } from "antd";
 import { UploadOutlined, DeleteOutlined, SwapOutlined } from "@ant-design/icons";
@@ -38,6 +39,8 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
   placeholder = "Chọn tệp từ thư viện hoặc tải lên...",
   className = "",
 }) => {
+  const { hasPermission } = useAuth();
+  const canUpload = hasPermission("learning.media.upload");
   // Normalize value
   const currentValue: MediaPickerValue =
     typeof value === "string"
@@ -91,6 +94,7 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
   };
 
   const handleFileChosen = (file: File) => {
+    if (!canUpload) return Upload.LIST_IGNORE;
     const isFileImg = file.type.startsWith("image/");
     const isFileAud = file.type.startsWith("audio/");
 
@@ -240,6 +244,7 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
                 </div>
               ),
               value: "upload",
+              disabled: !canUpload,
             },
             {
               label: (
@@ -256,6 +261,7 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
 
       {mode === "upload" ? (
         <Upload.Dragger
+          disabled={!canUpload}
           showUploadList={false}
           accept={uploadAccept}
           beforeUpload={handleFileChosen}

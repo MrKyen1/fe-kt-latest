@@ -27,8 +27,19 @@ export const homepageService = {
    * Public API: Lấy danh sách giáo viên công khai cho trang chủ
    */
   async getTeachers(): Promise<HomepageTeacher[]> {
-    const response = await apiClient.get<ApiEnvelope<HomepageTeacher[]>>("/homepage/teachers");
-    return unwrapData(response);
+    const teachers: HomepageTeacher[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const response = await apiClient.get<ApiEnvelope<HomepageTeacher[]>>("/homepage/teachers", {
+        params: { page, limit: 100 },
+      });
+      const result = unwrapList(response);
+      teachers.push(...result.data);
+      totalPages = result.meta?.totalPages ?? 1;
+      page += 1;
+    } while (page <= totalPages);
+    return teachers;
   },
 
   /**

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ExamCard from "./ExamCard";
 import { studentLearningService } from "../../services/studentLearningService";
 import { learningCmsService } from "../../services/learningCmsService";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -76,6 +77,7 @@ type AssignmentExam = {
   timeLimitSeconds?: number;
   questions?: unknown[];
   examQuestions?: unknown[];
+  questionCount?: number;
 };
 
 type ExamListItem = {
@@ -87,7 +89,7 @@ type ExamListItem = {
 };
 
 function getQuestionCount(exam?: AssignmentExam) {
-  return exam?.questions?.length ?? exam?.examQuestions?.length ?? 0;
+  return exam?.questionCount ?? exam?.questions?.length ?? exam?.examQuestions?.length ?? 0;
 }
 
 function getExamTimeLimit(exam?: AssignmentExam) {
@@ -157,6 +159,7 @@ function flattenExamAssignmentRows(rows: ExamAssignmentRow[]): ExamListItem[] {
 }
 
 export default function ExamList() {
+  const { hasPermission } = useAuth();
   const { courseId } = useParams();
   const navigate = useNavigate();
   const [items, setItems] = useState<ExamListItem[]>([]);
@@ -195,7 +198,7 @@ export default function ExamList() {
               const fullExams = await Promise.allSettled(
                 exams.map(async (ep: any) => {
                   const examId = ep.examId || ep.exam?.id;
-                  if (!examId) return ep;
+                  if (!examId || !hasPermission("learning.read")) return ep;
                   try {
                     const fullExam = await learningCmsService.exams.get(examId);
                     return {

@@ -13,7 +13,7 @@ const { Title, Text } = Typography;
 
 export default function PublishedCurriculums() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const isStudent = user?.role === "student";
 
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
@@ -36,7 +36,7 @@ export default function PublishedCurriculums() {
           }),
         ];
 
-        if (isStudent) {
+        if (isStudent && hasPermission("learning.attempt")) {
           promises.push(studentLearningService.curriculums.list({ limit: 100 }).catch(() => []));
         }
 
