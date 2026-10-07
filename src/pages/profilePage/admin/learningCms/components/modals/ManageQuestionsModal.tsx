@@ -104,7 +104,7 @@ interface Props {
   onExamQTagFilter:  (v: string | undefined) => void;
   onResetFilters:    () => void;
 
-  onAddQuestion:    (questionId: string) => void;
+  onAddQuestion:    (questionId: string) => Promise<void> | void;
   onRemoveQuestion: (questionId: string) => void;
   onReorder:        (index: number, direction: "up" | "down") => void;
   onRepublish:      () => void;
@@ -268,6 +268,7 @@ export default function ManageQuestionsModal({
   ]);
   const [isRandomLoading, setIsRandomLoading] = useState(false);
   const [isBulkAttaching, setIsBulkAttaching] = useState(false);
+  const [addingQuestionId, setAddingQuestionId] = useState<string | null>(null);
   const [randomResult, setRandomResult] = useState<{
     totalCount: number;
     items: Array<{ questionId: string; orderIndex: number }>;
@@ -376,11 +377,28 @@ export default function ManageQuestionsModal({
 
     try {
       setIsBulkAttaching(true);
-      const startIdx = examQuestions.length;
-      const items = randomResult.items.map((item, idx) => ({
-        questionId: item.questionId,
-        orderIndex: startIdx + idx,
-      }));
+      const existingIndices = new Set(
+        examQuestions
+          .map((eq: any) => Number(eq.orderIndex))
+          .filter((n: number) => !isNaN(n))
+      );
+      let nextIdx = examQuestions.length;
+      if (existingIndices.size > 0) {
+        const maxIdx = Math.max(...Array.from(existingIndices));
+        nextIdx = Math.max(maxIdx + 1, examQuestions.length);
+      }
+      const items = randomResult.items.map((item) => {
+        while (existingIndices.has(nextIdx)) {
+          nextIdx++;
+        }
+        const assignedOrder = nextIdx;
+        existingIndices.add(assignedOrder);
+        nextIdx++;
+        return {
+          questionId: item.questionId,
+          orderIndex: assignedOrder,
+        };
+      });
 
       if (onBulkAttach) {
         await onBulkAttach(items);
@@ -607,9 +625,16 @@ export default function ManageQuestionsModal({
                           type="dashed"
                           size="small"
                           icon={<PlusOutlined />}
-                          onClick={(e) => {
+                          loading={addingQuestionId === q.id}
+                          disabled={addingQuestionId !== null}
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            onAddQuestion(q.id);
+                            try {
+                              setAddingQuestionId(q.id);
+                              await onAddQuestion(q.id);
+                            } finally {
+                              setAddingQuestionId(null);
+                            }
                           }}
                           className="text-xs"
                         >

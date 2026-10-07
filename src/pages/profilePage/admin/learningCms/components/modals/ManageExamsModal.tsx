@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Badge, Button, Card, Col, Empty, Modal, Row, Tag } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { AlertCircle, Clock } from "lucide-react";
@@ -35,7 +36,7 @@ interface Props {
   /** Full exam list (used to find exam details by ID) */
   allExams: Exam[];
 
-  onAddExam:    (examId: string) => void;
+  onAddExam:    (examId: string) => Promise<void> | void;
   onRemoveExam: (examId: string) => void;
   onReorder:    (index: number, direction: "up" | "down") => void;
 }
@@ -62,6 +63,7 @@ export default function ManageExamsModal({
   const availableExams = allExams.filter(
     (e) => e.status === "published" && !currExamIds.has(e.id)
   );
+  const [addingExamId, setAddingExamId] = useState<string | null>(null);
 
   return (
     <Modal
@@ -170,7 +172,22 @@ export default function ManageExamsModal({
                         </span>
                       </span>
                     </div>
-                    <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => onAddExam(exam.id)} className="shrink-0 text-xs">
+                    <Button
+                      type="dashed"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      loading={addingExamId === exam.id}
+                      disabled={addingExamId !== null}
+                      onClick={async () => {
+                        try {
+                          setAddingExamId(exam.id);
+                          await onAddExam(exam.id);
+                        } finally {
+                          setAddingExamId(null);
+                        }
+                      }}
+                      className="shrink-0 text-xs"
+                    >
                       Thêm
                     </Button>
                   </div>

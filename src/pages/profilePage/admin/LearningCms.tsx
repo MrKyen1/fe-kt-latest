@@ -1335,7 +1335,7 @@ export default function LearningCms() {
         skillId: values.skillId,
         topicId: values.topicId,
         tagIds: values.tagIds ?? [],
-        status: editingItem?.status ?? "draft",
+        status: editingItem?.status ?? "published",
         mediaIds: (values.mediaIds ?? [])
           .filter((m: any) => m?.mediaId)
           .map((m: any, idx: number) => ({
@@ -1693,33 +1693,34 @@ export default function LearningCms() {
       })
       .catch(() => {});
 
-    // Prefetch question details for hover popover
-    const publishedQs = questions.filter((q) => q.status === "published");
-    const idsToFetch = publishedQs.map((q) => q.id).filter((id) => !questionDetails[id]);
-    if (idsToFetch.length > 0) {
-      Promise.allSettled(idsToFetch.map((id) => learningCmsService.questions.get(id))).then((results) => {
-        const updates: Record<string, any> = {};
-        results.forEach((r, i) => {
-          if (r.status === "fulfilled") updates[idsToFetch[i]] = r.value;
-        });
-        if (Object.keys(updates).length > 0) {
-          setQuestionDetails((prev) => ({ ...prev, ...updates }));
-        }
-      });
-    }
   };
 
   const handleAddQuestionToExam = async (questionId: string) => {
     if (!selectedExam) return;
     try {
-      const orderIndex = (selectedExam.questions ?? []).length;
+      const existing = selectedExam.questions ?? (selectedExam as any).examQuestions ?? [];
+      const existingIndices = new Set(
+        existing
+          .map((q: any) => Number(q.orderIndex))
+          .filter((n: number) => !isNaN(n))
+      );
+      let orderIndex = existing.length;
+      if (existingIndices.size > 0) {
+        const maxIdx = Math.max(...Array.from(existingIndices));
+        orderIndex = Math.max(maxIdx + 1, existing.length);
+      }
+      while (existingIndices.has(orderIndex)) {
+        orderIndex++;
+      }
+
       await learningCmsService.exams.attachQuestion(selectedExam.id, { questionId, orderIndex });
       message.success("Thêm câu hỏi thành công");
       const updated = await learningCmsService.exams.get(selectedExam.id);
       setSelectedExam(updated);
-      loadAllData();
+      setExams((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     } catch (err: any) {
       message.error(extractErrorMsg(err, "Thêm câu hỏi thất bại"));
+      throw err;
     }
   };
 
@@ -1730,7 +1731,7 @@ export default function LearningCms() {
       message.success(`Đã thêm ${items.length} câu hỏi vào đề thi`);
       const updated = await learningCmsService.exams.get(selectedExam.id);
       setSelectedExam(updated);
-      loadAllData();
+      setExams((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     } catch (err: any) {
       message.error(extractErrorMsg(err, "Gắn câu hỏi hàng loạt thất bại"));
       throw err;
@@ -1744,7 +1745,7 @@ export default function LearningCms() {
       message.success("Gỡ câu hỏi thành công");
       const updated = await learningCmsService.exams.get(selectedExam.id);
       setSelectedExam(updated);
-      loadAllData();
+      setExams((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     } catch (error: any) {
       message.error(extractErrorMsg(error, "Gỡ câu hỏi thất bại"));
     }
@@ -1763,6 +1764,7 @@ export default function LearningCms() {
       message.success("Sắp xếp lại thành công");
       const updated = await learningCmsService.exams.get(selectedExam.id);
       setSelectedExam(updated);
+      setExams((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     } catch (error: any) {
       message.error(extractErrorMsg(error, "Sắp xếp lại thất bại"));
     }
@@ -1875,14 +1877,29 @@ export default function LearningCms() {
   const handleAddExamToCurriculum = async (examId: string) => {
     if (!selectedCurriculum) return;
     try {
-      const orderIndex = (selectedCurriculum.exams ?? []).length;
+      const existing = selectedCurriculum.exams ?? [];
+      const existingIndices = new Set(
+        existing
+          .map((e: any) => Number(e.orderIndex))
+          .filter((n: number) => !isNaN(n))
+      );
+      let orderIndex = existing.length;
+      if (existingIndices.size > 0) {
+        const maxIdx = Math.max(...Array.from(existingIndices));
+        orderIndex = Math.max(maxIdx + 1, existing.length);
+      }
+      while (existingIndices.has(orderIndex)) {
+        orderIndex++;
+      }
+
       await learningCmsService.curriculums.attachExam(selectedCurriculum.id, { examId, isRequired: true, orderIndex });
       message.success("Thêm đề thi thành công");
       const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
       setSelectedCurriculum(updated);
-      loadAllData();
+      setCurriculums((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err: any) {
       message.error(extractErrorMsg(err, "Thêm đề thi thất bại. Đề thi phải ở trạng thái Đã phát hành."));
+      throw err;
     }
   };
 
@@ -1893,7 +1910,7 @@ export default function LearningCms() {
       message.success("Gỡ đề thi thành công");
       const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
       setSelectedCurriculum(updated);
-      loadAllData();
+      setCurriculums((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     } catch (error: any) {
       message.error(extractErrorMsg(error, "Gỡ đề thi thất bại"));
     }
