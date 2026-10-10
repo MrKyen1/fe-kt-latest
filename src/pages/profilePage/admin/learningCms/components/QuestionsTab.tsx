@@ -1,3 +1,4 @@
+import { CONTENT_STATUS_LABELS } from "../constants";
 import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
@@ -58,10 +59,10 @@ interface Props {
 
 function StatusTag({ status }: { status: string }) {
   if (status === "published")
-    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.published}</Tag>;
   if (status === "archived")
-    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
-  return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
+    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.archived}</Tag>;
+  return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS[status] || status}</Tag>;
 }
 
 // ── Columns ──────────────────────────────────────────────────
@@ -117,10 +118,14 @@ function buildColumns(
       render: (_: unknown, record: Question) => {
         const skill = (record as any).skill || skills.find((s) => s.id === record.skillId);
         const level = (record as any).difficultyLevel || levels.find((l) => l.id === record.difficultyLevelId);
+        const topic = (record as any).topic || topics.find((item) => item.id === record.topicId);
+        const questionTags = (record.tags || []).map((item) => item.tag || item);
         return (
           <div className="text-xs text-slate-500 space-y-0.5">
             {skill && <div className="flex items-center gap-1"><Sparkles size={11} className="text-blue-500 shrink-0" /><span>{skill.name}</span></div>}
             {level && <div className="flex items-center gap-1"><Target size={11} className="text-purple-500 shrink-0" /><span>{level.name}</span></div>}
+            {topic && <div>Chủ đề: {topic.name}</div>}
+            {questionTags.length > 0 && <div className="flex flex-wrap gap-1">{questionTags.map((tag) => <Tag key={tag.id} className="m-0 text-xs">{tag.name}</Tag>)}</div>}
           </div>
         );
       },
@@ -256,8 +261,10 @@ export default function QuestionsTab({
           ) : (
             questions.map((record) => {
               const fullDetail = questionDetails[record.id] || record.detail || record;
-              const skillName = (record as any).skill || skills.find((s) => s.id === record.skillId)?.name;
-              const levelName = (record as any).difficultyLevel || levels.find((l) => l.id === record.difficultyLevelId)?.name;
+              const skillName = (record as any).skill?.name || skills.find((s) => s.id === record.skillId)?.name;
+              const levelName = (record as any).difficultyLevel?.name || levels.find((l) => l.id === record.difficultyLevelId)?.name;
+              const topicName = (record as any).topic?.name || topics.find((item) => item.id === record.topicId)?.name;
+              const questionTags = (record.tags || []).map((item) => item.tag || item);
               const typeColor = QUESTION_TYPE_COLORS[record.type] || "default";
               const typeLabel = QUESTION_TYPE_LABELS[record.type] || record.type;
 
@@ -307,6 +314,9 @@ export default function QuestionsTab({
                       </span>
                     )}
                   </div>
+
+                  {topicName && <div className="text-xs text-slate-500">Chủ đề: {topicName}</div>}
+                  {questionTags.length > 0 && <div className="flex flex-wrap gap-1">{questionTags.map((tag) => <Tag key={tag.id} className="m-0 text-xs">{tag.name}</Tag>)}</div>}
 
                   {/* Actions bar */}
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1">

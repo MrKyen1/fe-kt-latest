@@ -214,6 +214,11 @@ export default function LearningCms() {
 
   const [allQuestionsForModal, setAllQuestionsForModal] = useState<any[]>([]);
 
+  const profileSubjects = user?.role === "teacher" ? user.teacherProfile?.specializations || [] : [];
+  const useProfileSubjects = profileSubjects.length > 0;
+  const subjectPage = useServerPagination("/specializations", { isActive: true }, 20,
+    !!user && hasPermission("specializations.read") && !useProfileSubjects);
+
   const selectedSpecializationId = useMemo(() => {
     if (urlSubjectId) {
       return urlSubjectId;
@@ -424,8 +429,8 @@ export default function LearningCms() {
     taxTab === "topics" ? {
       title: "Chủ đề cha",
       dataIndex: "parentId",
-      render: (val: string) => {
-        const parent = topics.find((t) => t.id === val);
+      render: (val: string, record: any) => {
+        const parent = record.parent || topics.find((t) => t.id === val);
         return parent
           ? <Tag color="blue" className="rounded">{parent.name}</Tag>
           : <span className="text-slate-400">—</span>;
@@ -509,34 +514,27 @@ export default function LearningCms() {
   // ── Effects ────────────────────────────────────────────────
 
   useEffect(() => {
-    const fetchSpecs = async () => {
-      try {
-        let specs: any[] = [];
-        if (user?.role === "teacher" && user?.teacherProfile?.specializations?.length) {
-          specs = user.teacherProfile.specializations;
-        } else if (hasPermission("specializations.read")) {
-          try {
-            specs = await academicService.specializations.list({ isActive: true, limit: 1 });
-          } catch (err: any) {
-            if (user?.teacherProfile?.specializations?.length) {
-              specs = user.teacherProfile.specializations;
-            } else {
-              throw err;
-            }
-          }
-        }
-        setSpecializations(specs ?? []);
-        if (specs?.length > 0 && !urlSubjectId) {
-          navigate(`/${rolePrefix}/cms/subjects/${specs[0].id}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`, { replace: true });
-        }
-      } catch (error: any) {
-        message.error(extractErrorMsg(error, "Tải danh sách môn học thất bại"));
-      } finally {
-        setSubjectsLoaded(true);
-      }
-    };
-    fetchSpecs();
-  }, [user]);
+    if (!user || (subjectPage.loading && !useProfileSubjects)) return;
+    const specs = useProfileSubjects ? profileSubjects : subjectPage.data;
+    setSpecializations(specs);
+    setSubjectsLoaded(true);
+    if (subjectPage.error) message.error(extractErrorMsg(subjectPage.error, "Tải danh sách môn học thất bại"));
+    if (specs.length > 0 && !urlSubjectId) {
+      navigate(`/${rolePrefix}/cms/subjects/${specs[0].id}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`, { replace: true });
+    }
+  }, [user, subjectPage.data, subjectPage.loading, subjectPage.error]);
+
+  // A bookmarked subject may be outside the first option page.
+  const needsSubjectDetail = !!urlSubjectId && subjectsLoaded && !subjectPage.loading
+    && !specializations.some(spec => spec.id === urlSubjectId) && hasPermission("specializations.read");
+  useEffect(() => {
+    if (!needsSubjectDetail || !urlSubjectId) return;
+    let current = true;
+    academicService.specializations.get(urlSubjectId)
+      .then(spec => { if (current) setSpecializations(previous => [...previous.filter(item => item.id !== spec.id), spec]); })
+      .catch(error => { if (current) message.error(extractErrorMsg(error, "Tải môn học thất bại")); });
+    return () => { current = false; };
+  }, [urlSubjectId, needsSubjectDetail, subjectPage.generation, user?.id]);
 
 
 
@@ -1800,7 +1798,7 @@ export default function LearningCms() {
                         Môn học:
                       </span>
                     </div>
-                    <ServerSelect endpoint="/specializations" onRecords={rows => setSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+                    <ServerSelect endpoint="/specializations" query={{ isActive: true }} onRecords={rows => setSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                       value={selectedSpecializationId}
                       onChange={handleSubjectChange}
                       size="large"
