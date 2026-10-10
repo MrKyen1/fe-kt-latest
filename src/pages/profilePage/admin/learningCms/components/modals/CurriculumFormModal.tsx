@@ -85,7 +85,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
         </Form.Item>
 
         <Form.Item name="levelId" label="Level (Độ tuổi / Cấp độ)">
-          <ServerSelect endpoint="/learning/levels" className="rounded-xl" placeholder="Chọn level" allowClear />
+          <ServerSelect endpoint="/learning/levels" options={levels.map(item => ({ value: item.id, label: item.name }))} className="rounded-xl" placeholder="Chọn level" allowClear />
         </Form.Item>
 
         {/* Cover Image Upload (Backend 2026-09-16) */}

@@ -114,7 +114,7 @@ function ChoiceFields({
     <>
       {type === "reading_comprehension" && (
         <Form.Item name="passageId" label="Bài đọc liên quan" rules={[{ required: true, message: "Vui lòng chọn bài đọc liên quan!" }]}>
-          <ServerSelect endpoint="/learning/reading-passages" placeholder="Chọn bài đọc..." className="rounded-xl" />
+          <ServerSelect endpoint="/learning/reading-passages" options={passages.map(item => ({ value: item.id, label: item.title }))} placeholder="Chọn bài đọc..." className="rounded-xl" />
         </Form.Item>
       )}
       <Form.List name="options">
@@ -1692,7 +1692,7 @@ export default function QuestionFormModal({
           </Col>
           <Col xs={24} md={12}>
             <Form.Item name="difficultyLevelId" label="Level độ khó">
-              <ServerSelect endpoint="/learning/levels" className="rounded-xl" placeholder="Chọn level" allowClear />
+              <ServerSelect endpoint="/learning/levels" options={levels.map(item => ({ value: item.id, label: item.name }))} className="rounded-xl" placeholder="Chọn level" allowClear />
             </Form.Item>
           </Col>
         </Row>
@@ -1700,12 +1700,12 @@ export default function QuestionFormModal({
         <Row gutter={[16, 0]}>
           <Col xs={24} md={12}>
             <Form.Item name="skillId" label="Kỹ năng">
-              <ServerSelect endpoint="/learning/skills" className="rounded-xl" placeholder="Chọn kỹ năng" allowClear />
+              <ServerSelect endpoint="/learning/skills" options={skills.map(item => ({ value: item.id, label: item.name }))} className="rounded-xl" placeholder="Chọn kỹ năng" allowClear />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item name="topicId" label="Chủ đề">
-              <ServerSelect endpoint="/learning/topics" className="rounded-xl" placeholder="Chọn chủ đề" allowClear />
+              <ServerSelect endpoint="/learning/topics" options={topics.map(item => ({ value: item.id, label: item.name }))} className="rounded-xl" placeholder="Chọn chủ đề" allowClear />
             </Form.Item>
           </Col>
         </Row>

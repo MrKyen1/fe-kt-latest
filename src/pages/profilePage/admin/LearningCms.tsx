@@ -1871,7 +1871,7 @@ export default function LearningCms() {
               form={passageForm}
               onFinish={handlePassageSubmit}
               isEditing={!!editingItem}
-              levels={levels}
+              levels={[...levels, editingItem?.level].filter(Boolean)}
             />
 
             <QuestionFormModal
@@ -1886,11 +1886,11 @@ export default function LearningCms() {
               isDuplicating={isDuplicatingQuestion}
               currentType={currentQuestionType}
               onTypeChange={setCurrentQuestionType}
-              levels={levels}
-              skills={skills}
-              topics={topics}
-              tags={tags}
-              passages={passages}
+              levels={[...levels, editingItem?.difficultyLevel, editingItem?.level].filter(Boolean)}
+              skills={[...skills, editingItem?.skill].filter(Boolean)}
+              topics={[...topics, editingItem?.topic].filter(Boolean)}
+              tags={Array.from(new Map([...tags, ...(editingItem?.tags || [])].map(tag => [tag.id, tag])).values())}
+              passages={[...passages, editingItem?.readingPassage].filter(Boolean)}
               filteredMedia={getFilteredMedia()}
               allMedia={media}
               availableRoles={getAvailableRoles()}
@@ -1914,7 +1914,7 @@ export default function LearningCms() {
               form={curriculumForm}
               onFinish={handleCurriculumSubmit}
               isEditing={!!editingItem}
-              levels={levels}
+              levels={[...levels, editingItem?.level].filter(Boolean)}
             />
 
             <ExamVersionsModal
