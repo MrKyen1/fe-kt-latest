@@ -1,3 +1,4 @@
+import { PageSpinner } from "./LoadingRegion";
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ReactNode } from 'react';
@@ -14,9 +15,7 @@ export function ProtectedRoute({ children, roles, permissions, permissionMode = 
 
   if (isInitializing) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        Loading...
-      </div>
+      <PageSpinner />
     );
   }
 

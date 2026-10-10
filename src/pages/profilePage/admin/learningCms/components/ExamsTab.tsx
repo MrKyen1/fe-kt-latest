@@ -1,4 +1,8 @@
-import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { CONTENT_STATUS_LABELS } from "../constants";
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
 import { AlertTriangle, Clock } from "lucide-react";
 import {
   BookOutlined,
@@ -29,6 +33,7 @@ interface Exam {
   timeLimitSeconds?: number;
   hasUnpublishedChanges?: boolean;
   questions?: ExamQuestion[];
+  questionCount?: number;
 }
 
 interface Props {
@@ -59,7 +64,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
   if (exam.status !== "published") {
     return (
       <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200">
-        Bản nháp
+        {CONTENT_STATUS_LABELS[exam.status] || exam.status}
       </span>
     );
   }
@@ -67,10 +72,10 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-1 w-full">
       {/* Hàng 1: Trạng thái + Label Có thay đổi (Highlight vàng rực rỡ, không bị rớt dòng) */}
-      <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
+      <div className="flex items-center justify-center gap-1.5 flex-wrap">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-xs shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-          Đang phát hành
+          {CONTENT_STATUS_LABELS.published}
         </span>
 
         {exam.hasUnpublishedChanges && (
@@ -118,6 +123,7 @@ function buildColumns(
     {
       title: "Đề thi",
       dataIndex: "title",
+      minWidth: 280,
       render: (val: string, record: Exam) => (
         <Tooltip
           title={
@@ -149,7 +155,7 @@ function buildColumns(
           placement="topLeft"
           overlayStyle={{ maxWidth: 360 }}
         >
-          <div className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition-colors cursor-pointer truncate max-w-md">
+          <div className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition-colors cursor-pointer whitespace-normal wrap-anywhere leading-relaxed">
             {val}
           </div>
         </Tooltip>
@@ -158,6 +164,7 @@ function buildColumns(
     {
       title: "Loại đề",
       dataIndex: "examType",
+      minWidth: 130,
       render: (val?: string) => (
         <Tag
           color={val === "exam" ? "purple" : "blue"}
@@ -168,9 +175,10 @@ function buildColumns(
       ),
     },
     {
-      title: "Câu hỏi",
+      title: <span className="whitespace-nowrap">Câu hỏi</span>,
+      minWidth: 110,
       render: (_: unknown, record: Exam) => {
-        const count = record.questions?.length ?? 0;
+        const count = record.questionCount ?? record.questions?.length ?? 0;
         return (
           <div className="text-center">
             <div className="font-bold text-lg text-slate-700">{count}</div>
@@ -182,7 +190,7 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
-      width: 220,
+      minWidth: 220,
       align: "center" as const,
       render: (_: string, record: Exam) => (
         <ExamStatusCell exam={record} onToggle={onToggle} onRepublish={onRepublish} />
@@ -190,9 +198,10 @@ function buildColumns(
     },
     {
       title: "Thao tác",
+      minWidth: 240,
       align: "right" as const,
       render: (_: unknown, record: Exam) => (
-        <Space size="small">
+        <Space size="small" wrap>
           <Can perform="learning.write">
             <Button
               type="dashed"
@@ -278,6 +287,7 @@ export default function ExamsTab({
     onViewVersions,
   );
 
+  const headerColumns = useCmsHeaderFilters(columns, "exams");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -298,20 +308,30 @@ export default function ExamsTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={exams.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} đề thi
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : exams.length === 0 ? (
+          {exams.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có đề thi nào</span>} />
             </div>
           ) : (
             exams.map((record) => {
-              const questionCount = record.questions?.length ?? 0;
+              const questionCount = record.questionCount ?? record.questions?.length ?? 0;
               const isExam = record.examType === "exam";
 
               return (
@@ -368,7 +388,7 @@ export default function ExamsTab({
                             record.status === "published" ? "bg-emerald-500" : "bg-slate-400"
                           }`}
                         />
-                        {record.status === "published" ? "Đang phát hành" : "Bản nháp"}
+                        {CONTENT_STATUS_LABELS[record.status] || record.status}
                       </span>
 
                       {record.hasUnpublishedChanges && (
@@ -475,29 +495,16 @@ export default function ExamsTab({
             })
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} đề thi
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}
           dataSource={exams}
-          columns={columns}
-          scroll={{ x: 900 }}
+          columns={headerColumns}
+          tableLayout="auto"
+          scroll={{ x: 980 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

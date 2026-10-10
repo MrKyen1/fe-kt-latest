@@ -1,4 +1,6 @@
-import { Typography, Row, Col, Spin, Alert, Tag, Empty } from "antd";
+import { PagedCollection } from "../../components/PagedCollection";
+import { useServerPagination } from "../../hooks/useServerPagination";
+import { Typography, Row, Col, Spin, Alert, Tag, Empty, Pagination } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { BookOpen, ChevronRight, ArrowLeft, GraduationCap, ListChecks } from "lucide-react";
@@ -21,59 +23,12 @@ export default function PublishedCurriculums() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        setIsLoading(true);
-
-        const promises: Promise<any>[] = [
-          learningCmsService.curriculums.list({
-            status: "published",
-            page: 1,
-            limit: 100,
-          }),
-        ];
-
-        if (isStudent && hasPermission("learning.attempt")) {
-          promises.push(studentLearningService.curriculums.list({ limit: 100 }).catch(() => []));
-        }
-
-        const [cmsRes, studentRes] = await Promise.allSettled(promises);
-
-        if (!active) return;
-
-        if (cmsRes.status === "fulfilled") {
-          setCurriculums((cmsRes.value as any)?.data ?? []);
-          setError(null);
-        }
-
-        if (isStudent && studentRes && studentRes.status === "fulfilled") {
-          const rawStudentList = Array.isArray(studentRes.value)
-            ? studentRes.value
-            : (studentRes.value as any)?.data ?? [];
-
-          const map = new Map<string, any>();
-          rawStudentList.forEach((item: any) => {
-            const cId = item.curriculumId || item.curriculum?.id || item.id;
-            if (cId) map.set(cId, item);
-          });
-          setAssignedMap(map);
-        }
-      } catch (err) {
-        if (active)
-          setError(err instanceof Error ? err.message : "Không thể tải danh sách giáo trình.");
-      } finally {
-        if (active) setIsLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [isStudent]);
+  const catalog = useServerPagination<Curriculum>("/learning/curriculums", { status: "published" }, 12);
+  const assigned = useServerPagination("/learning/student/curriculums", {
+    curriculumIds: catalog.data.map(item => item.id).join(","),
+  }, 50, isStudent && hasPermission("learning.attempt") && catalog.data.length > 0);
+  useEffect(() => { setCurriculums(catalog.data); setIsLoading(catalog.loading); setError(catalog.error?.message || null); }, [catalog.data, catalog.loading, catalog.error]);
+  useEffect(() => { setAssignedMap(new Map(assigned.data.map(item => [item.curriculumId || item.curriculum?.id, item]))); }, [assigned.data]);
 
   return (
     <div className="w-full bg-slate-50 py-16 px-6 md:px-16 min-h-screen">
@@ -103,18 +58,14 @@ export default function PublishedCurriculums() {
 
         {error && <Alert type="error" showIcon className="mb-8" message={error} />}
 
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <Spin size="large" />
-          </div>
-        ) : curriculums.length === 0 ? (
+        <PagedCollection loading={isLoading} hasData={curriculums.length > 0} variant="cards" footer={catalog.total > 12 && <Pagination {...catalog.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{curriculums.length === 0 ? (
           <div className="bg-white p-16 rounded-3xl shadow-sm border border-slate-100 text-center">
             <Empty description="Chưa có giáo trình nào được phát hành." />
           </div>
         ) : (
           <Row gutter={[24, 24]}>
             {curriculums.map((curriculum, idx) => {
-              const examCount = curriculum.exams?.length ?? 0;
+              const examCount = (curriculum as any).examCount ?? 0;
               const assignedItem = isStudent ? assignedMap.get(curriculum.id) : null;
               const isAssigned = Boolean(assignedItem);
               const progress = Number(assignedItem?.progressPercentage) || 0;
@@ -244,7 +195,8 @@ export default function PublishedCurriculums() {
               );
             })}
           </Row>
-        )}
+        )}</PagedCollection>
+
       </div>
     </div>
   );

@@ -1,3 +1,7 @@
+import { LoadingRegion } from "../../../components/LoadingRegion";
+import { PagedCollection } from "../../../components/PagedCollection";
+import Table from "../../../components/Table";
+import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -6,7 +10,6 @@ import {
   Form,
   Input,
   Button,
-  Table,
   Modal,
   Switch,
   Upload,
@@ -23,7 +26,8 @@ import {
   Typography,
   ConfigProvider,
   Spin,
-} from "antd";
+  Pagination,
+  Alert} from "antd";
 import {
   UploadOutlined,
   PlusOutlined,
@@ -162,17 +166,29 @@ export default function AdminHomepageCms() {
   const [uploadAltText, setUploadAltText] = useState("");
   const [aboutSelectedMedia, setAboutSelectedMedia] = useState<HomepageMedia | null>(null);
 
+  const mediaPage = useServerPagination<HomepageMedia>("/admin/homepage/media", { search: mediaSearch || undefined }, 12,
+    activeTab === "media" || mediaPickerOpen);
+  const centerPage = useServerPagination<Center>("/centers", {}, 10, activeTab === "facilities" && facilitiesSubTab === "info");
+  useEffect(() => { setMediaList(mediaPage.data); }, [mediaPage.data]);
+  useEffect(() => { setCenters(centerPage.data); }, [centerPage.data]);
+
   // Live watched media for modals
+  const [knownMedia, setKnownMedia] = useState<HomepageMedia[]>([]);
+  useEffect(() => {
+    if (mediaPage.data.length) setKnownMedia(previous => Array.from(new Map([...previous, ...mediaPage.data].map(item => [item.id, item])).values()).slice(-200));
+  }, [mediaPage.data]);
   const watchedSlideMediaId = Form.useWatch("mediaId", slideForm);
   const watchedGalleryMediaId = Form.useWatch("mediaId", galleryForm);
 
   const selectedSlideMedia = useMemo(() => {
-    return mediaList.find((m) => m.id === watchedSlideMediaId);
-  }, [mediaList, watchedSlideMediaId]);
+    return knownMedia.find((m) => m.id === watchedSlideMediaId)
+      || (editingSlide?.mediaId === watchedSlideMediaId ? editingSlide?.media : undefined);
+  }, [knownMedia, watchedSlideMediaId, editingSlide]);
 
   const selectedGalleryMedia = useMemo(() => {
-    return mediaList.find((m) => m.id === watchedGalleryMediaId);
-  }, [mediaList, watchedGalleryMediaId]);
+    return knownMedia.find((m) => m.id === watchedGalleryMediaId)
+      || (editingGallery?.mediaId === watchedGalleryMediaId ? editingGallery?.media : undefined);
+  }, [knownMedia, watchedGalleryMediaId, editingGallery]);
 
   // Load all initial data
   useEffect(() => {
@@ -182,15 +198,10 @@ export default function AdminHomepageCms() {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [adminData, media, centerList] = await Promise.all([
-        homepageService.getAdmin(),
-        homepageService.listMedia().catch(() => []),
-        academicService.centers.list().catch(() => []),
-      ]);
-
+      const adminData = await homepageService.getAdmin();
       setHomepageData(adminData);
-      setMediaList(media || []);
-      setCenters(centerList || []);
+      mediaPage.reload();
+      centerPage.reload();
 
       // Populate About Form
       if (adminData?.about) {
@@ -553,18 +564,15 @@ export default function AdminHomepageCms() {
   };
 
   const openMediaPicker = (onSelect: (media: HomepageMedia) => void) => {
-    setMediaPickerCallback(() => onSelect);
+    setMediaPickerCallback(() => (media: HomepageMedia) => {
+      setKnownMedia(previous => Array.from(new Map([...previous, media].map(item => [item.id, item])).values()).slice(-200));
+      onSelect(media);
+    });
     setMediaPickerOpen(true);
   };
 
   // Filtered Media list
-  const filteredMediaList = useMemo(() => {
-    if (!mediaSearch.trim()) return mediaList;
-    const q = mediaSearch.toLowerCase();
-    return mediaList.filter(
-      (m) => (m.altText && m.altText.toLowerCase().includes(q)) || (m.url && m.url.toLowerCase().includes(q))
-    );
-  }, [mediaList, mediaSearch]);
+  const filteredMediaList = mediaList;
 
   // ==================== TAB ITEMS DEFINITION ====================
 
@@ -1498,12 +1506,14 @@ export default function AdminHomepageCms() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-800 text-sm">
-                Danh sách ảnh trong thư viện ({filteredMediaList.length}
+                Danh sách ảnh trong thư viện ({mediaPage.total}
                 {mediaSearch ? ` / ${mediaList.length}` : ""})
               </h4>
             </div>
 
-            {filteredMediaList.length === 0 ? (
+
+            {mediaPage.error && <Alert type="error" message={mediaPage.error.message} />}
+            <PagedCollection loading={mediaPage.loading} hasData={mediaList.length > 0} variant="media" footer={<Pagination {...mediaPage.pagination} className="mb-3" />}>{filteredMediaList.length === 0 ? (
               <Empty
                 description={
                   mediaSearch
@@ -1558,7 +1568,7 @@ export default function AdminHomepageCms() {
                   </div>
                 ))}
               </div>
-            )}
+            )}</PagedCollection>
           </div>
         </div>
       ),
@@ -1568,7 +1578,7 @@ export default function AdminHomepageCms() {
   return (
     <ConfigProvider theme={ANT_THEME}>
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
-        <Spin spinning={loading} size="large">
+        <LoadingRegion loading={loading} hasData={!!homepageData} variant="detail">
           <div className="max-w-[1500px] mx-auto space-y-6">
             {/* ── Page Header Card (Chuẩn Learning CMS) ──────────────── */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white border border-slate-200/80 p-6 rounded-3xl shadow-sm">
@@ -2012,7 +2022,8 @@ export default function AdminHomepageCms() {
                   </Upload>
                 </div>
 
-                {mediaList.length === 0 ? (
+
+                <PagedCollection loading={mediaPage.loading} hasData={mediaList.length > 0} variant="media" footer={<Pagination {...mediaPage.pagination} className="mb-3" />}>{mediaList.length === 0 ? (
                   <Empty description="Chưa có ảnh nào trong thư viện. Hãy tải ảnh lên trước!" />
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[420px] overflow-y-auto p-1">
@@ -2038,14 +2049,14 @@ export default function AdminHomepageCms() {
                       </div>
                     ))}
                   </div>
-                )}
+                )}</PagedCollection>
               </div>
             </Modal>
 
             {/* LIGHTBOX PREVIEW ELEMENT (Tương tự Learning CMS) */}
             {previewElement}
           </div>
-        </Spin>
+        </LoadingRegion>
       </div>
     </ConfigProvider>
   );

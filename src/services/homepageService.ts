@@ -12,34 +12,37 @@ import {
   UpdateHomepageSettingsPayload,
   UpdateSlidePayload,
 } from "../types/homepage";
+import { subscribeQueryInvalidation } from "./queryCache";
 import { apiClient, unwrapData, unwrapList } from "./apiClient";
+
+let publicRequest: Promise<HomepageData> | undefined;
+let publicExpiresAt = 0;
+const invalidatePublic = () => { publicRequest = undefined; publicExpiresAt = 0; };
+
+subscribeQueryInvalidation("/homepage", invalidatePublic);
 
 export const homepageService = {
   /**
    * Public API: Lấy toàn bộ dữ liệu trang chủ (chỉ gồm slide và gallery active)
    */
   async getPublic(): Promise<HomepageData> {
-    const response = await apiClient.get<ApiEnvelope<HomepageData>>("/homepage");
-    return unwrapData(response);
+    if (!publicRequest || Date.now() >= publicExpiresAt) {
+      publicExpiresAt = Date.now() + 60_000;
+      const request = apiClient.get<ApiEnvelope<HomepageData>>("/homepage").then(unwrapData).catch(error => {
+        if (publicRequest === request) invalidatePublic();
+        throw error;
+      });
+      publicRequest = request;
+    }
+    return publicRequest;
   },
 
   /**
    * Public API: Lấy danh sách giáo viên công khai cho trang chủ
    */
   async getTeachers(): Promise<HomepageTeacher[]> {
-    const teachers: HomepageTeacher[] = [];
-    let page = 1;
-    let totalPages = 1;
-    do {
-      const response = await apiClient.get<ApiEnvelope<HomepageTeacher[]>>("/homepage/teachers", {
-        params: { page, limit: 100 },
-      });
-      const result = unwrapList(response);
-      teachers.push(...result.data);
-      totalPages = result.meta?.totalPages ?? 1;
-      page += 1;
-    } while (page <= totalPages);
-    return teachers;
+    const response = await apiClient.get<ApiEnvelope<HomepageTeacher[]>>("/homepage/teachers", { params: { page: 1, limit: 8 } });
+    return unwrapList(response).data;
   },
 
   /**
@@ -47,6 +50,7 @@ export const homepageService = {
    */
   async getAdmin(): Promise<HomepageData> {
     const response = await apiClient.get<ApiEnvelope<HomepageData>>("/admin/homepage");
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -55,6 +59,7 @@ export const homepageService = {
    */
   async updateSettings(payload: UpdateHomepageSettingsPayload): Promise<HomepageData> {
     const response = await apiClient.patch<ApiEnvelope<HomepageData>>("/admin/homepage", payload);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -79,6 +84,7 @@ export const homepageService = {
         },
       }
     );
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -96,6 +102,7 @@ export const homepageService = {
    */
   async deleteMedia(id: string): Promise<{ id: string }> {
     const response = await apiClient.delete<ApiEnvelope<{ id: string }>>(`/admin/homepage/media/${id}`);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -106,6 +113,7 @@ export const homepageService = {
    */
   async createSlide(payload: CreateSlidePayload): Promise<HomepageSlide> {
     const response = await apiClient.post<ApiEnvelope<HomepageSlide>>("/admin/homepage/slides", payload);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -114,6 +122,7 @@ export const homepageService = {
    */
   async updateSlide(id: string, payload: UpdateSlidePayload): Promise<HomepageSlide> {
     const response = await apiClient.patch<ApiEnvelope<HomepageSlide>>(`/admin/homepage/slides/${id}`, payload);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -122,6 +131,7 @@ export const homepageService = {
    */
   async deleteSlide(id: string): Promise<{ id: string }> {
     const response = await apiClient.delete<ApiEnvelope<{ id: string }>>(`/admin/homepage/slides/${id}`);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -130,6 +140,7 @@ export const homepageService = {
    */
   async reorderSlides(items: ReorderItem[]): Promise<HomepageData> {
     const response = await apiClient.patch<ApiEnvelope<HomepageData>>("/admin/homepage/slides/reorder", { items });
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -140,6 +151,7 @@ export const homepageService = {
    */
   async createGalleryItem(payload: CreateGalleryPayload): Promise<HomepageGalleryItem> {
     const response = await apiClient.post<ApiEnvelope<HomepageGalleryItem>>("/admin/homepage/gallery", payload);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -148,6 +160,7 @@ export const homepageService = {
    */
   async updateGalleryItem(id: string, payload: UpdateGalleryPayload): Promise<HomepageGalleryItem> {
     const response = await apiClient.patch<ApiEnvelope<HomepageGalleryItem>>(`/admin/homepage/gallery/${id}`, payload);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -156,6 +169,7 @@ export const homepageService = {
    */
   async deleteGalleryItem(id: string): Promise<{ id: string }> {
     const response = await apiClient.delete<ApiEnvelope<{ id: string }>>(`/admin/homepage/gallery/${id}`);
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 
@@ -164,6 +178,7 @@ export const homepageService = {
    */
   async reorderGallery(items: ReorderItem[]): Promise<HomepageData> {
     const response = await apiClient.patch<ApiEnvelope<HomepageData>>("/admin/homepage/gallery/reorder", { items });
+    if (["post", "patch", "delete"].includes(response.config.method ?? "")) invalidatePublic();
     return unwrapData(response);
   },
 };

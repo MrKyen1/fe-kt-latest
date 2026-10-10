@@ -1,5 +1,9 @@
+import { CONTENT_STATUS_LABELS } from "../constants";
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
 import { useMemo } from "react";
-import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -30,6 +34,9 @@ interface Level {
 }
 
 interface Curriculum {
+  examCount?: number;
+  testCount?: number;
+  practiceCount?: number;
   id: string;
   code?: string;
   title: string;
@@ -102,14 +109,14 @@ function buildColumns(
       width: 120,
       render: (_: unknown, record: Curriculum) => {
         const examList = record.exams ?? [];
-        const count = examList.length;
+        const count = record.examCount ?? examList.length;
 
-        const examCount = examList.filter((item) => {
+        const examCount = record.testCount ?? examList.filter((item) => {
           const type = item.exam?.examType ?? examsMap.get(item.examId)?.examType ?? "practice";
           return type === "exam";
         }).length;
 
-        const practiceCount = examList.filter((item) => {
+        const practiceCount = record.practiceCount ?? examList.filter((item) => {
           const type = item.exam?.examType ?? examsMap.get(item.examId)?.examType ?? "practice";
           return type === "practice";
         }).length;
@@ -158,7 +165,7 @@ function buildColumns(
           color={val === "published" ? "success" : "default"}
           className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
         >
-          {val === "published" ? "Đang phát hành" : "Nháp"}
+          {CONTENT_STATUS_LABELS[val] || val}
         </Tag>
       ),
     },
@@ -253,6 +260,7 @@ export default function CurriculumsTab({
     [onEditClick, onDeleteClick, onToggleStatus, onConfigExams, examsMap],
   );
 
+  const headerColumns = useCmsHeaderFilters(columns, "curriculums");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -273,21 +281,31 @@ export default function CurriculumsTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={curriculums.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} giáo trình
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : curriculums.length === 0 ? (
+          {curriculums.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có giáo trình nào</span>} />
             </div>
           ) : (
             curriculums.map((record) => {
               const examList = record.exams ?? [];
-              const count = examList.length;
+              const count = record.examCount ?? examList.length;
 
               return (
                 <div
@@ -332,7 +350,7 @@ export default function CurriculumsTab({
                       color={record.status === "published" ? "success" : "default"}
                       className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-semibold m-0"
                     >
-                      {record.status === "published" ? "Đang phát hành" : "Bản nháp"}
+                      {CONTENT_STATUS_LABELS[record.status] || record.status}
                     </Tag>
                   </div>
 
@@ -403,28 +421,14 @@ export default function CurriculumsTab({
             })
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} giáo trình
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}
           dataSource={curriculums}
-          columns={columns}
+          columns={headerColumns}
           scroll={{ x: 800 }}
           pagination={{
             current: pagination.current,

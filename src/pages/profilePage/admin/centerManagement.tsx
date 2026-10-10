@@ -1,3 +1,10 @@
+import { PagedCollection } from "../../../components/PagedCollection";
+import Table from "../../../components/Table";
+import { useQueryVersion } from "../../../hooks/useQueryVersion";
+import type { ReactNode } from "react";
+import { useServerPagination } from "../../../hooks/useServerPagination";
+import { mapUserResponse } from "../../../services/userService";
+import { ServerSelect } from "../../../components/ServerSelect";
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
@@ -17,7 +24,7 @@ import {
   Select,
   Space,
   Spin,
-  Table,
+  Skeleton,
   Tag,
   Tabs,
   Tooltip,
@@ -26,8 +33,7 @@ import {
   Upload,
   Image,
   Segmented,
-  Pagination,
-} from "antd";
+  Pagination} from "antd";
 import type { UploadFile } from "antd";
 import { SafeSelect } from "../../../components/SafeSelect";
 
@@ -120,6 +126,59 @@ interface StudentFormValues {
   parentFullName?: string;
 }
 
+function SkeletonLine({ width = "100%" }: { width?: string }) {
+  return <div aria-hidden="true" className="h-4 rounded-md bg-slate-100 animate-pulse shrink-0" style={{ width, maxWidth: "100%" }} />;
+}
+
+function ClassCardsSkeleton() {
+  return <Row gutter={[16, 16]}>
+    {Array.from({ length: CLASSES_PAGE_SIZE }, (_, index) => (
+      <Col xs={24} sm={12} md={8} key={index}>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
+          <SkeletonLine width="70%" />
+          <SkeletonLine width="45%" />
+          <SkeletonLine width="85%" />
+          <div className="border-t border-slate-50 pt-3 flex justify-between"><SkeletonLine width="30%" /><SkeletonLine width="35%" /></div>
+        </div>
+      </Col>
+    ))}
+  </Row>;
+}
+
+function SectionLoading({ loading, name, children }: { loading: boolean; name: string; children: ReactNode }) {
+  if (!loading) return <>{children}</>;
+  if (!["center-list", "center-detail", "classes"].includes(name)) {
+    return <div data-testid={`${name}-loading`} role="status" aria-label="Đang tải dữ liệu">
+      <Spin spinning size="large"><div className="min-h-[240px]" /></Spin>
+    </div>;
+  }
+  return <div role="status" aria-label="Đang tải dữ liệu" data-testid={`${name}-loading`}>
+    {name === "center-list" ? (
+      <div className="space-y-2">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="rounded-2xl border border-slate-100 p-3.5 flex items-center gap-2">
+            <Skeleton.Avatar active size={16} shape="square" /><SkeletonLine width="75%" />
+          </div>
+        ))}
+      </div>
+    ) : name === "classes" ? <ClassCardsSkeleton /> : (
+      <div className="space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-100 p-6 min-h-[195px] space-y-5">
+          <div className="flex items-center gap-3"><Skeleton.Avatar active size={40} shape="square" /><SkeletonLine width="45%" /></div>
+          <SkeletonLine width="65%" />
+          <Row gutter={[16, 16]}>{Array.from({ length: 3 }, (_, index) => <Col xs={24} md={8} key={index}><SkeletonLine width="85%" /></Col>)}</Row>
+        </div>
+        <Row gutter={[16, 16]}>{Array.from({ length: 3 }, (_, index) => (
+          <Col xs={24} sm={8} key={index}><div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center justify-between">
+            <div className="space-y-2 flex-1"><SkeletonLine width="60%" /><SkeletonLine width="35%" /></div><Skeleton.Avatar active size={40} shape="square" />
+          </div></Col>
+        ))}</Row>
+        <div className="bg-white rounded-3xl border border-slate-100 p-6 space-y-5"><SkeletonLine width="30%" /><ClassCardsSkeleton /></div>
+      </div>
+    )}
+  </div>;
+}
+
 export default function CenterManagement() {
   const { isMobile } = useResponsive();
   const { user, hasPermission } = useAuth();
@@ -143,6 +202,10 @@ export default function CenterManagement() {
   const [studentRoleId, setStudentRoleId] = useState("");
   const [specializations, setSpecializations] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
+  const [classLookupCenters, setClassLookupCenters] = useState<any[]>([]);
+  const [classLookupSpecializations, setClassLookupSpecializations] = useState<any[]>([]);
+  const [lookupClasses, setLookupClasses] = useState<any[]>([]);
+  const classOptions = Array.from(new Map([...classes, ...lookupClasses].map(row => [row.id, row])).values());
   const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
 
   // Teacher center scoping
@@ -171,11 +234,7 @@ export default function CenterManagement() {
     return Array.from(new Set([...fromProfile, ...fromClasses, ...fromTeachers]));
   }, [isTeacher, user, classes, teachers]);
 
-  const visibleCenters = useMemo(() => {
-    if (!isTeacher) return centers;
-    if (teacherCenterIds.length === 0) return centers;
-    return centers.filter((c) => teacherCenterIds.includes(c.id));
-  }, [isTeacher, centers, teacherCenterIds]);
+  const visibleCenters = centers;
 
   // ================= UI STATE =================
   const location = useLocation();
@@ -226,13 +285,7 @@ export default function CenterManagement() {
     }
   };
 
-  useEffect(() => {
-    if (isTeacher && visibleCenters.length > 0) {
-      if (!selectedCenterId || !visibleCenters.some((c) => c.id === selectedCenterId)) {
-        setSelectedCenterId(visibleCenters[0].id);
-      }
-    }
-  }, [isTeacher, visibleCenters, selectedCenterId]);
+
 
   const [subImagesFileList, setSubImagesFileList] = useState<UploadFile[]>([]);
 
@@ -244,6 +297,56 @@ export default function CenterManagement() {
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [isExportingStudent, setIsExportingStudent] = useState(false);
+
+  const [studentClassIds, setStudentClassIds] = useState<string[]>([]);
+  const [selectedCenterDetail, setSelectedCenterDetail] = useState<any>(null);
+  const centerVersion = useQueryVersion("/centers");
+  const [centerDetailRequest, setCenterDetailRequest] = useState<{ id: string | null; version: string; pending: boolean }>({ id: null, version: "", pending: false });
+  const centerDetailLoading = !!selectedCenterId && hasPermission("centers.read") &&
+    (centerDetailRequest.id !== selectedCenterId || centerDetailRequest.version !== centerVersion || centerDetailRequest.pending);
+  const centerPage = useServerPagination("/centers", { search: centerSearch || undefined }, 10, hasPermission("centers.read"));
+  const classList = useServerPagination("/classes", { centerId: selectedCenterId }, CLASSES_PAGE_SIZE, !!selectedCenterId && hasPermission("classes.read"));
+  const teacherList = useServerPagination("/users", {
+    roleCode: "teacher", centerId: selectedCenterId, search: teacherSearch || undefined,
+    includeInactive: teacherStatusFilter === "all", isActive: teacherStatusFilter === "all" ? undefined : teacherStatusFilter === "active",
+  }, 5, !!selectedCenterId && hasPermission("users.read") && activeSubTab === "teachers", mapUserResponse);
+  const studentList = useServerPagination("/users", {
+    roleCode: "student", centerId: selectedCenterId, search: studentSearch || undefined,
+    classIds: studentClassIds.length ? studentClassIds.join(",") : undefined,
+    includeInactive: studentStatusFilter === "all", isActive: studentStatusFilter === "all" ? undefined : studentStatusFilter === "active",
+  }, 5, !!selectedCenterId && hasPermission("users.read") && activeSubTab === "students", mapUserResponse);
+  const adminList = useServerPagination("/users", { roleCode: "admin", includeInactive: true, search: adminSearch || undefined }, 5,
+    !isTeacher && hasPermission("users.read") && activeSubTab === "admins", mapUserResponse);
+  const specializationList = useServerPagination("/specializations", {}, 5, hasPermission("specializations.read") && activeSubTab === "specializations");
+  const specializationCount = useServerPagination("/specializations", {}, 1, hasPermission("specializations.read"));
+  const adminCount = useServerPagination("/users", { roleCode: "admin", includeInactive: true }, 1, !isTeacher && hasPermission("users.read"));
+  const teacherCount = useServerPagination("/users", { roleCode: "teacher", centerId: selectedCenterId, includeInactive: true }, 1, !!selectedCenterId && hasPermission("users.read"));
+  const studentCount = useServerPagination("/users", { roleCode: "student", centerId: selectedCenterId, includeInactive: true }, 1, !!selectedCenterId && hasPermission("users.read"));
+
+  useEffect(() => { setCenters(centerPage.data); }, [centerPage.data]);
+  useEffect(() => { setClasses(classList.data); }, [classList.data]);
+  useEffect(() => { setTeachers(teacherList.data); }, [teacherList.data]);
+  useEffect(() => { setStudents(studentList.data); }, [studentList.data]);
+  useEffect(() => { setAdmins(adminList.data); }, [adminList.data]);
+  useEffect(() => { setSpecializations(specializationList.data); }, [specializationList.data]);
+  useEffect(() => {
+    if (!selectedCenterId && centerPage.data.length) setSelectedCenterId(centerPage.data[0].id);
+  }, [centerPage.data, selectedCenterId]);
+  useEffect(() => { setStudentClassIds([]); }, [selectedCenterId]);
+  useEffect(() => {
+    let current = true;
+    if (selectedCenterId && hasPermission("centers.read")) {
+      setCenterDetailRequest({ id: selectedCenterId, version: centerVersion, pending: true });
+      academicService.centers.get(selectedCenterId).then(value => { if (current) setSelectedCenterDetail(value); })
+        .catch(() => { if (current) message.error("Không thể tải trung tâm"); })
+        .finally(() => { if (current) setCenterDetailRequest({ id: selectedCenterId, version: centerVersion, pending: false }); });
+    }
+    return () => { current = false; };
+  }, [selectedCenterId, centerVersion]);
+  useEffect(() => {
+    const error = centerPage.error || classList.error || teacherList.error || studentList.error || adminList.error || specializationList.error;
+    if (error) message.error(error.message);
+  }, [centerPage.error, classList.error, teacherList.error, studentList.error, adminList.error, specializationList.error]);
 
   // ================= MODAL STATE =================
   const [centerModalOpen, setCenterModalOpen] = useState(false);
@@ -281,132 +384,19 @@ export default function CenterManagement() {
 
   // ================= EFFECTS =================
   useEffect(() => {
-    loadData();
-  }, []);
+    let current = true;
+    if ((teacherModalOpen || adminModalOpen) && !roles.length && !isTeacher && hasPermission("users.manage")) {
+      userService.provisioningRoles().then(data => { if (current) setRoles(data); }).catch(error => message.error(getErrorMessage(error)));
+    }
+    if (studentModalOpen && !studentRoleId && hasPermission("students.manage")) {
+      userService.studentRole().then(data => { if (current) setStudentRoleId(data?.id || ""); }).catch(error => message.error(getErrorMessage(error)));
+    }
+    return () => { current = false; };
+  }, [teacherModalOpen, adminModalOpen, studentModalOpen, roles.length, studentRoleId]);
 
   const loadData = async () => {
-    try {
-      setLoading(true);
-      const [
-        centersData,
-        classesData,
-        activeTeachers,
-        inactiveTeachers,
-        activeStudents,
-        inactiveStudents,
-        activeAdmins,
-        inactiveAdmins,
-        rolesData,
-        studentRoleData,
-        specializationsData,
-        curriculumsData,
-        classCurriculumsData,
-      ] = await Promise.all([
-        hasPermission("centers.read") ? academicService.centers.list().catch(() => []) : Promise.resolve([]),
-        hasPermission("classes.read") ? academicService.classes.list().catch(() => []) : Promise.resolve([]),
-        hasPermission("users.read") ? userService.list({ roleCode: "teacher", isActive: true }).catch(() => []) : Promise.resolve([]),
-        hasPermission("users.read") ? userService.list({ roleCode: "teacher", isActive: false }).catch(() => []) : Promise.resolve([]),
-        hasPermission("users.read") ? userService.list({ roleCode: "student", isActive: true }).catch(() => []) : Promise.resolve([]),
-        hasPermission("users.read") ? userService.list({ roleCode: "student", isActive: false }).catch(() => []) : Promise.resolve([]),
-        isTeacher || !hasPermission("users.read") ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: true }).catch(() => []),
-        isTeacher || !hasPermission("users.read") ? Promise.resolve([]) : userService.list({ roleCode: "admin", isActive: false }).catch(() => []),
-        isTeacher || !hasPermission("users.manage") ? Promise.resolve([]) : userService.provisioningRoles().catch(() => []),
-        hasPermission("students.manage") ? userService.studentRole().catch(() => null) : Promise.resolve(null),
-        hasPermission("specializations.read") ? academicService.specializations.list().catch(() => []) : Promise.resolve([]),
-        hasPermission("learning.read") ? learningCmsService.curriculums.list({ status: "published", limit: 100 }).catch(() => null) : Promise.resolve(null),
-        hasPermission("learning.assign") ? teacherLearningService.classCurriculums.list({ limit: 100 }).catch(() => null) : Promise.resolve(null),
-      ]);
-
-      setCenters(centersData || []);
-      setClasses(classesData || []);
-      setCurriculums(curriculumsData?.data || []);
-      setClassCurriculums(classCurriculumsData?.data || []);
-
-      const rawTeachers = [...(activeTeachers || []), ...(inactiveTeachers || [])];
-      const uniqueTeachers = rawTeachers.filter(
-        (teacher, index, self) => self.findIndex((t) => t.id === teacher.id) === index
-      );
-      setTeachers((prevTeachers) => {
-        return uniqueTeachers.map((t: any) => {
-          const prev = prevTeachers.find((p: any) => p.id === t.id);
-          const classIds = t.teacherProfile?.classIds || t.teacherProfile?.classes?.map((c: any) => c.id) || [];
-          const matchedClasses = (classesData || []).filter((c: any) => classIds.includes(c.id));
-          const teacherCenterIds = Array.from(
-            new Set([
-              ...(t.centerIds || []),
-              ...matchedClasses.map((c: any) => c.centerId),
-              ...(t.teacherProfile?.classes || []).map((c: any) => c.centerId || c.center?.id),
-              t.centerId,
-              prev?.centerId,
-            ].filter(Boolean))
-          );
-          return {
-            ...t,
-            centerIds: teacherCenterIds,
-            centerId: teacherCenterIds[0] || t.centerId || prev?.centerId,
-          };
-        });
-      });
-
-      const rawStudents = [...(activeStudents || []), ...(inactiveStudents || [])];
-      const uniqueStudents = rawStudents.filter(
-        (student, index, self) => self.findIndex((s) => s.id === student.id) === index
-      );
-      setStudents((prevStudents) => {
-        return uniqueStudents.map((s: any) => {
-          const prev = prevStudents.find((p: any) => p.id === s.id);
-          const classIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
-          const matchedClass =
-            (classesData || []).find((c: any) => classIds.includes(c.id)) ||
-            (s.studentProfile?.classes || [])[0];
-          return {
-            ...s,
-            centerId:
-              s.centerId ||
-              matchedClass?.centerId ||
-              matchedClass?.center?.id ||
-              s.studentProfile?.centerId ||
-              s.student?.classes?.[0]?.class?.centerId ||
-              prev?.centerId,
-          };
-        });
-      });
-
-      const rawAdmins = [...(activeAdmins || []), ...(inactiveAdmins || [])];
-      const uniqueAdmins = rawAdmins.filter(
-        (admin, index, self) => self.findIndex((a) => a.id === admin.id) === index
-      );
-      setAdmins(uniqueAdmins);
-
-      setRoles(rolesData || []);
-      setStudentRoleId(studentRoleData?.id || "");
-      setSpecializations(specializationsData || []);
-
-      // Autoselect the first center on load if not selected already
-      const initialCenters = isTeacher
-        ? (centersData || []).filter((c: any) => {
-            const teacherClassIds = (user?.teacherProfile?.classes || user?.teacherProfile?.classIds || []).map((tc: any) =>
-              typeof tc === "string" ? tc : tc?.id
-            );
-            const classesInCenter = (classesData || []).filter((cls: any) => cls.centerId === c.id);
-            const teachesInCenter = classesInCenter.some((cls: any) => teacherClassIds.includes(cls.id));
-            return (
-              c.id === user?.centerId ||
-              c.id === user?.teacherProfile?.centerId ||
-              (user?.teacherProfile?.centerIds || []).includes(c.id) ||
-              teachesInCenter
-            );
-          })
-        : (centersData || []);
-
-      if (initialCenters.length > 0 && !selectedCenterId) {
-        setSelectedCenterId(initialCenters[0].id);
-      }
-    } catch (err) {
-      message.error("Tải dữ liệu thất bại");
-    } finally {
-      setLoading(false);
-    }
+    centerPage.reload(); classList.reload(); teacherList.reload(); studentList.reload(); adminList.reload(); specializationList.reload();
+    teacherCount.reload(); studentCount.reload();
   };
 
   const getTeacherRoleId = () => roles.find((r) => r.code?.toLowerCase() === "teacher")?.id || "";
@@ -623,6 +613,7 @@ export default function CenterManagement() {
   const handleClassCreate = () => {
     if (!hasPermission("classes.manage")) return;
     setEditingClass(null);
+    setAddingCurriculumId(undefined);
     classForm.resetFields();
     if (selectedCenterId) {
       classForm.setFieldsValue({ centerId: selectedCenterId });
@@ -633,6 +624,7 @@ export default function CenterManagement() {
   const handleClassEdit = (record: any) => {
     if (!hasPermission("classes.manage")) return;
     setEditingClass(record);
+    setAddingCurriculumId(undefined);
     const mapped = classCurriculums.filter((cc) => cc.classId === record.id);
     classForm.setFieldsValue({
       name: record.name,
@@ -664,8 +656,13 @@ export default function CenterManagement() {
     });
   };
 
+  const classSpecializationId = Form.useWatch("specializationId", classForm);
+  const mappingPage = useServerPagination("/learning/teacher/class-curriculums", { classId: editingClass?.id }, 5,
+    classModalOpen && !!editingClass && hasPermission("learning.assign"));
+  const [addingCurriculumId, setAddingCurriculumId] = useState<string | undefined>();
+
   const syncClassCurriculums = async (classId: string, targetCurriculumIds: string[]) => {
-    if (!hasPermission("learning.assign")) return;
+    if (!hasPermission("learning.assign") || editingClass) return;
     const currentMappings = classCurriculums.filter((cc) => cc.classId === classId);
     const currentIds = currentMappings.map((m) => m.curriculumId);
     const nextIds = targetCurriculumIds || [];
@@ -787,6 +784,7 @@ export default function CenterManagement() {
     if (!hasPermission("users.manage")) return;
     setEditingTeacher(record);
     const profile = record.teacherProfile || {};
+    setLookupClasses(previous => [...previous, ...(profile.classes || [])]);
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
     const specIds = profile.specializations?.map((s: any) => s.id) || profile.specializationIds || [];
 
@@ -1007,10 +1005,11 @@ export default function CenterManagement() {
     if (!hasPermission("students.manage")) return;
     setEditingStudent(record);
     const profile = record.studentProfile || {};
+    setLookupClasses(previous => [...previous, ...(profile.classes || [])]);
     const classIds = profile.classes?.map((c: any) => c.id) || profile.classIds || [];
 
     // Auto-detect center based on classes
-    const matchedClass = classes.find((c) => classIds.includes(c.id));
+    const matchedClass = profile.classes?.find((c: any) => classIds.includes(c.id)) || classOptions.find((c) => classIds.includes(c.id));
     const initialCenterId = matchedClass?.centerId || record.centerId || undefined;
 
     setSelectedModalCenterId(initialCenterId);
@@ -1449,7 +1448,9 @@ export default function CenterManagement() {
       fixed: "left" as const,
       render: (_: any, record: any) => {
         const specIds = record.teacherProfile?.specializationIds || record.teacherProfile?.specializations?.map((s: any) => s.id) || [];
-        const specs = specializations.filter((s) => specIds.includes(s.id));
+        const specs = record.teacherProfile?.specializations?.length
+          ? record.teacherProfile.specializations
+          : specializations.filter((s) => specIds.includes(s.id));
         return (
           <div className="flex flex-wrap gap-1">
             {specs.map((s) => (
@@ -1468,12 +1469,12 @@ export default function CenterManagement() {
       fixed: "left" as const,
       render: (_: any, record: any) => {
         const classIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
-        const tClasses = classes.filter((c) => classIds.includes(c.id));
+        const tClasses = record.teacherProfile?.classes || classes.filter((c) => classIds.includes(c.id));
         return (
           <div className="flex flex-wrap gap-1">
             {tClasses.map((c) => {
               const isCurrentCenter = c.centerId === selectedCenterId;
-              const centerObj = centers.find((cen) => cen.id === c.centerId);
+              const centerObj = (c as any).center || centers.find((cen) => cen.id === c.centerId);
               return (
                 <Tooltip
                   key={c.id}
@@ -1657,10 +1658,32 @@ export default function CenterManagement() {
     },
     {
       title: "Lớp học tham gia",
+      key: "studentClasses",
       width: 180,
+      filteredValue: studentClassIds,
+      filterOnClose: false,
+      filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }: any) => (
+        <div className="p-3 w-80 max-w-[calc(100vw-32px)]" data-testid="student-class-filter">
+          <ServerSelect endpoint="/classes" query={{ centerId: selectedCenterId }} mode="multiple"
+            placeholder="Chọn lớp học" className="w-full" value={selectedKeys}
+            options={classOptions.map(cls => ({ value: cls.id, label: cls.name }))}
+            onRecords={rows => setLookupClasses(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+            onChange={setSelectedKeys} allowClear maxTagCount="responsive" />
+          <div className="mt-3 flex justify-end gap-2">
+            <Button size="small" onClick={() => {
+              setStudentClassIds([]);
+              clearFilters?.({ confirm: true, closeDropdown: true });
+            }}>Đặt lại</Button>
+            <Button type="primary" size="small" onClick={() => {
+              setStudentClassIds(selectedKeys as string[]);
+              confirm({ closeDropdown: true });
+            }}>Áp dụng</Button>
+          </div>
+        </div>
+      ),
       render: (_: any, record: any) => {
         const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
-        const sClasses = classes.filter((c) => classIds.includes(c.id));
+        const sClasses = record.studentProfile?.classes || classes.filter((c) => classIds.includes(c.id));
         return (
           <div className="flex flex-wrap gap-1">
             {sClasses.map((c) => (
@@ -1840,101 +1863,17 @@ export default function CenterManagement() {
   }, [isTeacher, specializationColumns]);
 
   // ================= DYNAMIC DATA FILTERS =================
-  const filteredCenters = visibleCenters.filter((c) => {
-    const q = centerSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      c.name?.toLowerCase().includes(q) ||
-      c.address?.toLowerCase().includes(q) ||
-      c.phone?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q)
-    );
-  });
-
-  const selectedCenter = centers.find((c) => c.id === selectedCenterId);
-  const centerClasses = classes.filter((cls) => cls.centerId === selectedCenterId);
-  const centerClassesIds = centerClasses.map((cls) => cls.id);
-  const paginatedCenterClasses = centerClasses.slice(
-    (classPage - 1) * CLASSES_PAGE_SIZE,
-    classPage * CLASSES_PAGE_SIZE
-  );
-
-  useEffect(() => {
-    setClassPage(1);
-    setShowAllCenterImages(false);
-  }, [selectedCenterId]);
-
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(centerClasses.length / CLASSES_PAGE_SIZE));
-    if (classPage > maxPage) {
-      setClassPage(maxPage);
-    }
-  }, [centerClasses.length, classPage]);
-
-  const centerTeachers = teachers.filter((t) => {
-    const tClasses = t.teacherProfile?.classes || [];
-    const tClassIds = t.teacherProfile?.classIds || [];
-    return (
-      t.centerId === selectedCenterId ||
-      (t.centerIds && t.centerIds.includes(selectedCenterId)) ||
-      tClasses.some((c: any) => c.centerId === selectedCenterId || c.center?.id === selectedCenterId) ||
-      tClassIds.some((cid: string) => centerClassesIds.includes(cid))
-    );
-  });
-
-  const visibleCenterTeachers = useMemo(() => {
-    if (isTeacher) {
-      return centerTeachers.filter((t) => t.id === user?.id);
-    }
-    return centerTeachers;
-  }, [isTeacher, centerTeachers, user?.id]);
-
-  const centerStudents = students.filter((s) => {
-    const sClasses = s.studentProfile?.classes || [];
-    const sClassIds = s.studentProfile?.classIds || [];
-    return (
-      s.centerId === selectedCenterId ||
-      sClasses.some((c: any) => c.centerId === selectedCenterId) ||
-      sClassIds.some((cid: string) => centerClassesIds.includes(cid))
-    );
-  });
-
-  const filteredTeachers = visibleCenterTeachers.filter((t) => {
-    if (teacherStatusFilter === "active" && !isUserActive(t)) return false;
-    if (teacherStatusFilter === "inactive" && isUserActive(t)) return false;
-    const q = teacherSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      t.fullName?.toLowerCase().includes(q) ||
-      t.code?.toLowerCase().includes(q) ||
-      t.email?.toLowerCase().includes(q) ||
-      t.phone?.toLowerCase().includes(q)
-    );
-  });
-
-  const filteredStudents = centerStudents.filter((s) => {
-    if (studentStatusFilter === "active" && !isUserActive(s)) return false;
-    if (studentStatusFilter === "inactive" && isUserActive(s)) return false;
-    const q = studentSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      s.fullName?.toLowerCase().includes(q) ||
-      s.code?.toLowerCase().includes(q) ||
-      s.email?.toLowerCase().includes(q) ||
-      s.phone?.toLowerCase().includes(q)
-    );
-  });
-
-  const filteredAdmins = admins.filter((a) => {
-    const q = adminSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      a.fullName?.toLowerCase().includes(q) ||
-      a.code?.toLowerCase().includes(q) ||
-      a.email?.toLowerCase().includes(q) ||
-      a.phone?.toLowerCase().includes(q)
-    );
-  });
+  const filteredCenters = centers;
+  const selectedCenter = selectedCenterDetail?.id === selectedCenterId ? selectedCenterDetail : centers.find(c => c.id === selectedCenterId);
+  const centerClasses = classes;
+  const centerClassesIds = classes.map(cls => cls.id);
+  const paginatedCenterClasses = classes;
+  const centerTeachers = teachers;
+  const visibleCenterTeachers = teachers;
+  const centerStudents = students;
+  const filteredTeachers = teachers;
+  const filteredStudents = students;
+  const filteredAdmins = admins;
 
   const adminColumns = [
     {
@@ -2116,7 +2055,7 @@ export default function CenterManagement() {
                 <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-[80px] z-10 transition-all">
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold text-slate-800 m-0">
-                      Trung tâm ({visibleCenters.length})
+                      Trung tâm ({centerPage.loading ? "…" : centerPage.total})
                     </h3>
                     {!isTeacher && (
                       <Button
@@ -2142,6 +2081,7 @@ export default function CenterManagement() {
                   />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
+                    <PagedCollection region="center-list" loading={centerPage.loading} hasData={centers.length > 0} variant="centers" footer={centerPage.total > 10 && <Pagination {...centerPage.pagination} size="small" showSizeChanger={false} />}>
                     {filteredCenters.map((center) => {
                       const isSelected = center.id === selectedCenterId;
                       return (
@@ -2172,18 +2112,22 @@ export default function CenterManagement() {
                       );
                     })}
 
+
                     {filteredCenters.length === 0 && (
                       <div className="text-center py-8 text-slate-400 text-xs">
                         Không tìm thấy trung tâm nào
                       </div>
                     )}
+                    </PagedCollection>
                   </div>
                 </div>
               </Col>
 
               {/* RIGHT WORKSPACE: DETAIL WORKSPACE */}
               <Col xs={24} lg={18}>
-                {!selectedCenterId ? (
+                {centerDetailLoading || (!selectedCenterId && centerPage.loading) ? (
+                  <SectionLoading loading name="center-detail"><></></SectionLoading>
+                ) : !selectedCenterId ? (
                   <div className="flex flex-col items-center justify-center min-h-[450px] bg-white rounded-3xl border border-slate-100 shadow-sm p-12 text-center">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -2388,21 +2332,21 @@ export default function CenterManagement() {
                       {[
                         {
                           title: "Lớp học",
-                          value: centerClasses.length,
+                          value: classList.loading ? "…" : classList.total,
                           icon: <BookOutlined className="text-indigo-500 text-lg" />,
                           bg: "bg-indigo-50",
                           border: "border-indigo-100/60",
                         },
                         {
                           title: "Giáo viên",
-                          value: centerTeachers.length,
+                          value: teacherCount.loading ? "…" : teacherCount.error ? "?" : teacherCount.total,
                           icon: <TeamOutlined className="text-violet-500 text-lg" />,
                           bg: "bg-violet-50",
                           border: "border-violet-100/60",
                         },
                         {
                           title: "Học sinh",
-                          value: centerStudents.length,
+                          value: studentCount.loading ? "…" : studentCount.error ? "?" : studentCount.total,
                           icon: <UserOutlined className="text-teal-500 text-lg" />,
                           bg: "bg-teal-50",
                           border: "border-teal-100/60",
@@ -2442,14 +2386,22 @@ export default function CenterManagement() {
                         )}
                       </div>
 
-                      <Row gutter={[16, 16]}>
+                      <PagedCollection region="classes" loading={classList.loading} hasData={classes.length > 0} variant="classes" footer={classList.total > CLASSES_PAGE_SIZE && (
+                        <div className="mt-5 flex justify-end">
+                          <Pagination
+                            current={classList.pagination.current}
+                            pageSize={CLASSES_PAGE_SIZE}
+                            total={classList.total}
+                            onChange={classList.pagination.onChange}
+                            showSizeChanger={false}
+                            size="small"
+                          />
+                        </div>
+                      )}>
+                      <Row gutter={[16, 16]} style={{ marginInline: 0 }}>
                         {paginatedCenterClasses.map((cls) => {
-                          const classStudentsCount = students.filter((s) => {
-                            const sClassIds = s.studentProfile?.classIds || s.studentProfile?.classes?.map((c: any) => c.id) || [];
-                            return sClassIds.includes(cls.id);
-                          }).length;
-
-                          const mapped = classCurriculums.filter((cc) => cc.classId === cls.id);
+                          const classStudentsCount = (cls as any).studentCount ?? 0;
+                          const mapped = ((cls as any).curriculums ?? []).map((curriculum: any) => ({ curriculumId: curriculum.id, curriculum }));
 
                           return (
                             <Col xs={24} sm={12} md={8} key={cls.id}>
@@ -2485,7 +2437,7 @@ export default function CenterManagement() {
                                     <div className="mt-1">
                                       <span className="text-[10px] text-emerald-600 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
                                         <LucideBookOpen size={10} />
-                                        {specializations.find(s => s.id === cls.specializationId)?.name || "Môn học khác"}
+                                        {(cls as any).specialization?.name || specializations.find(s => s.id === cls.specializationId)?.name || "—"}
                                       </span>
                                     </div>
                                   )}
@@ -2531,18 +2483,8 @@ export default function CenterManagement() {
                         )}
                       </Row>
 
-                      {centerClasses.length > CLASSES_PAGE_SIZE && (
-                        <div className="mt-5 flex justify-end">
-                          <Pagination
-                            current={classPage}
-                            pageSize={CLASSES_PAGE_SIZE}
-                            total={centerClasses.length}
-                            onChange={(page) => setClassPage(page)}
-                            showSizeChanger={false}
-                            size="small"
-                          />
-                        </div>
-                      )}
+
+                      </PagedCollection>
                     </div>
 
                     {/* GOOGLE MAP EMBED (If exists) */}
@@ -2642,7 +2584,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <TeamOutlined />
-                                Giáo viên ({visibleCenterTeachers.length})
+                                Giáo viên ({teacherCount.loading ? "…" : teacherCount.error ? "?" : teacherCount.total})
                               </span>
                             ),
                             children: (
@@ -2668,9 +2610,9 @@ export default function CenterManagement() {
                                           setMobileTeacherPage(1);
                                         }}
                                         options={[
-                                          { label: `Tất cả (${visibleCenterTeachers.length})`, value: "all" },
-                                          { label: `Đang hoạt động (${visibleCenterTeachers.filter(isUserActive).length})`, value: "active" },
-                                          { label: `Đã nghỉ (${visibleCenterTeachers.filter((t) => !isUserActive(t)).length})`, value: "inactive" },
+                                          { label: "Tất cả", value: "all" },
+                                          { label: "Đang hoạt động", value: "active" },
+                                          { label: "Đã nghỉ", value: "inactive" },
                                         ]}
                                         className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap"
                                       />
@@ -2689,7 +2631,19 @@ export default function CenterManagement() {
                                   )}
                                 </div>
 
-                                {isMobile ? (
+                                <SectionLoading loading={false} name="teachers">
+                                {isMobile ? <PagedCollection loading={teacherList.loading} hasData={teachers.length > 0} variant="list" footer={teacherList.total > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={teacherList.pagination.current}
+                                          pageSize={5}
+                                          total={teacherList.total}
+                                          onChange={teacherList.pagination.onChange}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}>{(
                                   /* Mobile Card List: Giáo viên */
                                   <div className="space-y-3">
                                     {filteredTeachers.length === 0 ? (
@@ -2698,13 +2652,15 @@ export default function CenterManagement() {
                                       </div>
                                     ) : (
                                       filteredTeachers
-                                        .slice((mobileTeacherPage - 1) * 5, mobileTeacherPage * 5)
+
                                         .map((record) => {
                                           const active = isUserActive(record);
                                           const tClassIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
-                                          const tClasses = classes.filter((c) => tClassIds.includes(c.id));
+                                          const tClasses = record.teacherProfile?.classes || classes.filter((c) => tClassIds.includes(c.id));
                                           const specIds = record.teacherProfile?.specializationIds || [];
-                                          const tSpecs = specializations.filter((s) => specIds.includes(s.id));
+                                          const tSpecs = record.teacherProfile?.specializations?.length
+                                            ? record.teacherProfile.specializations
+                                            : specializations.filter((s) => specIds.includes(s.id));
 
                                           return (
                                             <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
@@ -2802,31 +2758,23 @@ export default function CenterManagement() {
                                         })
                                     )}
 
-                                    {filteredTeachers.length > 5 && (
-                                      <div className="pt-2 flex justify-center">
-                                        <Pagination
-                                          current={mobileTeacherPage}
-                                          pageSize={5}
-                                          total={filteredTeachers.length}
-                                          onChange={setMobileTeacherPage}
-                                          size="small"
-                                          showSizeChanger={false}
-                                        />
-                                      </div>
-                                    )}
+
                                   </div>
-                                ) : (
+                                )}</PagedCollection> : (
                                   <Table
                                     rowKey="id"
                                     dataSource={filteredTeachers}
+                                    loading={{ spinning: teacherList.loading, size: "large" }}
                                     columns={renderedTeacherColumns}
-                                    pagination={{ pageSize: 5, showSizeChanger: false }}
-                                    locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
+                                    pagination={teacherList.pagination}
+                                    locale={{ emptyText: teacherList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy giáo viên nào" }}
                                     scroll={{ x: 800 }}
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </SectionLoading>
                               </div>
+
                             ),
                           },
                           {
@@ -2834,7 +2782,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <UserOutlined />
-                                Học sinh ({centerStudents.length})
+                                Học sinh ({studentCount.loading ? "…" : studentCount.error ? "?" : studentCount.total})
                               </span>
                             ),
                             children: (
@@ -2860,9 +2808,9 @@ export default function CenterManagement() {
                                           setMobileStudentPage(1);
                                         }}
                                         options={[
-                                          { label: `Tất cả (${centerStudents.length})`, value: "all" },
-                                          { label: `Đang hoạt động (${centerStudents.filter(isUserActive).length})`, value: "active" },
-                                          { label: `Đã nghỉ (${centerStudents.filter((s) => !isUserActive(s)).length})`, value: "inactive" },
+                                          { label: "Tất cả", value: "all" },
+                                          { label: "Đang hoạt động", value: "active" },
+                                          { label: "Đã nghỉ", value: "inactive" },
                                         ]}
                                         className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap"
                                       />
@@ -2891,7 +2839,19 @@ export default function CenterManagement() {
                                   </div>
                                 </div>
 
-                                {isMobile ? (
+                                <SectionLoading loading={false} name="students">
+                                {isMobile ? <PagedCollection loading={studentList.loading} hasData={students.length > 0} variant="list" footer={studentList.total > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={studentList.pagination.current}
+                                          pageSize={5}
+                                          total={studentList.total}
+                                          onChange={studentList.pagination.onChange}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}>{(
                                   /* Mobile Card List: Học sinh */
                                   <div className="space-y-3">
                                     {filteredStudents.length === 0 ? (
@@ -2900,11 +2860,11 @@ export default function CenterManagement() {
                                       </div>
                                     ) : (
                                       filteredStudents
-                                        .slice((mobileStudentPage - 1) * 5, mobileStudentPage * 5)
+
                                         .map((record) => {
                                           const active = isUserActive(record);
                                           const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
-                                          const sClasses = classes.filter((c) => classIds.includes(c.id));
+                                          const sClasses = record.studentProfile?.classes || classes.filter((c) => classIds.includes(c.id));
                                           const birthYear = record.studentProfile?.birthYear || record.student?.birthYear;
                                           const start = record.startDate ? dayjs(record.startDate).format("DD/MM/YYYY") : null;
                                           const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
@@ -2990,31 +2950,24 @@ export default function CenterManagement() {
                                         })
                                     )}
 
-                                    {filteredStudents.length > 5 && (
-                                      <div className="pt-2 flex justify-center">
-                                        <Pagination
-                                          current={mobileStudentPage}
-                                          pageSize={5}
-                                          total={filteredStudents.length}
-                                          onChange={setMobileStudentPage}
-                                          size="small"
-                                          showSizeChanger={false}
-                                        />
-                                      </div>
-                                    )}
+
                                   </div>
-                                ) : (
+                                )}</PagedCollection> : (
                                   <Table
+                                    key={selectedCenterId}
                                     rowKey="id"
                                     dataSource={filteredStudents}
+                                    loading={{ spinning: studentList.loading, size: "large" }}
                                     columns={studentColumns}
-                                    pagination={{ pageSize: 5, showSizeChanger: false }}
-                                    locale={{ emptyText: "Không tìm thấy học sinh nào" }}
+                                    pagination={studentList.pagination}
+                                    locale={{ emptyText: studentList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy học sinh nào" }}
                                     scroll={{ x: 850 }}
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </SectionLoading>
                               </div>
+
                             ),
                           },
                           {
@@ -3022,7 +2975,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <BookOutlined />
-                                Chuyên môn ({specializations.length})
+                                Chuyên môn ({specializationCount.loading ? "…" : specializationCount.error ? "?" : specializationCount.total})
                               </span>
                             ),
                             children: (
@@ -3042,7 +2995,19 @@ export default function CenterManagement() {
                                   )}
                                 </div>
 
-                                {isMobile ? (
+                                <SectionLoading loading={false} name="specializations">
+                                {isMobile ? <PagedCollection loading={specializationList.loading} hasData={specializations.length > 0} variant="list" footer={specializationList.total > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={specializationList.pagination.current}
+                                          pageSize={5}
+                                          total={specializationList.total}
+                                          onChange={specializationList.pagination.onChange}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}>{(
                                   /* Mobile Card List: Chuyên môn */
                                   <div className="space-y-2.5">
                                     {specializations.length === 0 ? (
@@ -3051,7 +3016,7 @@ export default function CenterManagement() {
                                       </div>
                                     ) : (
                                       specializations
-                                        .slice((mobileSpecPage - 1) * 5, mobileSpecPage * 5)
+
                                         .map((record) => (
                                           <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-2">
                                             <div className="flex items-start justify-between gap-2">
@@ -3089,31 +3054,23 @@ export default function CenterManagement() {
                                         ))
                                     )}
 
-                                    {specializations.length > 5 && (
-                                      <div className="pt-2 flex justify-center">
-                                        <Pagination
-                                          current={mobileSpecPage}
-                                          pageSize={5}
-                                          total={specializations.length}
-                                          onChange={setMobileSpecPage}
-                                          size="small"
-                                          showSizeChanger={false}
-                                        />
-                                      </div>
-                                    )}
+
                                   </div>
-                                ) : (
+                                )}</PagedCollection> : (
                                   <Table
                                     rowKey="id"
                                     dataSource={specializations}
+                                    loading={{ spinning: specializationList.loading, size: "large" }}
                                     columns={renderedSpecializationColumns}
-                                    pagination={{ pageSize: 5, showSizeChanger: false }}
-                                    locale={{ emptyText: "Không tìm thấy chuyên môn nào" }}
+                                    pagination={specializationList.pagination}
+                                    locale={{ emptyText: specializationList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy chuyên môn nào" }}
                                     scroll={{ x: 600 }}
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </SectionLoading>
                               </div>
+
                             ),
                           },
                           ...(!isTeacher
@@ -3123,7 +3080,7 @@ export default function CenterManagement() {
                                   label: (
                                     <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                       <SafetyCertificateOutlined />
-                                      Quản trị viên ({admins.length})
+                                      Quản trị viên ({adminCount.loading ? "…" : adminCount.error ? "?" : adminCount.total})
                                     </span>
                                   ),
                                   children: (
@@ -3151,7 +3108,19 @@ export default function CenterManagement() {
                                         </Button>
                                       </div>
 
-                                      {isMobile ? (
+                                      <SectionLoading loading={false} name="admins">
+                                {isMobile ? <PagedCollection loading={adminList.loading} hasData={admins.length > 0} variant="list" footer={adminList.total > 5 && (
+                                            <div className="pt-2 flex justify-center">
+                                              <Pagination
+                                                current={adminList.pagination.current}
+                                                pageSize={5}
+                                                total={adminList.total}
+                                                onChange={adminList.pagination.onChange}
+                                                size="small"
+                                                showSizeChanger={false}
+                                              />
+                                            </div>
+                                          )}>{(
                                         /* Mobile Card List: Quản trị viên */
                                         <div className="space-y-2.5">
                                           {filteredAdmins.length === 0 ? (
@@ -3160,7 +3129,7 @@ export default function CenterManagement() {
                                             </div>
                                           ) : (
                                             filteredAdmins
-                                              .slice((mobileAdminPage - 1) * 5, mobileAdminPage * 5)
+
                                               .map((record) => (
                                                 <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
                                                   <div className="flex items-center gap-2.5">
@@ -3191,31 +3160,23 @@ export default function CenterManagement() {
                                               ))
                                           )}
 
-                                          {filteredAdmins.length > 5 && (
-                                            <div className="pt-2 flex justify-center">
-                                              <Pagination
-                                                current={mobileAdminPage}
-                                                pageSize={5}
-                                                total={filteredAdmins.length}
-                                                onChange={setMobileAdminPage}
-                                                size="small"
-                                                showSizeChanger={false}
-                                              />
-                                            </div>
-                                          )}
+
                                         </div>
-                                      ) : (
+                                      )}</PagedCollection> : (
                                         <Table
                                           rowKey="id"
                                           dataSource={filteredAdmins}
+                                    loading={{ spinning: adminList.loading, size: "large" }}
                                           columns={adminColumns}
-                                          pagination={{ pageSize: 5, showSizeChanger: false }}
-                                          locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
+                                          pagination={adminList.pagination}
+                                          locale={{ emptyText: adminList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy quản trị viên nào" }}
                                           scroll={{ x: 700 }}
                                           className="border border-slate-100 rounded-2xl overflow-hidden"
                                         />
                                       )}
-                                    </div>
+                                    </SectionLoading>
+                              </div>
+
                                   ),
                                 },
                               ]
@@ -3378,13 +3339,10 @@ export default function CenterManagement() {
                   label="Thuộc trung tâm"
                   rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
                 >
-                  <Select placeholder="Chọn trung tâm" className="rounded-xl">
-                    {centers.map((center) => (
-                      <Select.Option key={center.id} value={center.id}>
-                        {center.name}
-                      </Select.Option>
-                    ))}
-                  </Select>
+                  <ServerSelect endpoint="/centers" placeholder="Chọn trung tâm" className="rounded-xl"
+                    options={[...centers, ...classLookupCenters, selectedCenter, editingClass?.center].filter(Boolean)
+                      .map(center => ({ value: center.id, label: center.name }))}
+                    onRecords={rows => setClassLookupCenters(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} />
                 </Form.Item>
 
                 <Form.Item
@@ -3392,28 +3350,45 @@ export default function CenterManagement() {
                   label="Môn học (Chuyên môn)"
                   rules={[{ required: true, message: "Vui lòng chọn môn học cho lớp!" }]}
                 >
-                  <Select placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass}>
-                    {specializations.map((spec) => (
-                      <Select.Option key={spec.id} value={spec.id}>
-                        {spec.name}
-                      </Select.Option>
-                    ))}
-                  </Select>
+                  <ServerSelect endpoint="/specializations" placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass}
+                    options={[...specializations, ...classLookupSpecializations, editingClass?.specialization].filter(Boolean)
+                      .map(spec => ({ value: spec.id, label: spec.name }))}
+                    onRecords={rows => setClassLookupSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+                    onChange={() => classForm.setFieldValue("curriculumIds", [])} />
                 </Form.Item>
 
-                <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
-                  <SafeSelect
+                {editingClass ? <div className="mb-4">
+                  <div className="font-medium mb-2">Giáo trình của lớp</div>
+                  <Table size="small" rowKey="id" dataSource={mappingPage.data} loading={mappingPage.loading} pagination={mappingPage.pagination}
+                    columns={[{ title: "Giáo trình", render: (_, row: any) => row.curriculum?.title },
+                      { title: "", render: (_, row: any) => <Button danger type="link" onClick={async () => {
+                        try { await teacherLearningService.classCurriculums.remove(row.id); mappingPage.reload(); classList.reload(); }
+                        catch (error) { message.error(getErrorMessage(error)); }
+                      }}>Gỡ</Button> }]} />
+                  <ServerSelect endpoint="/learning/curriculums" query={{ status: "published", specializationId: classSpecializationId }}
+                    value={addingCurriculumId} onChange={setAddingCurriculumId} placeholder="Chọn giáo trình để thêm" className="w-full mt-2"
+                    options={curriculums.map(curr => ({ value: curr.id, label: curr.title || curr.code }))}
+                    onRecords={rows => setCurriculums(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} />
+                  <Button disabled={!addingCurriculumId} className="mt-2" onClick={async () => {
+                    try { await teacherLearningService.classCurriculums.create({ classId: editingClass.id, curriculumId: addingCurriculumId! });
+                      setAddingCurriculumId(undefined); mappingPage.reload(); classList.reload(); }
+                    catch (error) { message.error(getErrorMessage(error)); }
+                  }}>Thêm giáo trình</Button>
+                </div> : <>{                <Form.Item name="curriculumIds" label="Giáo trình (Không bắt buộc)">
+                  <ServerSelect endpoint="/learning/curriculums" query={{ status: "published", specializationId: classSpecializationId }}
                     disabled={!hasPermission("learning.assign")}
                     mode="multiple"
                     placeholder="Chọn giáo trình gắn với lớp"
                     allowClear
                     className="rounded-xl"
+                    onRecords={rows => setCurriculums(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                     options={curriculums.map((curr) => ({
                       label: curr.title || curr.code,
                       value: curr.id,
                     }))}
                   />
                 </Form.Item>
+}</>}
 
                 <Form.Item name="description" label="Mô tả lớp học">
                   <Input.TextArea placeholder="Nhập mô tả ngắn về lớp học này..." rows={2} className="rounded-xl" />
@@ -3620,7 +3595,7 @@ export default function CenterManagement() {
                       rules={[{ required: true, message: "Vui lòng chọn ít nhất 1 trung tâm!" }]}
                       tooltip="Chọn một hoặc nhiều trung tâm để lọc danh sách lớp phụ trách"
                     >
-                      <SafeSelect
+                      <ServerSelect endpoint="/centers" query={{}}
                         mode="multiple"
                         placeholder="Chọn các trung tâm liên kết"
                         className="rounded-xl"
@@ -3631,12 +3606,13 @@ export default function CenterManagement() {
                           // Keep only classes that belong to one of the selected centers
                           const currentClassIds: string[] = teacherForm.getFieldValue("classIds") || [];
                           const validClassIds = currentClassIds.filter((cid: string) => {
-                            const cls = classes.find((c) => c.id === cid);
+                            const cls = classOptions.find((c) => c.id === cid);
                             return cls && nextCenterIds.includes(cls.centerId);
                           });
                           teacherForm.setFieldsValue({ classIds: validClassIds });
                         }}
-                        options={centers.map((c) => ({ label: c.name, value: c.id }))}
+                        options={[...centers, selectedCenter, ...(editingTeacher?.teacherProfile?.classes || []).map((cls: any) => cls.center)]
+                          .filter(Boolean).map((c) => ({ label: c.name, value: c.id }))}
                       />
                     </Form.Item>
                   </Col>
@@ -3656,21 +3632,21 @@ export default function CenterManagement() {
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
                   tooltip="Giáo viên có thể dạy các lớp thuộc các trung tâm đã chọn"
                 >
-                  <SafeSelect
+                  <ServerSelect endpoint="/classes" query={{ centerIds: selectedTeacherCenterIds.length ? selectedTeacherCenterIds.join(",") : undefined }} onRecords={rows => setLookupClasses(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                     mode="multiple"
                     placeholder="Chọn lớp học (chọn trung tâm liên kết trước để lọc)"
                     style={{ width: "100%" }}
                     className="rounded-xl"
                     showSearch
                     optionFilterProp="label"
-                    options={classes
+                    options={classOptions
                       .filter(
                         (c) =>
                           selectedTeacherCenterIds.length === 0 ||
                           selectedTeacherCenterIds.includes(c.centerId)
                       )
                       .map((c) => {
-                        const centerObj = centers.find((cen) => cen.id === c.centerId);
+                        const centerObj = (c as any).center || centers.find((cen) => cen.id === c.centerId);
                         return {
                           label: centerObj ? `${c.name} (${centerObj.name})` : c.name,
                           value: c.id,
@@ -3684,14 +3660,15 @@ export default function CenterManagement() {
                   label="Chuyên môn"
                   rules={[{ required: true, message: "Chọn ít nhất 1 chuyên môn!" }]}
                 >
-                  <SafeSelect
+                  <ServerSelect endpoint="/specializations" query={{}}
                     mode="multiple"
                     showSearch
                     optionFilterProp="label"
                     placeholder="Chọn chuyên môn"
                     style={{ width: "100%" }}
                     className="rounded-xl"
-                    options={specializations.map((s) => ({ label: s.name, value: s.id }))}
+                    options={[...(editingTeacher?.teacherProfile?.specializations || []), ...specializations]
+                      .map((s) => ({ label: s.name, value: s.id }))}
                   />
                 </Form.Item>
 
@@ -4089,7 +4066,7 @@ export default function CenterManagement() {
                   label="Trung tâm đăng ký"
                   rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
                 >
-                  <Select
+                  <ServerSelect endpoint="/centers" query={{}}
                     placeholder="Chọn trung tâm"
                     className="rounded-xl"
                     onChange={(val) => {
@@ -4097,7 +4074,8 @@ export default function CenterManagement() {
                       // Clear class selection if center changes to prevent mismatch
                       studentForm.setFieldsValue({ classIds: [] });
                     }}
-                    options={visibleCenters.map(c => ({ label: c.name, value: c.id }))}
+                    options={[...visibleCenters, selectedCenter, ...(editingStudent?.studentProfile?.classes || []).map((cls: any) => cls.center)]
+                      .filter(Boolean).map(c => ({ label: c.name, value: c.id }))}
                   />
                 </Form.Item>
 
@@ -4106,14 +4084,14 @@ export default function CenterManagement() {
                   label="Lớp học tham gia"
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
                 >
-                  <SafeSelect
+                  <ServerSelect endpoint="/classes" query={{ centerId: selectedModalCenterId || selectedCenterId }} onRecords={rows => setLookupClasses(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                     mode="multiple"
                     showSearch
                     optionFilterProp="label"
                     placeholder="Chọn lớp học (chọn trung tâm trước để lọc)"
                     style={{ width: "100%" }}
                     className="rounded-xl"
-                    options={classes
+                    options={classOptions
                       .filter((c) => !selectedModalCenterId || c.centerId === selectedModalCenterId)
                       .map((c) => ({ label: c.name, value: c.id }))}
                   />

@@ -111,8 +111,13 @@ export const userService = {
     return mapUserResponse(data);
   },
 
+  async listPage(params?: UserListQuery) {
+    const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params }));
+    return { ...result, data: result.data.map(mapUserResponse) };
+  },
+
   async list(params?: UserListQuery): Promise<User[]> {
-    const queryParams: any = { limit: 100, ...params };
+    const queryParams: any = { limit: 20, ...params };
     // BE trả về paginated response { data: [...], meta: {...} }
     // unwrapList lấy cả data và meta, ta chỉ cần data array
     const result = unwrapList(await apiClient.get<ApiEnvelope<User[]>>("/users", { params: queryParams }));

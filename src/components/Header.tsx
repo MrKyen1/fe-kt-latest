@@ -168,7 +168,7 @@ const Header = memo(function Header() {
   }, [location]);
 
   useEffect(() => {
-    if (!isLoggedIn || !isStudent || !hasPermission("learning.attempt")) {
+    if (!notifOpen || !isLoggedIn || !isStudent || !hasPermission("learning.attempt")) {
       setNotifications([]);
       return;
     }
@@ -177,8 +177,8 @@ const Header = memo(function Header() {
     setLoadingNotifs(true);
 
     Promise.allSettled([
-      studentLearningService.examAssignments.list({ page: 1, limit: 50 }),
-      studentLearningService.curriculums.list({ page: 1, limit: 50 }),
+      studentLearningService.examAssignments.list({ page: 1, limit: 3, status: "assigned" }),
+      studentLearningService.curriculums.list({ page: 1, limit: 3, status: "assigned" }),
     ])
       .then(([examRes, currRes]) => {
         if (!isMounted) return;
@@ -190,10 +190,7 @@ const Header = memo(function Header() {
           const rawList = Array.isArray(examRes.value)
             ? examRes.value
             : (examRes.value as any)?.data ?? [];
-          const newAssignments = rawList.filter((item: any) => {
-            const status = item.status || item.summary?.status || "assigned";
-            return status === "assigned";
-          });
+          const newAssignments = rawList;
 
           newAssignments.forEach((item: any) => {
             const title =
@@ -234,23 +231,7 @@ const Header = memo(function Header() {
             }
           }
 
-          const unreadCurriculums = rawCurrList.filter((item: any) => {
-            const currId = item.curriculumId || item.curriculum?.id || item.id;
-            if (!currId) return false;
-
-            // Hybrid Rule 1: Đã đọc trong localStorage thì không hiện thông báo chuông
-            if (readIds.includes(currId)) return false;
-
-            // Hybrid Rule 2: Trạng thái hoàn thành thì không hiện
-            if (item.status === "completed" || item.status === "finished") return false;
-
-            // Hybrid Rule 3: Đã làm bài hoặc có tiến độ thì coi như đã bắt đầu học
-            const completedCount = Number(item.completedExamsCount) || 0;
-            const progress = Number(item.progressPercentage) || 0;
-            if (completedCount > 0 || progress > 0) return false;
-
-            return true;
-          });
+          const unreadCurriculums = rawCurrList.filter((item: any) => !readIds.includes(item.curriculumId || item.curriculum?.id || item.id));
 
           unreadCurriculums.forEach((item: any) => {
             const currId = item.curriculumId || item.curriculum?.id || item.id;
@@ -289,7 +270,7 @@ const Header = memo(function Header() {
     return () => {
       isMounted = false;
     };
-  }, [isLoggedIn, hasPermission, isStudent, location.pathname, user?.id]);
+  }, [notifOpen, isLoggedIn, hasPermission, isStudent, user?.id]);
 
   const activeMenuKey = useMemo(() => {
     if (location.pathname === "/courses") {

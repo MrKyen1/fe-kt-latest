@@ -1,3 +1,5 @@
+import { LoadingRegion } from "../../components/LoadingRegion";
+import { useQueryVersion } from "../../hooks/useQueryVersion";
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import HeroSlideshow from "./components/HeroSlideshow";
@@ -14,8 +16,10 @@ export default function Home() {
   const [homepageData, setHomepageData] = useState<HomepageData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const homepageVersion = useQueryVersion("/homepage");
   useEffect(() => {
     let active = true;
+    setIsLoading(true);
     homepageService
       .getPublic()
       .then((data) => {
@@ -35,7 +39,7 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [homepageVersion]);
 
   useEffect(() => {
     const hash = location.hash ? location.hash.replace("#", "") : null;
@@ -54,10 +58,10 @@ export default function Home() {
   return (
     <div className="w-full bg-slate-50">
       <HeroSlideshow slides={homepageData?.slider} loading={isLoading} />
-      <AboutUs about={homepageData?.about} />
+      <LoadingRegion loading={isLoading} hasData={!!homepageData} variant="detail"><AboutUs about={homepageData?.about} /></LoadingRegion>
       <CourseHighlights />
       <HomeTeachers />
-      <FacilitiesActivities facilities={homepageData?.facilities} />
+      <LoadingRegion loading={isLoading} hasData={!!homepageData} variant="cards"><FacilitiesActivities facilities={homepageData?.facilities} /></LoadingRegion>
     </div>
   );
 }

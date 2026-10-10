@@ -1,3 +1,4 @@
+import { LoadingRegion } from "../../../components/LoadingRegion";
 import { Typography, Row, Col, Button, Spin } from "antd";
 import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, ListChecks, PlayCircle, Users } from "lucide-react";
@@ -61,11 +62,7 @@ export default function CourseHighlights() {
           </Link>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <Spin size="large" />
-          </div>
-        ) : (
+        <LoadingRegion loading={loading} hasData={curriculums.length > 0} variant="cards">{(
           <Row gutter={[32, 32]}>
             {curriculums.slice(0, 6).map((course, idx) => {
               const examCount = course.exams?.length || (course as any).examsCount || 0;
@@ -169,7 +166,7 @@ export default function CourseHighlights() {
               );
             })}
           </Row>
-        )}
+        )}</LoadingRegion>
       </div>
     </section>
   );

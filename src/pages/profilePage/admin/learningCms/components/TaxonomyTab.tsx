@@ -1,4 +1,6 @@
-import { Button, Input, Table, Tabs } from "antd";
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
+import Table from "../../../../../components/Table";
+import { Button, Input, Tabs } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { Target, Sparkles, Folder, Tag as TagIcon } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
@@ -100,6 +102,7 @@ export default function TaxonomyTab({
   pagination,
   onCreateClick,
 }: Props) {
+  const headerColumns = useCmsHeaderFilters(columns, taxTab);
   return (
     <div className="space-y-4 pt-4">
       {/* Header row: inner tabs + search + create */}
@@ -139,8 +142,8 @@ export default function TaxonomyTab({
         rowKey="id"
         loading={loading}
         dataSource={dataSource}
-        columns={columns}
-        scroll={{ x: 650 }}
+        columns={headerColumns}
+        scroll={{ x: taxTab === "topics" ? 520 : 400 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

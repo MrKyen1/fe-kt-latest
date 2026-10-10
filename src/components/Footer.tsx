@@ -1,4 +1,5 @@
-import { Layout, Row, Col, Typography, Space, Tag } from "antd";
+import { useQueryVersion } from "../hooks/useQueryVersion";
+import { Layout, Row, Col, Typography, Space, Spin } from "antd";
 import {
   Phone,
   Mail,
@@ -21,26 +22,37 @@ const Footer = memo(function Footer() {
   const [centers, setCenters] = useState<Center[]>([]);
   const [selectedCenterIndex, setSelectedCenterIndex] = useState(0);
 
+  const homepageVersion = useQueryVersion("/homepage");
+  const centersVersion = useQueryVersion("/centers/public");
+  const [centersLoading, setCentersLoading] = useState(false);
+  const [centersError, setCentersError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setCentersLoading(true); setCentersError(false);
+    academicService.centers.publicList(controller.signal)
+      .then(rows => { if (!controller.signal.aborted) { setCenters(rows); setSelectedCenterIndex(0); } })
+      .catch(() => { if (!controller.signal.aborted) setCentersError(true); })
+      .finally(() => { if (!controller.signal.aborted) setCentersLoading(false); });
+    return () => controller.abort();
+  }, [centersVersion]);
   useEffect(() => {
     let active = true;
 
     Promise.all([
       homepageService.getPublic().catch(() => null),
-      academicService.centers.publicList().catch(() => []),
-    ]).then(([hpData, centersList]) => {
+
+    ]).then(([hpData]) => {
       if (!active) return;
       if (hpData?.footer) {
         setFooterData(hpData.footer);
       }
-      if (Array.isArray(centersList) && centersList.length > 0) {
-        setCenters(centersList.filter((c) => c.isActive !== false));
-      }
+
     });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [homepageVersion]);
 
   const brandName = footerData?.brandName?.trim() || "KATA LANGUAGE ACADEMY";
   const brandDescription =
@@ -102,6 +114,8 @@ const Footer = memo(function Footer() {
 
             <Space orientation="vertical" size="middle" className="w-full">
               {/* Centers tabs/tags */}
+              {centersLoading && <Spin size="small" />}
+              {centersError && <Text className="!text-slate-400 text-xs">Không thể tải danh sách cơ sở.</Text>}
               {centers.length > 0 && (
                 <div className="space-y-2 mb-2">
                   <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">

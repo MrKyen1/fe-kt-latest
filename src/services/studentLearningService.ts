@@ -17,7 +17,7 @@ export const studentLearningService = {
    * - Backend tự merge cả 2 nguồn vào /student/curriculums
    */
   curriculums: {
-    async list(params?: PaginationQuery) {
+    async list(params?: PaginationQuery & { curriculumId?: string; enrollmentId?: string; status?: string }) {
       return unwrapList(
         await apiClient.get<ApiEnvelope<StudentCurriculumAssignment[]>>(
           "/learning/student/curriculums",
@@ -58,7 +58,7 @@ export const studentLearningService = {
    * Exam assignments (bài thi được giáo viên giao trực tiếp)
    */
   examAssignments: {
-    async list(params?: PaginationQuery) {
+    async list(params?: PaginationQuery & { status?: string }) {
       return unwrapList(
         await apiClient.get<ApiEnvelope<StudentExamAssignment[]>>(
           "/learning/student/exam-assignments",

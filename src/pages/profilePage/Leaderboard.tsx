@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { PagedCollection } from "../../components/PagedCollection";
+import { useQueryVersion } from "../../hooks/useQueryVersion";
+import Table from "../../components/Table";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Card,
-  Table,
   Tag,
   Select,
   Tabs,
@@ -17,8 +19,7 @@ import {
   Statistic,
   Tooltip,
   message,
-  Pagination,
-} from "antd";
+  Pagination} from "antd";
 import {
   TrophyOutlined,
   CrownOutlined,
@@ -284,12 +285,18 @@ export default function Leaderboard() {
       .finally(() => setScopesLoading(false));
   }, []);
 
+  const leaderboardVersion = useQueryVersion("/learning/leaderboard");
+  const leaderboardRequest = useRef(0);
+  const leaderboardScope = useRef("");
   // Load leaderboard table
   const loadLeaderboard = useCallback(async () => {
     if (!scope) return;
     if (scope !== "global" && !scopeId) return;
     if ((scope === "center" || scope === "global") && !specializationId) return;
 
+    const request = ++leaderboardRequest.current;
+    const queryScope = JSON.stringify([user?.id, scope, scopeId, specializationId, metric, activePeriod]);
+    if (leaderboardScope.current !== queryScope) { setLeaderboard(null); setTotal(0); leaderboardScope.current = queryScope; }
     setLoading(true);
     try {
       const res = await leaderboardService.getLeaderboard({
@@ -301,19 +308,22 @@ export default function Leaderboard() {
         page,
         limit: PAGE_SIZE,
       });
+      if (request !== leaderboardRequest.current) return;
       setLeaderboard(res.data);
       setTotal(res.meta?.total ?? 0);
     } catch (err: any) {
+      if (request !== leaderboardRequest.current) return;
       const msg = err?.response?.data?.message || "Không thể tải bảng xếp hạng";
       message.error(msg);
       setLeaderboard(null);
     } finally {
-      setLoading(false);
+      if (request === leaderboardRequest.current) setLoading(false);
     }
-  }, [scope, scopeId, specializationId, metric, activePeriod, page]);
+  }, [scope, scopeId, specializationId, metric, activePeriod, page, leaderboardVersion, user?.id]);
 
   useEffect(() => {
     loadLeaderboard();
+    return () => { ++leaderboardRequest.current; };
   }, [loadLeaderboard]);
 
   // Load personal summary for students
@@ -657,7 +667,16 @@ export default function Leaderboard() {
       {/* Table / Mobile List */}
       {(loading || (leaderboard?.entries?.length ?? 0) > 0) && (
         <Card className="rounded-2xl border border-slate-100 shadow-sm mt-3" bodyStyle={{ padding: "0" }}>
-          {isMobile ? (
+          {isMobile ? <PagedCollection loading={loading} hasData={(leaderboard?.entries?.length ?? 0) > 0} variant="list" footer={<div className="p-3 flex justify-center">
+                <Pagination
+                  current={page}
+                  pageSize={PAGE_SIZE}
+                  total={total}
+                  onChange={(p) => setPage(p)}
+                  size="small"
+                  showSizeChanger={false}
+                />
+              </div>}>{(
             <div className="divide-y divide-slate-100 p-2">
               {(leaderboard?.entries ?? []).map((record) => (
                 <div
@@ -699,18 +718,9 @@ export default function Leaderboard() {
                   </div>
                 </div>
               ))}
-              <div className="p-3 flex justify-center">
-                <Pagination
-                  current={page}
-                  pageSize={PAGE_SIZE}
-                  total={total}
-                  onChange={(p) => setPage(p)}
-                  size="small"
-                  showSizeChanger={false}
-                />
-              </div>
+
             </div>
-          ) : (
+          )}</PagedCollection> : (
             <Table<LeaderboardEntry>
               loading={loading}
               dataSource={leaderboard?.entries ?? []}

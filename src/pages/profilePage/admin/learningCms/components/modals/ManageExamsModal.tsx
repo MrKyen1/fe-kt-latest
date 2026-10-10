@@ -1,5 +1,7 @@
+import { PagedCollection } from "../../../../../../components/PagedCollection";
+import { useServerPagination } from "../../../../../../hooks/useServerPagination";
 import { useState } from "react";
-import { Badge, Button, Card, Col, Empty, Modal, Row, Tag } from "antd";
+import { Badge, Button, Card, Col, Empty, Modal, Row, Tag, Pagination, Alert } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { AlertCircle, Clock } from "lucide-react";
 
@@ -8,6 +10,7 @@ import { AlertCircle, Clock } from "lucide-react";
 interface CurriculumExam {
   examId: string;
   isRequired: boolean;
+  exam?: Exam;
 }
 
 interface ExamQuestion { questionId: string; }
@@ -24,6 +27,7 @@ interface Exam {
 interface Curriculum {
   id: string;
   title: string;
+  specializationId?: string;
   exams?: CurriculumExam[];
 }
 
@@ -59,10 +63,10 @@ export default function ManageExamsModal({
   onReorder,
 }: Props) {
   const currExams      = selectedCurriculum?.exams ?? [];
-  const currExamIds    = new Set(currExams.map((e) => e.examId));
-  const availableExams = allExams.filter(
-    (e) => e.status === "published" && !currExamIds.has(e.id)
-  );
+  const availablePage = useServerPagination<Exam>("/learning/exams", {
+    status: "published", specializationId: selectedCurriculum?.specializationId, excludeCurriculumId: selectedCurriculum?.id,
+  }, 10, open && !!selectedCurriculum);
+  const availableExams = availablePage.data;
   const [addingExamId, setAddingExamId] = useState<string | null>(null);
 
   return (
@@ -92,6 +96,8 @@ export default function ManageExamsModal({
         <span>Chỉ đề thi dạng <strong>Phát hành (published)</strong> mới có thể thêm vào giáo trình</span>
       </div>
 
+
+      {availablePage.error && <Alert type="error" message={availablePage.error.message} />}
       <Row gutter={16}>
         {/* Left: current exams in curriculum */}
         <Col span={12}>
@@ -110,7 +116,7 @@ export default function ManageExamsModal({
                 <Empty description="Giáo trình chưa có đề thi nào" styles={{ image: { height: 40 } }} className="py-6" />
               ) : (
                 currExams.map((ce: CurriculumExam, index) => {
-                  const exam = allExams.find((e) => e.id === ce.examId);
+                  const exam = ce.exam ?? allExams.find((e) => e.id === ce.examId);
                   return (
                     <div key={ce.examId || index} className="flex items-center justify-between py-2 px-1 hover:bg-slate-50/60 rounded-lg transition">
                       <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -148,13 +154,13 @@ export default function ManageExamsModal({
             title={
               <div className="flex items-center justify-between">
                 <span>Đề thi khả dụng (đã phát hành)</span>
-                <Badge count={availableExams.length} color="green" />
+                <Badge count={availablePage.total} color="green" />
               </div>
             }
             className="rounded-2xl border-slate-100 shadow-sm"
             size="small"
           >
-            <div className="divide-y divide-slate-100 max-h-[360px] overflow-y-auto min-h-[140px]">
+            <PagedCollection loading={availablePage.loading} hasData={availableExams.length > 0} variant="list" footer={<Pagination {...availablePage.pagination} className="mb-3" />}><div className="divide-y divide-slate-100 min-h-[140px]">
               {availableExams.length === 0 ? (
                 <Empty description="Không có đề thi đã phát hành" styles={{ image: { height: 40 } }} className="py-6" />
               ) : (
@@ -182,6 +188,7 @@ export default function ManageExamsModal({
                         try {
                           setAddingExamId(exam.id);
                           await onAddExam(exam.id);
+                          availablePage.reload();
                         } finally {
                           setAddingExamId(null);
                         }
@@ -193,7 +200,7 @@ export default function ManageExamsModal({
                   </div>
                 ))
               )}
-            </div>
+            </div></PagedCollection>
           </Card>
         </Col>
       </Row>

@@ -10,7 +10,7 @@ import {
   UpdateClassRequest,
   UpdateSpecializationRequest,
 } from "../types/backend";
-import { apiClient, unwrapData } from "./apiClient";
+import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
 function crudService<TItem, TCreate, TUpdate>(path: string) {
   return {
@@ -19,8 +19,8 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
     },
 
     async list(params?: Record<string, unknown>): Promise<TItem[]> {
-      // Backend mới bổ sung pagination mặc định limit=20; gửi limit: 100 nếu chưa chỉ định để không thiếu dữ liệu dropdown/danh sách
-      const queryParams = { limit: 100, ...params };
+      // Single-page helper; paginated UI uses useServerPagination.
+      const queryParams = { limit: 20, ...params };
       const response = await apiClient.get<ApiEnvelope<TItem[]>>(path, { params: queryParams });
       // BE có thể trả { data: [...] } (array) hoặc { data: [...], meta: {...} } (paginated)
       const payload = response.data?.data;
@@ -46,9 +46,17 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
 export const academicService = {
   centers: {
     ...crudService<Center, CreateCenterRequest, UpdateCenterRequest>("/centers"),
-    async publicList(): Promise<Center[]> {
-      const response = await apiClient.get<ApiEnvelope<Center[]>>("/centers/public");
-      return unwrapData(response).filter((center) => center.isActive !== false);
+    async publicList(signal?: AbortSignal): Promise<Center[]> {
+      // The public footer intentionally displays every active center.
+      const centers = new Map<string, Center>();
+      for (let page = 1; ; page++) {
+        const response = unwrapList(await apiClient.get<ApiEnvelope<Center[]>>("/centers/public", {
+          params: { page, limit: 100 }, signal,
+        }));
+        response.data.filter(center => center.isActive !== false).forEach(center => centers.set(center.id, center));
+        if (!response.data.length || !response.meta || page >= response.meta.totalPages) break;
+      }
+      return [...centers.values()];
     },
     async reactivate(id: string): Promise<Center> {
       return unwrapData(await apiClient.patch<ApiEnvelope<Center>>(`/centers/${id}/reactivate`));

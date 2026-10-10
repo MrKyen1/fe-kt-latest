@@ -1209,7 +1209,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         let curriculumId = (examData as any).curriculumId;
         if (!curriculumId && (examData as any).curriculumAssignmentStudentId) {
           try {
-            const currList = await studentLearningService.curriculums.list({ limit: 100 });
+            const currList = await studentLearningService.curriculums.list({ page: 1, limit: 1, enrollmentId: (examData as any).curriculumAssignmentStudentId });
             const list = Array.isArray(currList) ? currList : (currList as any)?.data ?? [];
             const matched = list.find((c: any) =>
               c.enrollmentId === (examData as any).curriculumAssignmentStudentId ||

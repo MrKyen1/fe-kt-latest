@@ -1,3 +1,4 @@
+import { PageSpinner } from "./components/LoadingRegion";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
 import { App as AntApp, ConfigProvider } from "antd";
@@ -47,9 +48,7 @@ export default function App() {
           <ScrollToTop />
       <Suspense
         fallback={
-          <div className="flex justify-center items-center h-screen">
-            Loading...
-          </div>
+          <PageSpinner />
         }
       >
         <Routes>

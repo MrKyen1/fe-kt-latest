@@ -1,6 +1,8 @@
+import Table from "./Table";
+import { useServerPagination } from "../hooks/useServerPagination";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Modal, Spin, Empty, Table, Tag, Progress, Button, message } from "antd";
+import { Modal, Spin, Empty, Tag, Progress, Button, message } from "antd";
 import { History } from "lucide-react";
 import { studentLearningService } from "../services/studentLearningService";
 import { formatScore } from "../utils/studentExamUtils";
@@ -57,6 +59,13 @@ export function AttemptHistoryModal({
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const resolvedId = attemptId || curriculumExamProgress?.lastAttemptId;
+  const historyEnabled = open && !!assignmentStudentId && !resolvedId && !initialAttempts?.length;
+  const historyPage = useServerPagination(`/learning/student/exam-assignments/${assignmentStudentId}/attempts`, {
+    examId: examId || undefined, sortBy: "attemptNumber", sortOrder: "DESC",
+  }, 10, historyEnabled);
+  useEffect(() => { if (historyEnabled) { setAttempts(historyPage.data); setLoading(historyPage.loading); } },
+    [historyEnabled, historyPage.data, historyPage.loading]);
   useEffect(() => {
     if (!open) return;
 
@@ -88,25 +97,7 @@ export function AttemptHistoryModal({
     };
 
     // 2. If assignmentStudentId is provided AND no specific attemptId is targeted, fetch from examAssignments
-    if (assignmentStudentId && !resolvedAttemptId) {
-      setLoading(true);
-      studentLearningService.examAssignments
-        .attempts(assignmentStudentId)
-        .then((res: any) => {
-          const arr = Array.isArray(res) ? res : res?.data ?? [];
-          const filtered = examId ? arr.filter((x: any) => x.examId === examId) : arr;
-          setAttempts(filtered);
-        })
-        .catch(() => {
-          if (curriculumExamProgress) {
-            fallbackToProgress();
-          } else {
-            message.error("Không thể tải lịch sử làm bài");
-          }
-        })
-        .finally(() => setLoading(false));
-      return;
-    }
+    if (assignmentStudentId && !resolvedAttemptId) return;
 
     // 3. If resolvedAttemptId is available (e.g. from Curriculum progress)
     if (resolvedAttemptId) {
@@ -231,22 +222,14 @@ export function AttemptHistoryModal({
       width={680}
       className="rounded-2xl overflow-hidden"
     >
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Spin size="large" />
-        </div>
-      ) : attempts.length === 0 ? (
-        <Empty description="Chưa có lần làm bài nào" />
-      ) : (
-        <Table
+      <Table loading={loading}
           dataSource={attempts}
           columns={columns}
           rowKey={(r) => r.id || r.attemptNumber || Math.random()}
-          pagination={false}
+          pagination={historyEnabled ? historyPage.pagination : false}
           size="small"
           className="rounded-xl overflow-hidden"
         />
-      )}
     </Modal>
   );
 }

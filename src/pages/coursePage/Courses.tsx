@@ -1,3 +1,6 @@
+import { PagedCollection } from "../../components/PagedCollection";
+import { useServerPagination } from "../../hooks/useServerPagination";
+import { ServerSelect } from "../../components/ServerSelect";
 import { Typography, Spin, Alert, Button, Empty, Input, Pagination } from "antd";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -41,6 +44,15 @@ export default function Courses() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
 
+  const catalog = useServerPagination<Curriculum>("/learning/curriculums", {
+    status: "published", search: searchQuery.trim() || undefined,
+    levelId: selectedLevel === "all" ? undefined : selectedLevel,
+  }, pageSize);
+  const assigned = useServerPagination("/learning/student/curriculums", {
+    curriculumIds: catalog.data.map(item => item.id).join(","),
+  }, 50, isStudent && hasPermission("learning.attempt") && catalog.data.length > 0);
+  useEffect(() => { setCurriculums(catalog.data); setIsLoading(catalog.loading); setError(catalog.error?.message || null); }, [catalog.data, catalog.loading, catalog.error]);
+  useEffect(() => { setAssignedMap(new Map(assigned.data.map(item => [item.curriculumId || item.curriculum?.id, item]))); }, [assigned.data]);
   const isTeacher = user?.role === "teacher";
   const isAdmin = user?.role === "admin";
 
@@ -65,75 +77,6 @@ export default function Courses() {
     }
   }, [userCenterId]);
 
-  useEffect(() => {
-    let active = true;
-
-    async function fetchData() {
-      try {
-        setIsLoading(true);
-
-        const promises: Promise<any>[] = [
-          learningCmsService.curriculums.list({ status: "published", limit: 100 }),
-          hasPermission("centers.read") ? academicService.centers.list().catch(() => []) : Promise.resolve([]),
-        ];
-
-        if (isStudent && hasPermission("learning.attempt")) {
-          promises.push(studentLearningService.curriculums.list({ limit: 100 }).catch(() => []));
-        }
-
-        const [currRes, centerRes, studentRes] = await Promise.allSettled(promises);
-
-        if (!active) return;
-
-        if (currRes.status === "fulfilled") {
-          const rawList = (currRes.value as any)?.data ?? [];
-          // Backend GET /learning/curriculums (list) does not include the 'exams' relation.
-          // Fetch curriculum details in parallel to get the exact exams array & count.
-          const fullCurrs = await Promise.all(
-            rawList.map(async (item: Curriculum) => {
-              if (item.exams && item.exams.length > 0) return item;
-              try {
-                const detail = await learningCmsService.curriculums.get(item.id);
-                return { ...item, ...detail };
-              } catch {
-                return item;
-              }
-            })
-          );
-          setCurriculums(fullCurrs);
-        }
-
-        if (centerRes.status === "fulfilled") {
-          setCenters(Array.isArray(centerRes.value) ? centerRes.value : []);
-        }
-
-        if (isStudent && studentRes && studentRes.status === "fulfilled") {
-          const rawStudentList = Array.isArray(studentRes.value)
-            ? studentRes.value
-            : (studentRes.value as any)?.data ?? [];
-
-          const map = new Map<string, any>();
-          rawStudentList.forEach((item: any) => {
-            const cId = item.curriculumId || item.curriculum?.id || item.id;
-            if (cId) map.set(cId, item);
-          });
-          setAssignedMap(map);
-        }
-
-        setError(null);
-      } catch (err: any) {
-        if (active) setError(err?.message || "Không thể tải dữ liệu khóa học.");
-      } finally {
-        if (active) setIsLoading(false);
-      }
-    }
-
-    fetchData();
-    return () => {
-      active = false;
-    };
-  }, [isStudent]);
-
   // Center display name
   const currentCenter = useMemo(() => {
     if (selectedCenterId && selectedCenterId !== "all") {
@@ -153,23 +96,8 @@ export default function Courses() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [curriculums]);
 
-  // Filtered Curriculums
-  const filteredCurriculums = useMemo(() => {
-    return curriculums.filter((c) => {
-      const matchSearch =
-        !searchQuery.trim() ||
-        c.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.code?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchLevel = selectedLevel === "all" || c.level?.id === selectedLevel;
-      return matchSearch && matchLevel;
-    });
-  }, [curriculums, searchQuery, selectedLevel]);
-
-  // Paginated Curriculums (max 8 per page)
-  const paginatedCurriculums = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredCurriculums.slice(startIndex, startIndex + pageSize);
-  }, [filteredCurriculums, currentPage, pageSize]);
+  const filteredCurriculums = curriculums;
+  const paginatedCurriculums = curriculums;
 
   return (
     <div className="w-full bg-slate-50 py-12 px-6 md:px-16 min-h-screen">
@@ -221,7 +149,10 @@ export default function Courses() {
 
             {/* Level Filter Pills */}
             {availableLevels.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto py-1 scrollbar-none">
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto w-full sm:w-auto sm:max-w-[55%] py-1 scrollbar-none">
+                <ServerSelect endpoint="/learning/levels" placeholder="Tìm cấp độ" allowClear wrapperClassName="w-44 shrink-0"
+                  value={selectedLevel === "all" ? undefined : selectedLevel}
+                  onChange={value => setSelectedLevel(value || "all")} className="w-full" />
                 <button
                   type="button"
                   onClick={() => setSelectedLevel("all")}
@@ -254,12 +185,20 @@ export default function Courses() {
 
         {error && <Alert type="error" showIcon message={error} className="rounded-2xl" />}
 
-        {isLoading ? (
-          <div className="flex justify-center py-24">
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
+        <PagedCollection loading={isLoading} hasData={curriculums.length > 0} variant="cards" footer={catalog.total > pageSize && (
+                    <div className="flex justify-center pt-8">
+                      <Pagination
+                        current={catalog.pagination.current}
+                        pageSize={pageSize}
+                        total={catalog.total}
+                        onChange={(page) => {
+                          catalog.pagination.onChange(page);
+                        }}
+                        showSizeChanger={false}
+                      />
+                    </div>
+                  )}>{(
+          <div className="flex flex-col gap-12">
             {/* Lean Action Banner for Teacher / Admin */}
             {(isTeacher || isAdmin) && (
               <div className="bg-white rounded-3xl border border-slate-100 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
@@ -305,7 +244,7 @@ export default function Courses() {
                 </div>
 
                 <span className="text-sm font-semibold text-slate-500 bg-white border border-slate-200 px-3.5 py-1 rounded-full shadow-xs">
-                  {filteredCurriculums.length} giáo trình
+                  {catalog.total} giáo trình
                 </span>
               </div>
 
@@ -332,7 +271,7 @@ export default function Courses() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
                     {paginatedCurriculums.map((curr, idx) => {
-                      const examCount = curr.exams?.length || 0;
+                      const examCount = (curr as any).examCount ?? 0;
                       const assignedItem = isStudent ? assignedMap.get(curr.id) : null;
                       const isAssigned = Boolean(assignedItem);
                       const progress = Number(assignedItem?.progressPercentage) || 0;
@@ -471,25 +410,12 @@ export default function Courses() {
                   </div>
 
                   {/* Pagination when total items > pageSize */}
-                  {filteredCurriculums.length > pageSize && (
-                    <div className="flex justify-center pt-8">
-                      <Pagination
-                        current={currentPage}
-                        pageSize={pageSize}
-                        total={filteredCurriculums.length}
-                        onChange={(page) => {
-                          setCurrentPage(page);
-                          window.scrollTo({ top: 250, behavior: "smooth" });
-                        }}
-                        showSizeChanger={false}
-                      />
-                    </div>
-                  )}
+
                 </>
               )}
             </section>
-          </>
-        )}
+          </div>
+        )}</PagedCollection>
       </div>
     </div>
   );

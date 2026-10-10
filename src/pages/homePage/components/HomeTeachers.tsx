@@ -1,3 +1,4 @@
+import { LoadingRegion } from "../../../components/LoadingRegion";
 import { Typography, Row, Col, Tag, Spin, Empty } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
@@ -104,11 +105,7 @@ export default function HomeTeachers() {
         </p>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center py-16">
-          <Spin size="large" />
-        </div>
-      ) : teachers.length > 0 ? (
+      <LoadingRegion loading={loading} hasData={teachers.length > 0} variant="teachers">{teachers.length > 0 ? (
         <Row gutter={[32, 32]} className="justify-center">
           {teachers.map((teacher, index) => (
             <Col xs={24} sm={12} lg={8} key={teacher.id}>
@@ -188,7 +185,7 @@ export default function HomeTeachers() {
         <div className="py-12">
           <Empty description={loadError ? "Không tải được danh sách giáo viên. Vui lòng thử lại sau." : "Chưa có thông tin giáo viên từ hệ thống"} />
         </div>
-      )}
+      )}</LoadingRegion>
     </section>
   );
 }

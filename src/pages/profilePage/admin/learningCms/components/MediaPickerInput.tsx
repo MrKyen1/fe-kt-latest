@@ -1,3 +1,4 @@
+import { ServerSelect } from "../../../../../components/ServerSelect";
 import { useAuth } from "../../../../../contexts/AuthContext";
 import React, { useState, useEffect } from "react";
 import { Button, Segmented, Select, Tooltip, Upload, message, Tag } from "antd";
@@ -49,21 +50,9 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
 
   const [mode, setMode] = useState<"upload" | "library">("library");
 
-  // Filter media based on acceptType
-  const filteredAssets = allMedia.filter((m) => {
-    const isImg = m.type === "image" || m.mimeType?.startsWith("image");
-    const isAud = m.type === "audio" || m.mimeType?.startsWith("audio");
-    const isVid = m.type === "video" || m.mimeType?.startsWith("video");
-
-    if (acceptType === "image") return isImg;
-    if (acceptType === "audio") return isAud;
-    return isImg || isAud || isVid;
-  });
-
-  const selectedAsset = currentValue.mediaId
-    ? allMedia.find((m) => m.id === currentValue.mediaId)
-    : undefined;
-
+  const [assets, setAssets] = useState<MediaAssetItem[]>(allMedia);
+  const filteredAssets = assets;
+  const selectedAsset = currentValue.mediaId ? assets.find(m => m.id === currentValue.mediaId) : undefined;
   const isImg =
     currentValue.fileType === "image" ||
     selectedAsset?.type === "image" ||
@@ -129,7 +118,7 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
       handleClear();
       return;
     }
-    const asset = allMedia.find((m) => m.id === assetId);
+    const asset = assets.find((m) => m.id === assetId);
     const isAssetImg = asset?.type === "image" || asset?.mimeType?.startsWith("image");
     const isAssetAud = asset?.type === "audio" || asset?.mimeType?.startsWith("audio");
 
@@ -276,53 +265,10 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
           </div>
         </Upload.Dragger>
       ) : (
-        <Select
-          showSearch
-          placeholder={placeholder}
-          className="w-full"
-          allowClear
-          filterOption={(input, option) => {
-            const label = (option?.label as string) ?? "";
-            return label.toLowerCase().includes(input.toLowerCase());
-          }}
-          onChange={handleSelectAsset}
-        >
-          {filteredAssets.map((asset) => {
-            const isImgAsset = asset.type === "image" || asset.mimeType?.startsWith("image");
-            const isAudAsset = asset.type === "audio" || asset.mimeType?.startsWith("audio");
-            const fileName = asset.altText ?? asset.url.split("/").pop();
-
-            return (
-              <Select.Option key={asset.id} value={asset.id} label={fileName}>
-                <div className="flex items-center gap-2 py-0.5">
-                  {isImgAsset ? (
-                    <div className="w-5 h-5 rounded overflow-hidden border border-slate-200 shrink-0 bg-slate-50">
-                      <img
-                        src={resolveMediaUrl(asset.url)}
-                        alt="thumb"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : isAudAsset ? (
-                    <span className="w-5 h-5 rounded bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-                      <Volume2 size={11} />
-                    </span>
-                  ) : (
-                    <span className="w-5 h-5 rounded bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
-                      <Video size={11} />
-                    </span>
-                  )}
-                  <span className="font-medium text-slate-700 truncate max-w-[240px] text-xs">
-                    {fileName}
-                  </span>
-                  <span className="text-[10px] text-slate-400 ml-auto uppercase font-mono">
-                    {asset.type || "FILE"}
-                  </span>
-                </div>
-              </Select.Option>
-            );
-          })}
-        </Select>
+        <ServerSelect endpoint="/learning/media-assets" query={{ type: acceptType === "all" ? undefined : acceptType }}
+          optionLabel={asset => asset.altText || asset.originalName || asset.url.split("/").pop()}
+          onRecords={rows => setAssets(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+          value={currentValue.mediaId} placeholder={placeholder} className="w-full" allowClear onChange={handleSelectAsset} />
       )}
     </div>
   );

@@ -1,4 +1,8 @@
-import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { CONTENT_STATUS_LABELS } from "../constants";
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
 import { Sparkles, Target } from "lucide-react";
 import {
   CopyOutlined,
@@ -55,10 +59,10 @@ interface Props {
 
 function StatusTag({ status }: { status: string }) {
   if (status === "published")
-    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
+    return <Tag color="success" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.published}</Tag>;
   if (status === "archived")
-    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
-  return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
+    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.archived}</Tag>;
+  return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS[status] || status}</Tag>;
 }
 
 // ── Columns ──────────────────────────────────────────────────
@@ -112,12 +116,16 @@ function buildColumns(
       title: "Phân loại",
       width: 190,
       render: (_: unknown, record: Question) => {
-        const skill = skills.find((s) => s.id === record.skillId);
-        const level = levels.find((l) => l.id === record.difficultyLevelId);
+        const skill = (record as any).skill || skills.find((s) => s.id === record.skillId);
+        const level = (record as any).difficultyLevel || levels.find((l) => l.id === record.difficultyLevelId);
+        const topic = (record as any).topic || topics.find((item) => item.id === record.topicId);
+        const questionTags = (record.tags || []).map((item) => item.tag || item);
         return (
           <div className="text-xs text-slate-500 space-y-0.5">
             {skill && <div className="flex items-center gap-1"><Sparkles size={11} className="text-blue-500 shrink-0" /><span>{skill.name}</span></div>}
             {level && <div className="flex items-center gap-1"><Target size={11} className="text-purple-500 shrink-0" /><span>{level.name}</span></div>}
+            {topic && <div>Chủ đề: {topic.name}</div>}
+            {questionTags.length > 0 && <div className="flex flex-wrap gap-1">{questionTags.map((tag) => <Tag key={tag.id} className="m-0 text-xs">{tag.name}</Tag>)}</div>}
           </div>
         );
       },
@@ -131,7 +139,7 @@ function buildColumns(
     },
     {
       title: "Thao tác",
-      width: 130,
+      width: 160,
       align: "right" as const,
       render: (_: unknown, record: Question) => (
         <Space size="small" wrap={false} className="whitespace-nowrap">
@@ -153,6 +161,10 @@ function buildColumns(
               />
             </Tooltip>
           </Can>
+          <Tooltip title="Lịch sử phiên bản">
+            <Button type="text" size="small" aria-label="Lịch sử phiên bản"
+              icon={<HistoryOutlined className="text-slate-400" />} onClick={() => onViewVersions(record)} />
+          </Tooltip>
           <Can perform="learning.delete">
             <Tooltip title="Xóa câu hỏi">
               <Button
@@ -205,6 +217,7 @@ export default function QuestionsTab({
     onViewVersions,
   );
 
+  const headerColumns = useCmsHeaderFilters(columns, "questions");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -224,22 +237,34 @@ export default function QuestionsTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={questions.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} câu hỏi
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : questions.length === 0 ? (
+          {questions.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có câu hỏi nào</span>} />
             </div>
           ) : (
             questions.map((record) => {
               const fullDetail = questionDetails[record.id] || record.detail || record;
-              const skillName = skills.find((s) => s.id === record.skillId)?.name;
-              const levelName = levels.find((l) => l.id === record.difficultyLevelId)?.name;
+              const skillName = (record as any).skill?.name || skills.find((s) => s.id === record.skillId)?.name;
+              const levelName = (record as any).difficultyLevel?.name || levels.find((l) => l.id === record.difficultyLevelId)?.name;
+              const topicName = (record as any).topic?.name || topics.find((item) => item.id === record.topicId)?.name;
+              const questionTags = (record.tags || []).map((item) => item.tag || item);
               const typeColor = QUESTION_TYPE_COLORS[record.type] || "default";
               const typeLabel = QUESTION_TYPE_LABELS[record.type] || record.type;
 
@@ -289,6 +314,9 @@ export default function QuestionsTab({
                       </span>
                     )}
                   </div>
+
+                  {topicName && <div className="text-xs text-slate-500">Chủ đề: {topicName}</div>}
+                  {questionTags.length > 0 && <div className="flex flex-wrap gap-1">{questionTags.map((tag) => <Tag key={tag.id} className="m-0 text-xs">{tag.name}</Tag>)}</div>}
 
                   {/* Actions bar */}
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1">
@@ -341,28 +369,14 @@ export default function QuestionsTab({
             })
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} câu hỏi
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}
           dataSource={questions}
-          columns={columns}
+          columns={headerColumns}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

@@ -1,3 +1,4 @@
+import { ContentSkeleton } from "../../components/LoadingRegion";
 import { useAuth } from "../../contexts/AuthContext";
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -427,7 +428,7 @@ const ExamPage: React.FC = () => {
           !!(attempt as any).curriculumAssignmentStudentId;
         if (attempt && isCurriculum && !(attempt as any).curriculumId) {
           try {
-            const currList = await studentLearningService.curriculums.list({ limit: 100 });
+            const currList = await studentLearningService.curriculums.list({ page: 1, limit: 1, enrollmentId: (attempt as any).curriculumAssignmentStudentId });
             const list = Array.isArray(currList) ? currList : (currList as any)?.data ?? [];
             const matched = list.find((c: any) =>
               c.enrollmentId === (attempt as any).curriculumAssignmentStudentId ||
@@ -469,11 +470,7 @@ const ExamPage: React.FC = () => {
   }, [attemptId]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <Spin size="large" />
-      </div>
-    );
+    return <ContentSkeleton variant="detail" />;
   }
 
   if (error || !examData) {
