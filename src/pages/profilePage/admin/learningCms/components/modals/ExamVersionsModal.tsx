@@ -1,3 +1,4 @@
+import { useCmsHeaderFilters, type CmsFilters } from "../../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../../components/PagedCollection";
 import Table from "../../../../../../components/Table";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
@@ -53,7 +54,11 @@ export default function ExamVersionsModal({
   onRefresh,
   onLoadAllData,
 }: Props) {
-  const versionPage = useServerPagination(`/learning/exams/${viewingExam?.id}/versions`, {}, 5, open && !!viewingExam);
+  const [versionFilters, setVersionFilters] = useState<{ id?: string; filters: CmsFilters }>({ filters: {} });
+  const appliedVersionFilters = versionFilters.id === viewingExam?.id ? versionFilters.filters : {};
+  const applyVersionFilters = (patch: CmsFilters) => setVersionFilters({ id: viewingExam?.id, filters: { ...appliedVersionFilters, ...patch } });
+  const versionQuery = Object.fromEntries(Object.entries(appliedVersionFilters).filter(([, value]) => value.length > 0));
+  const versionPage = useServerPagination(`/learning/exams/${viewingExam?.id}/versions`, versionQuery, 5, open && !!viewingExam);
   const [versionDetails, setVersionDetails] = useState<Record<string, ExamVersionDetail>>({});
   const [loadingVersionIds, setLoadingVersionIds] = useState<Record<string, boolean>>({});
   const { hasPermission } = useAuth();
@@ -158,6 +163,8 @@ export default function ExamVersionsModal({
     },
   ];
 
+  const headerColumns = useCmsHeaderFilters(columns, "exam-versions", { filters: appliedVersionFilters, apply: applyVersionFilters });
+
   return (
     <Modal
       title={
@@ -216,7 +223,7 @@ export default function ExamVersionsModal({
           pagination={false}
           size="small"
           className="border border-slate-100 rounded-xl overflow-hidden shadow-sm"
-          columns={columns}
+          columns={headerColumns}
           expandable={{
             expandedRowRender: renderExpandedVersion,
             expandedRowKeys,

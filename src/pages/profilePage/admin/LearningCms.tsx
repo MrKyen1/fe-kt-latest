@@ -1,3 +1,4 @@
+import { CmsHeaderFilterContext, type CmsFilters } from "../../../components/CmsHeaderFilters";
 import { useLearningCmsSummary } from "../../../hooks/useLearningCmsSummary";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { ServerSelect, LearningLookupScope } from "../../../components/ServerSelect";
@@ -264,18 +265,11 @@ export default function LearningCms() {
   };
 
   // ── Taxonomy search / filter ───────────────────────────────
-  const [taxSearch, setTaxSearch] = useState("");
-  const [debouncedTaxSearch, setDebouncedTaxSearch] = useState("");
   const [taxLoading, setTaxLoading] = useState(false);
   const [filteredLevels, setFilteredLevels] = useState<any[]>([]);
   const [filteredSkills, setFilteredSkills] = useState<any[]>([]);
   const [filteredTopics, setFilteredTopics] = useState<any[]>([]);
   const [filteredTags, setFilteredTags] = useState<any[]>([]);
-
-  // Refs for search synchronisation
-  const prevTabRef = useRef(taxTab);
-  const isInitialMount = useRef(true);
-  const lastFetchedSearchRef = useRef("");
 
   // ── Modal visibility ───────────────────────────────────────
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -464,9 +458,14 @@ export default function LearningCms() {
   // ============================================================
 
   const resource = activeTab === "taxonomy" ? taxTab : activeTab === "media" ? "media-assets" : activeTab === "passages" ? "reading-passages" : activeTab;
+  const [cmsFilters, setCmsFilters] = useState<Record<string, CmsFilters>>({});
+  const filterScope = JSON.stringify([selectedSpecializationId, resource]);
+  const appliedCmsFilters = cmsFilters[filterScope] || {};
+  const applyCmsFilters = (patch: CmsFilters) => setCmsFilters(previous => ({ ...previous, [filterScope]: { ...previous[filterScope], ...patch } }));
+  const cmsQuery = Object.fromEntries(Object.entries(appliedCmsFilters).filter(([, value]) => value.length > 0).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : value]));
   const resourcePage = useServerPagination(`/learning/${resource}`, {
     specializationId: resource === "tags" || resource === "media-assets" ? undefined : selectedSpecializationId,
-    search: activeTab === "taxonomy" ? debouncedTaxSearch || undefined : undefined,
+    ...cmsQuery,
     type: activeTab === "media" && mediaTypeFilter !== "all" ? mediaTypeFilter : undefined,
   }, PAGE_SIZE_DEFAULT, subjectsLoaded && !!selectedSpecializationId);
   useEffect(() => {
@@ -540,28 +539,6 @@ export default function LearningCms() {
   }, [user]);
 
 
-
-  // Debounce taxonomy search
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedTaxSearch(taxSearch), 400);
-    return () => clearTimeout(timer);
-  }, [taxSearch]);
-
-  // Sync tab changes + execute search
-  useEffect(() => {
-    if (activeTab !== "taxonomy") return;
-    if (prevTabRef.current !== taxTab) {
-      prevTabRef.current = taxTab;
-      setTaxSearch("");
-      setTaxPage(1);
-      loadTaxonomyData(taxTab, "", 1, taxPageSize);
-      return;
-    }
-    if (isInitialMount.current) { isInitialMount.current = false; return; }
-    if (debouncedTaxSearch === lastFetchedSearchRef.current) return;
-    setTaxPage(1);
-    loadTaxonomyData(taxTab, debouncedTaxSearch, 1, taxPageSize);
-  }, [taxTab, debouncedTaxSearch]);
 
   // ============================================================
   // TAXONOMY CRUD
@@ -1645,8 +1622,8 @@ export default function LearningCms() {
         <TaxonomyTab
           taxTab={taxTab}
           onTaxTabChange={setTaxTab}
-          taxSearch={taxSearch}
-          onTaxSearchChange={setTaxSearch}
+          taxSearch={String(appliedCmsFilters.search || "")}
+          onTaxSearchChange={value => applyCmsFilters({ search: value })}
           searchPlaceholder={getSearchPlaceholder()}
           columns={taxColumns}
           dataSource={getTaxData()}
@@ -1790,7 +1767,7 @@ export default function LearningCms() {
   ];
 
   return (
-    <LearningLookupScope.Provider value={selectedSpecializationId}><ConfigProvider theme={ANT_THEME}>
+    <CmsHeaderFilterContext.Provider value={{ filters: appliedCmsFilters, apply: applyCmsFilters, subjectId: selectedSpecializationId }}><LearningLookupScope.Provider value={selectedSpecializationId}><ConfigProvider theme={ANT_THEME}>
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
         <div>
           <div className="max-w-[1500px] mx-auto space-y-6">
@@ -2012,6 +1989,6 @@ export default function LearningCms() {
           </div>
         </div>
       </div>
-    </ConfigProvider></LearningLookupScope.Provider>
+    </ConfigProvider></LearningLookupScope.Provider></CmsHeaderFilterContext.Provider>
   );
 }

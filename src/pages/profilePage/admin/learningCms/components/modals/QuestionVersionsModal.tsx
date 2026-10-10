@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useCmsHeaderFilters, type CmsFilters } from "../../../../../../components/CmsHeaderFilters";
 import Table from "../../../../../../components/Table";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
 import { Alert, Empty, Modal, Tag } from "antd";
@@ -131,7 +133,12 @@ export default function QuestionVersionsModal({
       : viewingQuestion.prompt
     : "";
 
-  const versionPage = useServerPagination(`/learning/questions/${viewingQuestion?.id}/versions`, {}, 5, open && !!viewingQuestion);
+  const [versionFilters, setVersionFilters] = useState<{ id?: string; filters: CmsFilters }>({ filters: {} });
+  const appliedVersionFilters = versionFilters.id === viewingQuestion?.id ? versionFilters.filters : {};
+  const applyVersionFilters = (patch: CmsFilters) => setVersionFilters({ id: viewingQuestion?.id, filters: { ...appliedVersionFilters, ...patch } });
+  const versionQuery = Object.fromEntries(Object.entries(appliedVersionFilters).filter(([, value]) => value.length > 0));
+  const versionPage = useServerPagination(`/learning/questions/${viewingQuestion?.id}/versions`, versionQuery, 5, open && !!viewingQuestion);
+  const headerColumns = useCmsHeaderFilters(COLUMNS, "question-versions", { filters: appliedVersionFilters, apply: applyVersionFilters });
   return (
     <Modal
       title={
@@ -177,7 +184,7 @@ export default function QuestionVersionsModal({
           pagination={versionPage.pagination}
           size="small"
           className="border border-slate-100 rounded-xl overflow-hidden shadow-sm"
-          columns={COLUMNS}
+          columns={headerColumns}
           locale={{
             emptyText: (
               <div className="py-6 text-center">
