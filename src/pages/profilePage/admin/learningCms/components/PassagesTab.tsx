@@ -1,3 +1,4 @@
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
 import { Button, Empty, Pagination, Space, Spin, Typography } from "antd";
@@ -119,6 +120,7 @@ export default function PassagesTab({
   const { isMobile } = useResponsive();
   const columns = buildColumns(onEditClick, onDeleteClick);
 
+  const headerColumns = useCmsHeaderFilters(columns, "passages");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -227,7 +229,7 @@ export default function PassagesTab({
           rowKey="id"
           loading={loading}
           dataSource={passages}
-          columns={columns}
+          columns={headerColumns}
           scroll={{ x: 700 }}
           pagination={{
             current: pagination.current,

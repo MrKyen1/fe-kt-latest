@@ -1362,7 +1362,9 @@ export default function CenterManagement() {
       fixed: "left" as const,
       render: (_: any, record: any) => {
         const specIds = record.teacherProfile?.specializationIds || record.teacherProfile?.specializations?.map((s: any) => s.id) || [];
-        const specs = specializations.filter((s) => specIds.includes(s.id));
+        const specs = record.teacherProfile?.specializations?.length
+          ? record.teacherProfile.specializations
+          : specializations.filter((s) => specIds.includes(s.id));
         return (
           <div className="flex flex-wrap gap-1">
             {specs.map((s) => (
@@ -1573,11 +1575,24 @@ export default function CenterManagement() {
       key: "studentClasses",
       width: 180,
       filteredValue: studentClassIds,
-      filterDropdown: ({ confirm }: any) => (
-        <div className="p-3 w-72">
+      filterOnClose: false,
+      filterDropdown: ({ selectedKeys, setSelectedKeys, confirm, clearFilters }: any) => (
+        <div className="p-3 w-80 max-w-[calc(100vw-32px)]" data-testid="student-class-filter">
           <ServerSelect endpoint="/classes" query={{ centerId: selectedCenterId }} mode="multiple"
-            placeholder="Chọn lớp học" className="w-full" value={studentClassIds}
-            onChange={value => { setStudentClassIds(value); confirm(); }} allowClear />
+            placeholder="Chọn lớp học" className="w-full" value={selectedKeys}
+            options={classOptions.map(cls => ({ value: cls.id, label: cls.name }))}
+            onRecords={rows => setLookupClasses(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+            onChange={setSelectedKeys} allowClear maxTagCount="responsive" />
+          <div className="mt-3 flex justify-end gap-2">
+            <Button size="small" onClick={() => {
+              setStudentClassIds([]);
+              clearFilters?.({ confirm: true, closeDropdown: true });
+            }}>Đặt lại</Button>
+            <Button type="primary" size="small" onClick={() => {
+              setStudentClassIds(selectedKeys as string[]);
+              confirm({ closeDropdown: true });
+            }}>Áp dụng</Button>
+          </div>
         </div>
       ),
       render: (_: any, record: any) => {
@@ -2297,7 +2312,7 @@ export default function CenterManagement() {
                           />
                         </div>
                       )}>
-                      <Row gutter={[16, 16]}>
+                      <Row gutter={[16, 16]} style={{ marginInline: 0 }}>
                         {paginatedCenterClasses.map((cls) => {
                           const classStudentsCount = (cls as any).studentCount ?? 0;
                           const mapped = ((cls as any).curriculums ?? []).map((curriculum: any) => ({ curriculumId: curriculum.id, curriculum }));
@@ -2494,7 +2509,9 @@ export default function CenterManagement() {
                                           const tClassIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
                                           const tClasses = record.teacherProfile?.classes || classes.filter((c) => tClassIds.includes(c.id));
                                           const specIds = record.teacherProfile?.specializationIds || [];
-                                          const tSpecs = specializations.filter((s) => specIds.includes(s.id));
+                                          const tSpecs = record.teacherProfile?.specializations?.length
+                                            ? record.teacherProfile.specializations
+                                            : specializations.filter((s) => specIds.includes(s.id));
 
                                           return (
                                             <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
@@ -3478,7 +3495,8 @@ export default function CenterManagement() {
                     placeholder="Chọn chuyên môn"
                     style={{ width: "100%" }}
                     className="rounded-xl"
-                    options={specializations.map((s) => ({ label: s.name, value: s.id }))}
+                    options={[...(editingTeacher?.teacherProfile?.specializations || []), ...specializations]
+                      .map((s) => ({ label: s.name, value: s.id }))}
                   />
                 </Form.Item>
 

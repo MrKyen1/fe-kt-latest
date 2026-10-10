@@ -1,3 +1,4 @@
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
 import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
@@ -133,7 +134,7 @@ function buildColumns(
     },
     {
       title: "Thao tác",
-      width: 130,
+      width: 160,
       align: "right" as const,
       render: (_: unknown, record: Question) => (
         <Space size="small" wrap={false} className="whitespace-nowrap">
@@ -155,6 +156,10 @@ function buildColumns(
               />
             </Tooltip>
           </Can>
+          <Tooltip title="Lịch sử phiên bản">
+            <Button type="text" size="small" aria-label="Lịch sử phiên bản"
+              icon={<HistoryOutlined className="text-slate-400" />} onClick={() => onViewVersions(record)} />
+          </Tooltip>
           <Can perform="learning.delete">
             <Tooltip title="Xóa câu hỏi">
               <Button
@@ -207,6 +212,7 @@ export default function QuestionsTab({
     onViewVersions,
   );
 
+  const headerColumns = useCmsHeaderFilters(columns, "questions");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -360,7 +366,7 @@ export default function QuestionsTab({
           rowKey="id"
           loading={loading}
           dataSource={questions}
-          columns={columns}
+          columns={headerColumns}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

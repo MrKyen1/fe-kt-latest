@@ -198,7 +198,7 @@ export default function Courses() {
                       />
                     </div>
                   )}>{(
-          <>
+          <div className="flex flex-col gap-12">
             {/* Lean Action Banner for Teacher / Admin */}
             {(isTeacher || isAdmin) && (
               <div className="bg-white rounded-3xl border border-slate-100 p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
@@ -414,7 +414,7 @@ export default function Courses() {
                 </>
               )}
             </section>
-          </>
+          </div>
         )}</PagedCollection>
       </div>
     </div>

@@ -1,6 +1,5 @@
 import { useQueryVersion } from "../hooks/useQueryVersion";
-import { useServerPagination } from "../hooks/useServerPagination";
-import { Layout, Row, Col, Typography, Space, Tag, Pagination } from "antd";
+import { Layout, Row, Col, Typography, Space, Spin } from "antd";
 import {
   Phone,
   Mail,
@@ -24,8 +23,18 @@ const Footer = memo(function Footer() {
   const [selectedCenterIndex, setSelectedCenterIndex] = useState(0);
 
   const homepageVersion = useQueryVersion("/homepage");
-  const centerPage = useServerPagination<Center>("/centers/public", {}, 5);
-  useEffect(() => { setCenters(centerPage.data); setSelectedCenterIndex(0); }, [centerPage.data]);
+  const centersVersion = useQueryVersion("/centers/public");
+  const [centersLoading, setCentersLoading] = useState(false);
+  const [centersError, setCentersError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setCentersLoading(true); setCentersError(false);
+    academicService.centers.publicList(controller.signal)
+      .then(rows => { if (!controller.signal.aborted) { setCenters(rows); setSelectedCenterIndex(0); } })
+      .catch(() => { if (!controller.signal.aborted) setCentersError(true); })
+      .finally(() => { if (!controller.signal.aborted) setCentersLoading(false); });
+    return () => controller.abort();
+  }, [centersVersion]);
   useEffect(() => {
     let active = true;
 
@@ -105,7 +114,8 @@ const Footer = memo(function Footer() {
 
             <Space orientation="vertical" size="middle" className="w-full">
               {/* Centers tabs/tags */}
-              <Pagination {...centerPage.pagination} size="small" className="mb-3" />
+              {centersLoading && <Spin size="small" />}
+              {centersError && <Text className="!text-slate-400 text-xs">Không thể tải danh sách cơ sở.</Text>}
               {centers.length > 0 && (
                 <div className="space-y-2 mb-2">
                   <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">

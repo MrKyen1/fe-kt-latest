@@ -1,3 +1,4 @@
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
 import { useMemo } from "react";
@@ -258,6 +259,7 @@ export default function CurriculumsTab({
     [onEditClick, onDeleteClick, onToggleStatus, onConfigExams, examsMap],
   );
 
+  const headerColumns = useCmsHeaderFilters(columns, "curriculums");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -425,7 +427,7 @@ export default function CurriculumsTab({
           rowKey="id"
           loading={loading}
           dataSource={curriculums}
-          columns={columns}
+          columns={headerColumns}
           scroll={{ x: 800 }}
           pagination={{
             current: pagination.current,

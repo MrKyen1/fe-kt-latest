@@ -1,3 +1,4 @@
+import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
 import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
@@ -121,6 +122,7 @@ function buildColumns(
     {
       title: "Đề thi",
       dataIndex: "title",
+      width: 200,
       render: (val: string, record: Exam) => (
         <Tooltip
           title={
@@ -152,7 +154,7 @@ function buildColumns(
           placement="topLeft"
           overlayStyle={{ maxWidth: 360 }}
         >
-          <div className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition-colors cursor-pointer truncate max-w-md">
+          <div className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition-colors cursor-pointer whitespace-normal wrap-anywhere leading-relaxed">
             {val}
           </div>
         </Tooltip>
@@ -195,7 +197,6 @@ function buildColumns(
     },
     {
       title: "Thao tác",
-      width: 220,
       align: "right" as const,
       render: (_: unknown, record: Exam) => (
         <Space size="small" wrap>
@@ -284,6 +285,7 @@ export default function ExamsTab({
     onViewVersions,
   );
 
+  const headerColumns = useCmsHeaderFilters(columns, "exams");
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -498,7 +500,7 @@ export default function ExamsTab({
           rowKey="id"
           loading={loading}
           dataSource={exams}
-          columns={columns}
+          columns={headerColumns}
           scroll={{ x: 800 }}
           pagination={{
             current: pagination.current,
