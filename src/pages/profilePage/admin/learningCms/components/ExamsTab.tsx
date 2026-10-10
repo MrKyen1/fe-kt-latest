@@ -29,6 +29,7 @@ interface Exam {
   timeLimitSeconds?: number;
   hasUnpublishedChanges?: boolean;
   questions?: ExamQuestion[];
+  questionCount?: number;
 }
 
 interface Props {
@@ -170,7 +171,7 @@ function buildColumns(
     {
       title: "Câu hỏi",
       render: (_: unknown, record: Exam) => {
-        const count = record.questions?.length ?? 0;
+        const count = record.questionCount ?? record.questions?.length ?? 0;
         return (
           <div className="text-center">
             <div className="font-bold text-lg text-slate-700">{count}</div>
@@ -311,7 +312,7 @@ export default function ExamsTab({
             </div>
           ) : (
             exams.map((record) => {
-              const questionCount = record.questions?.length ?? 0;
+              const questionCount = record.questionCount ?? record.questions?.length ?? 0;
               const isExam = record.examType === "exam";
 
               return (

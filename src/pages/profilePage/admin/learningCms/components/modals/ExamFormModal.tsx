@@ -1,3 +1,4 @@
+import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { BookOutlined } from "@ant-design/icons";
@@ -106,7 +107,7 @@ export default function ExamFormModal({
           </Form.Item>
         )}
 
-        {curriculums && curriculums.length > 0 && (
+        {(
           <Form.Item
             name="curriculumId"
             label={
@@ -117,19 +118,7 @@ export default function ExamFormModal({
             }
 
           >
-            <Select
-              allowClear
-              placeholder="Chọn giáo trình để gắn đề (Không bắt buộc)..."
-              className="rounded-xl"
-              showSearch
-              filterOption={(input, option) =>
-                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
-              }
-              options={curriculums.map((c) => ({
-                value: c.id,
-                label: `${c.title}${c.code ? ` (${c.code})` : ""}`,
-              }))}
-            />
+            <ServerSelect endpoint="/learning/curriculums" allowClear placeholder="Chọn giáo trình..." className="rounded-xl" />
           </Form.Item>
         )}
 

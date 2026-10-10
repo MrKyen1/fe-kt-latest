@@ -1,3 +1,5 @@
+import { useServerPagination } from "../../../hooks/useServerPagination";
+import { ServerSelect, LearningLookupScope } from "../../../components/ServerSelect";
 // ============================================================
 // LearningCms — Main Orchestrator
 // ============================================================
@@ -214,7 +216,7 @@ export default function LearningCms() {
   const [allQuestionsForModal, setAllQuestionsForModal] = useState<any[]>([]);
 
   const selectedSpecializationId = useMemo(() => {
-    if (urlSubjectId && specializations.some((s) => s.id === urlSubjectId)) {
+    if (urlSubjectId) {
       return urlSubjectId;
     }
     return specializations[0]?.id || undefined;
@@ -459,306 +461,49 @@ export default function LearningCms() {
   // DATA LOADING
   // ============================================================
 
-  const loadTaxonomyData = async (
-    tab: string,
-    searchVal: string,
-    page = taxPage,
-    limit = taxPageSize,
-  ) => {
-    try {
-      setTaxLoading(true);
-      lastFetchedSearchRef.current = searchVal;
-      const res = await getTaxService(tab).list({
-        specializationId: tab !== "tags" ? selectedSpecializationId : undefined,
-        page,
-        limit,
-        search: searchVal || undefined,
-        sortBy: "name",
-        sortOrder: "ASC",
-      });
-      const data = res.data ?? [];
-      setTaxTotal(res.meta?.total ?? data.length);
-
-      switch (tab) {
-        case "levels": setFilteredLevels(data); break;
-        case "skills": setFilteredSkills(data); break;
-        case "topics": setFilteredTopics(data); break;
-        case "tags": setFilteredTags(data); break;
-      }
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải dữ liệu danh mục thất bại"));
-    } finally {
-      setTaxLoading(false);
+  const resource = activeTab === "taxonomy" ? taxTab : activeTab === "media" ? "media-assets" : activeTab === "passages" ? "reading-passages" : activeTab;
+  const resourcePage = useServerPagination(`/learning/${resource}`, {
+    specializationId: resource === "tags" || resource === "media-assets" ? undefined : selectedSpecializationId,
+    search: activeTab === "taxonomy" ? debouncedTaxSearch || undefined : undefined,
+    type: activeTab === "media" && mediaTypeFilter !== "all" ? mediaTypeFilter : undefined,
+  }, PAGE_SIZE_DEFAULT, subjectsLoaded && !!selectedSpecializationId);
+  useEffect(() => {
+    const data = resourcePage.data;
+    setLoading(resourcePage.loading);
+    setMediaLoading(activeTab === "media" && resourcePage.loading);
+    setQuestionsLoading(activeTab === "questions" && resourcePage.loading);
+    setExamsLoading(activeTab === "exams" && resourcePage.loading);
+    setCurriculumsLoading(activeTab === "curriculums" && resourcePage.loading);
+    if (resourcePage.error) message.error(resourcePage.error.message);
+    const { current, pageSize } = resourcePage.pagination;
+    switch (activeTab) {
+      case "taxonomy":
+        if (taxTab === "levels") { setLevels(data); setFilteredLevels(data); }
+        if (taxTab === "skills") { setSkills(data); setFilteredSkills(data); }
+        if (taxTab === "topics") { setTopics(data); setFilteredTopics(data); }
+        if (taxTab === "tags") { setTags(data); setFilteredTags(data); }
+        setTaxPage(current); setTaxPageSize(pageSize); setTaxTotal(resourcePage.total); break;
+      case "media": setMedia(data); setMediaPage(current); setMediaPageSize(pageSize); setMediaTotal(resourcePage.total); break;
+      case "passages": setPassages(data); setPassagesPage(current); setPassagesPageSize(pageSize); setPassagesTotal(resourcePage.total); break;
+      case "questions": setQuestions(data); setQuestionsPage(current); setQuestionsPageSize(pageSize); setQuestionsTotal(resourcePage.total); break;
+      case "exams": setExams(data); setExamsPage(current); setExamsPageSize(pageSize); setExamsTotal(resourcePage.total); break;
+      case "curriculums": setCurriculums(data); setCurriculumsPage(current); setCurriculumsPageSize(pageSize); setCurriculumsTotal(resourcePage.total); break;
     }
-  };
-
-  const loadMediaData = async (
-    page = mediaPage,
-    limit = mediaPageSize,
-    type = mediaTypeFilter,
-  ) => {
-    try {
-      setMediaLoading(true);
-      const res = await learningCmsService.mediaAssets.list({
-        page,
-        limit,
-        type: type === "all" ? undefined : type,
-      });
-      setMedia(res.data ?? []);
-      setMediaTotal(res.meta?.total ?? res.data?.length ?? 0);
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải danh sách tệp thất bại"));
-    } finally {
-      setMediaLoading(false);
-    }
-  };
-
-  const loadPassagesData = async (page = passagesPage, limit = passagesPageSize) => {
-    try {
-      setPassagesLoading(true);
-      const res = await learningCmsService.readingPassages.list({
-        specializationId: selectedSpecializationId,
-        page,
-        limit,
-        sortBy: "title",
-        sortOrder: "ASC",
-      });
-      setPassages(res.data ?? []);
-      setPassagesTotal(res.meta?.total ?? res.data?.length ?? 0);
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải danh sách bài đọc thất bại"));
-    } finally {
-      setPassagesLoading(false);
-    }
-  };
-
-  const loadQuestionsData = async (page = questionsPage, limit = questionsPageSize) => {
-    try {
-      setQuestionsLoading(true);
-      const res = await learningCmsService.questions.list({
-        specializationId: selectedSpecializationId,
-        page,
-        limit,
-      });
-      setQuestions(res.data ?? []);
-      setQuestionsTotal(res.meta?.total ?? res.data?.length ?? 0);
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải danh sách câu hỏi thất bại"));
-    } finally {
-      setQuestionsLoading(false);
-    }
-  };
-
-  const loadExamsData = async (page = examsPage, limit = examsPageSize) => {
-    try {
-      setExamsLoading(true);
-      const res = await learningCmsService.exams.list({
-        specializationId: selectedSpecializationId,
-        page,
-        limit,
-      });
-      const examList = res.data ?? [];
-      setExamsTotal(res.meta?.total ?? examList.length);
-
-      if (examList.length > 0) {
-        const detailResults = await Promise.allSettled(
-          examList.map((e) => learningCmsService.exams.get(e.id)),
-        );
-        const fullExams = detailResults.map((r, i) =>
-          r.status === "fulfilled" ? r.value : examList[i],
-        );
-        setExams(fullExams);
-      } else {
-        setExams([]);
-      }
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải danh sách đề thi thất bại"));
-    } finally {
-      setExamsLoading(false);
-    }
-  };
-
-  const loadCurriculumsData = async (page = curriculumsPage, limit = curriculumsPageSize) => {
-    try {
-      setCurriculumsLoading(true);
-      const res = await learningCmsService.curriculums.list({
-        specializationId: selectedSpecializationId,
-        page,
-        limit,
-      });
-      const curriculumList = res.data ?? [];
-      setCurriculumsTotal(res.meta?.total ?? curriculumList.length);
-
-      if (curriculumList.length > 0) {
-        const detailResults = await Promise.allSettled(
-          curriculumList.map((c) => learningCmsService.curriculums.get(c.id)),
-        );
-        const fullCurriculums = detailResults.map((r, i) =>
-          r.status === "fulfilled" ? r.value : curriculumList[i],
-        );
-        setCurriculums(fullCurriculums);
-      } else {
-        setCurriculums([]);
-      }
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải danh sách giáo trình thất bại"));
-    } finally {
-      setCurriculumsLoading(false);
-    }
-  };
-
-  // ── Pagination change handlers ─────────────────────────────
-
-  const handleQuestionsPageChange = (page: number, pageSize: number) => {
-    setQuestionsPage(page);
-    setQuestionsPageSize(pageSize);
-    loadQuestionsData(page, pageSize);
-  };
-
-  const handlePassagesPageChange = (page: number, pageSize: number) => {
-    setPassagesPage(page);
-    setPassagesPageSize(pageSize);
-    loadPassagesData(page, pageSize);
-  };
-
-  const handleExamsPageChange = (page: number, pageSize: number) => {
-    setExamsPage(page);
-    setExamsPageSize(pageSize);
-    loadExamsData(page, pageSize);
-  };
-
-  const handleCurriculumsPageChange = (page: number, pageSize: number) => {
-    setCurriculumsPage(page);
-    setCurriculumsPageSize(pageSize);
-    loadCurriculumsData(page, pageSize);
-  };
-
-  const handleMediaPageChange = (page: number, pageSize: number) => {
-    setMediaPage(page);
-    setMediaPageSize(pageSize);
-    loadMediaData(page, pageSize, mediaTypeFilter);
-  };
-
-  const handleMediaTypeFilterChange = (type: string) => {
-    setMediaTypeFilter(type);
-    setMediaPage(1);
-    loadMediaData(1, mediaPageSize, type);
-  };
-
-  const handleTaxPageChange = (page: number, pageSize: number) => {
-    setTaxPage(page);
-    setTaxPageSize(pageSize);
-    loadTaxonomyData(taxTab, taxSearch, page, pageSize);
-  };
-
-  const loadAllData = async () => {
-    try {
-      setLoading(true);
-
-      const results = await Promise.allSettled([
-        learningCmsService.levels.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
-        learningCmsService.skills.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
-        learningCmsService.topics.list({ specializationId: selectedSpecializationId, limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
-        learningCmsService.tags.list({ limit: LIST_LIMIT, sortBy: "name", sortOrder: "ASC" }),
-        learningCmsService.mediaAssets.list({ page: mediaPage, limit: mediaPageSize, type: mediaTypeFilter === "all" ? undefined : mediaTypeFilter }),
-        learningCmsService.readingPassages.list({ specializationId: selectedSpecializationId, page: passagesPage, limit: passagesPageSize, sortBy: "title", sortOrder: "ASC" }),
-        learningCmsService.questions.list({ specializationId: selectedSpecializationId, page: questionsPage, limit: questionsPageSize }),
-        learningCmsService.exams.list({ specializationId: selectedSpecializationId, page: examsPage, limit: examsPageSize }),
-        learningCmsService.curriculums.list({ specializationId: selectedSpecializationId, page: curriculumsPage, limit: curriculumsPageSize }),
-      ]);
-
-      const get = (i: number) =>
-        results[i].status === "fulfilled"
-          ? (results[i] as PromiseFulfilledResult<any>).value
-          : null;
-
-      // Surface any API failures as a warning
-      const API_NAMES = ["Levels", "Skills", "Topics", "Tags", "Media Assets", "Reading Passages", "Questions", "Exams", "Curriculums"];
-      const failed = results
-        .map((r, i) => (r.status === "rejected" ? API_NAMES[i] : null))
-        .filter(Boolean);
-      if (failed.length) {
-        message.warning(`Một số API bị lỗi: ${failed.join(", ")}. Vui lòng kiểm tra backend.`);
-      }
-
-      const levelsRes = get(0);
-      const skillsRes = get(1);
-      const topicsRes = get(2);
-      const tagsRes = get(3);
-
-      const levelsData = levelsRes?.data ?? [];
-      const skillsData = skillsRes?.data ?? [];
-      const topicsData = topicsRes?.data ?? [];
-      const tagsData = tagsRes?.data ?? [];
-
-      setLevels(levelsData);
-      setSkills(skillsData);
-      setTopics(topicsData);
-      setTags(tagsData);
-
-      if (!taxSearch) {
-        setFilteredLevels(levelsData);
-        setFilteredSkills(skillsData);
-        setFilteredTopics(topicsData);
-        setFilteredTags(tagsData);
-        lastFetchedSearchRef.current = "";
-        const currentTaxRes = taxTab === "levels" ? levelsRes : taxTab === "skills" ? skillsRes : taxTab === "topics" ? topicsRes : tagsRes;
-        setTaxTotal(currentTaxRes?.meta?.total ?? currentTaxRes?.data?.length ?? 0);
-      } else {
-        if (taxTab !== "levels") setFilteredLevels(levelsData);
-        if (taxTab !== "skills") setFilteredSkills(skillsData);
-        if (taxTab !== "topics") setFilteredTopics(topicsData);
-        if (taxTab !== "tags") setFilteredTags(tagsData);
-        loadTaxonomyData(taxTab, taxSearch, taxPage, taxPageSize);
-      }
-
-      const mediaRes = get(4);
-      setMedia(mediaRes?.data ?? []);
-      setMediaTotal(mediaRes?.meta?.total ?? mediaRes?.data?.length ?? 0);
-
-      const passagesRes = get(5);
-      setPassages(passagesRes?.data ?? []);
-      setPassagesTotal(passagesRes?.meta?.total ?? passagesRes?.data?.length ?? 0);
-
-      const questionsRes = get(6);
-      setQuestions(questionsRes?.data ?? []);
-      setQuestionsTotal(questionsRes?.meta?.total ?? questionsRes?.data?.length ?? 0);
-
-      // Fetch full exam details to get question counts
-      const examList: any[] = get(7)?.data ?? [];
-      setExamsTotal(get(7)?.meta?.total ?? examList.length);
-      if (examList.length > 0) {
-        const detailResults = await Promise.allSettled(
-          examList.map((e) => learningCmsService.exams.get(e.id)),
-        );
-        const fullExams = detailResults.map((r, i) =>
-          r.status === "fulfilled" ? r.value : examList[i],
-        );
-        setExams(fullExams);
-      } else {
-        setExams([]);
-      }
-
-      // Fetch full curriculum details to get exams and level
-      const curriculumList: any[] = get(8)?.data ?? [];
-      setCurriculumsTotal(get(8)?.meta?.total ?? curriculumList.length);
-      if (curriculumList.length > 0) {
-        const detailResults = await Promise.allSettled(
-          curriculumList.map((c) => learningCmsService.curriculums.get(c.id)),
-        );
-        const fullCurriculums = detailResults.map((r, i) =>
-          r.status === "fulfilled" ? r.value : curriculumList[i],
-        );
-        setCurriculums(fullCurriculums);
-      } else {
-        setCurriculums([]);
-      }
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Tải dữ liệu CMS thất bại"));
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [resourcePage.data, resourcePage.total, resourcePage.loading, resourcePage.error, activeTab, taxTab]);
+  const loadTaxonomyData = async (_tab: string, _search = "", page = taxPage, size = taxPageSize) => resourcePage.pagination.onChange(page, size);
+  const loadMediaData = async (page = mediaPage, size = mediaPageSize) => resourcePage.pagination.onChange(page, size);
+  const loadQuestionsData = async (page = questionsPage, size = questionsPageSize) => resourcePage.pagination.onChange(page, size);
+  const loadPassagesData = async (page = passagesPage, size = passagesPageSize) => resourcePage.pagination.onChange(page, size);
+  const loadExamsData = async (page = examsPage, size = examsPageSize) => resourcePage.pagination.onChange(page, size);
+  const loadCurriculumsData = async (page = curriculumsPage, size = curriculumsPageSize) => resourcePage.pagination.onChange(page, size);
+  const handleQuestionsPageChange = (page: number, size: number) => resourcePage.pagination.onChange(page, size);
+  const handlePassagesPageChange = handleQuestionsPageChange;
+  const handleExamsPageChange = handleQuestionsPageChange;
+  const handleCurriculumsPageChange = handleQuestionsPageChange;
+  const handleMediaTypeFilterChange = (value: string) => setMediaTypeFilter(value);
+  const handleMediaPageChange = handleQuestionsPageChange;
+  const handleTaxPageChange = handleQuestionsPageChange;
+  const loadAllData = async () => { resourcePage.reload(); };
 
   // ── Effects ────────────────────────────────────────────────
 
@@ -770,7 +515,7 @@ export default function LearningCms() {
           specs = user.teacherProfile.specializations;
         } else if (hasPermission("specializations.read")) {
           try {
-            specs = await academicService.specializations.list({ isActive: true });
+            specs = await academicService.specializations.list({ isActive: true, limit: 1 });
           } catch (err: any) {
             if (user?.teacherProfile?.specializations?.length) {
               specs = user.teacherProfile.specializations;
@@ -792,9 +537,7 @@ export default function LearningCms() {
     fetchSpecs();
   }, [user]);
 
-  useEffect(() => {
-    if (subjectsLoaded) loadAllData();
-  }, [selectedSpecializationId, subjectsLoaded]);
+
 
   // Debounce taxonomy search
   useEffect(() => {
@@ -804,6 +547,7 @@ export default function LearningCms() {
 
   // Sync tab changes + execute search
   useEffect(() => {
+    if (activeTab !== "taxonomy") return;
     if (prevTabRef.current !== taxTab) {
       prevTabRef.current = taxTab;
       setTaxSearch("");
@@ -1448,17 +1192,8 @@ export default function LearningCms() {
   };
 
   const handleViewQuestionVersions = async (record: any) => {
-    try {
-      setLoading(true);
-      const data = await learningCmsService.questions.listVersions(record.id);
-      setQuestionVersions(data ?? []);
-      setViewingQuestion(record);
-      setQuestionVersionsModalOpen(true);
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Không thể tải lịch sử phiên bản của câu hỏi"));
-    } finally {
-      setLoading(false);
-    }
+    setViewingQuestion(record);
+    setQuestionVersionsModalOpen(true);
   };
 
   // ============================================================
@@ -1475,12 +1210,10 @@ export default function LearningCms() {
   const handleExamEdit = async (record: any) => {
     setEditingItem(record);
 
-    // 1. Kiểm tra nhanh trong danh sách curriculums đã tải
-    const currentCurriculum = curriculums.find((c: any) =>
-      (c.exams || []).some((ce: any) => ce.examId === record.id || ce.id === record.id || ce.exam?.id === record.id)
-    );
-    let currId = currentCurriculum?.id || undefined;
+    const matches = await learningCmsService.curriculums.list({ examId: record.id, limit: 1 });
+    const currId = matches[0]?.id;
     setEditingExamInitialCurriculumId(currId);
+    if (matches[0]) setCurriculums(previous => [...previous.filter(row => row.id !== currId), matches[0]]);
 
     examForm.setFieldsValue({
       code: record.code,
@@ -1492,28 +1225,7 @@ export default function LearningCms() {
     });
     setExamModalOpen(true);
 
-    // 2. Nếu chưa tìm thấy (ví dụ đề thi được gắn khi còn ở trạng thái nháp), kiểm tra chi tiết các giáo trình
-    if (!currId && curriculums.length > 0) {
-      try {
-        const details = await Promise.all(
-          curriculums.map((c) =>
-            learningCmsService.curriculums.get(c.id).catch(() => null)
-          )
-        );
-        for (const detail of details) {
-          if (!detail) continue;
-          const examsInCurr = (detail as any).exams || [];
-          if (examsInCurr.some((ce: any) => ce.examId === record.id || ce.id === record.id || ce.exam?.id === record.id)) {
-            currId = detail.id;
-            setEditingExamInitialCurriculumId(currId);
-            examForm.setFieldValue("curriculumId", currId);
-            break;
-          }
-        }
-      } catch (err) {
-        console.error("Lỗi khi kiểm tra giáo trình của đề thi:", err);
-      }
-    }
+
   };
 
   const handleExamDelete = (record: any) => {
@@ -1660,17 +1372,8 @@ export default function LearningCms() {
   };
 
   const handleViewExamVersions = async (record: any) => {
-    try {
-      setLoading(true);
-      const data = await learningCmsService.exams.listVersions(record.id);
-      setExamVersions(data ?? []);
-      setViewingExam(record);
-      setExamVersionsModalOpen(true);
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Không thể tải lịch sử phiên bản của đề thi"));
-    } finally {
-      setLoading(false);
-    }
+    setViewingExam(record);
+    setExamVersionsModalOpen(true);
   };
 
   // ── Exam question management ───────────────────────────────
@@ -1685,13 +1388,6 @@ export default function LearningCms() {
     }
     setManageQuestionsOpen(true);
 
-    // Fetch published question pool for ManageQuestionsModal
-    learningCmsService.questions
-      .list({ specializationId: selectedSpecializationId, status: "published", limit: LIST_LIMIT })
-      .then((res) => {
-        if (res.data) setAllQuestionsForModal(res.data);
-      })
-      .catch(() => {});
 
   };
 
@@ -1699,7 +1395,7 @@ export default function LearningCms() {
     if (!selectedExam) return;
     try {
       const existing = selectedExam.questions ?? (selectedExam as any).examQuestions ?? [];
-      const existingIndices = new Set(
+      const existingIndices = new Set<number>(
         existing
           .map((q: any) => Number(q.orderIndex))
           .filter((n: number) => !isNaN(n))
@@ -1878,7 +1574,7 @@ export default function LearningCms() {
     if (!selectedCurriculum) return;
     try {
       const existing = selectedCurriculum.exams ?? [];
-      const existingIndices = new Set(
+      const existingIndices = new Set<number>(
         existing
           .map((e: any) => Number(e.orderIndex))
           .filter((n: number) => !isNaN(n))
@@ -2092,7 +1788,7 @@ export default function LearningCms() {
   ];
 
   return (
-    <ConfigProvider theme={ANT_THEME}>
+    <LearningLookupScope.Provider value={selectedSpecializationId}><ConfigProvider theme={ANT_THEME}>
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
         <Spin spinning={loading} size="large">
           <div className="max-w-[1500px] mx-auto space-y-6">
@@ -2125,7 +1821,7 @@ export default function LearningCms() {
                         Môn học:
                       </span>
                     </div>
-                    <Select
+                    <ServerSelect endpoint="/specializations" onRecords={rows => setSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                       value={selectedSpecializationId}
                       onChange={handleSubjectChange}
                       size="large"
@@ -2314,6 +2010,6 @@ export default function LearningCms() {
           </div>
         </Spin>
       </div>
-    </ConfigProvider>
+    </ConfigProvider></LearningLookupScope.Provider>
   );
 }

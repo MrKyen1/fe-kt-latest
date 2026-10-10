@@ -1,3 +1,6 @@
+import { useServerPagination } from "../../../hooks/useServerPagination";
+import { ServerSelect } from "../../../components/ServerSelect";
+import { mapUserResponse } from "../../../services/userService";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Button,
@@ -157,46 +160,9 @@ function CurriculumAnalyticsModal({
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!open || !assignmentId) {
-      setData(null);
-      setDetail(null);
-      return;
-    }
-    setLoading(true);
-    Promise.allSettled([
-      teacherLearningService.curriculumAssignments.analytics(assignmentId),
-      teacherLearningService.curriculumAssignments.get(assignmentId),
-    ])
-      .then(([analyticsRes, detailRes]) => {
-        if (analyticsRes.status === "fulfilled") {
-          setData(analyticsRes.value);
-        }
-        if (detailRes.status === "fulfilled") {
-          setDetail(detailRes.value);
-        }
-      })
-      .catch((err) => message.error(getErrorMessage(err, "Không thể tải analytics"), 5))
-      .finally(() => setLoading(false));
-  }, [open, assignmentId]);
-
-  const studentsList = useMemo(() => {
-    if (data?.students && Array.isArray(data.students) && data.students.length > 0) {
-      return data.students;
-    }
-    const raw = detail?.students || [];
-    return raw.map((s: any) => ({
-      studentId: s.studentId || s.student?.id,
-      code: s.student?.user?.code || s.student?.code || "—",
-      fullName: s.student?.user?.fullName || s.student?.fullName || "Học sinh",
-      email: s.student?.user?.email || s.student?.email || "—",
-      status: s.status || "assigned",
-      progressPercentage: parseFloat(s.progressPercentage || "0"),
-      finishedExamsCount: s.finishedExamsCount || 0,
-      totalRequiredExamsCount: s.totalRequiredExamsCount || 0,
-      finishedAt: s.finishedAt,
-    }));
-  }, [data, detail]);
+  const studentPage = useServerPagination(`/learning/teacher/curriculum-assignments/${assignmentId}/analytics/students`, {}, 8, open && !!assignmentId);
+  const studentsList = studentPage.data;
+  useEffect(() => { setData(studentPage.meta?.summary ?? null); setLoading(studentPage.loading); }, [studentPage.meta, studentPage.loading]);
 
   return (
     <Modal open={open} onCancel={onClose} footer={null}
@@ -238,11 +204,11 @@ function CurriculumAnalyticsModal({
             <Card className="rounded-2xl border-slate-100 shadow-sm" bodyStyle={{ padding: "16px" }}>
               <div className="text-slate-700 font-bold text-sm mb-3 flex items-center justify-between">
                 <span>Tiến độ từng học sinh</span>
-                <span className="text-xs text-slate-400 font-normal">Tổng {studentsList.length} học sinh</span>
+                <span className="text-xs text-slate-400 font-normal">Tổng {studentPage.total} học sinh</span>
               </div>
               <Table
                 size="small"
-                pagination={{ pageSize: 5 }}
+                pagination={studentPage.pagination}
                 rowKey="studentId"
                 scroll={{ x: 600 }}
                 dataSource={studentsList}
@@ -343,21 +309,7 @@ export default function TeacherAssignments() {
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
   const [examVersionsMap, setExamVersionsMap] = useState<Record<string, any[]>>({});
 
-  const handleExamSelectionChange = async (ids: string[]) => {
-    setSelectedExamIds(ids);
-    const newVersionsMap = { ...examVersionsMap };
-    for (const id of ids) {
-      if (!newVersionsMap[id]) {
-        try {
-          const versions = await learningCmsService.exams.listVersions(id);
-          newVersionsMap[id] = versions || [];
-        } catch (err) {
-          console.error("Failed to fetch versions for exam " + id, err);
-        }
-      }
-    }
-    setExamVersionsMap(newVersionsMap);
-  };
+  const handleExamSelectionChange = async (ids: string[]) => { setSelectedExamIds(ids); };
 
   // ==================== USER CENTERS & SPECIALIZATIONS ====================
   const teacherClassIds = useMemo(() => {
@@ -416,73 +368,35 @@ export default function TeacherAssignments() {
     return Array.from(set);
   }, [user, allClasses, teacherClassIds]);
 
+  const examPage = useServerPagination("/learning/teacher/exam-assignments", {
+    centerId: assignmentScope === "all" || selectedCenterId === "all" ? undefined : selectedCenterId, includeStudents: false,
+    search: searchKeyword.trim() || undefined,
+  }, 10, activeTab === "exam");
+  const curriculumPage = useServerPagination("/learning/teacher/curriculum-assignments", {
+    centerId: assignmentScope === "all" || selectedCenterId === "all" ? undefined : selectedCenterId, includeStudents: false,
+    search: searchKeyword.trim() || undefined,
+  }, 10, activeTab === "curriculum");
+  const remember = (setter: any) => (records: any[]) => setter((previous: any[]) =>
+    Array.from(new Map([...previous, ...records].map(row => [row.id, row])).values()));
+  useEffect(() => { setExamAssignments(examPage.data); }, [examPage.data]);
+  useEffect(() => { setCurriculumAssignments(curriculumPage.data); }, [curriculumPage.data]);
+  useEffect(() => {
+    setLoading(activeTab === "exam" ? examPage.loading : curriculumPage.loading);
+    const error = activeTab === "exam" ? examPage.error : curriculumPage.error;
+    if (error) message.error(error.message);
+  }, [activeTab, examPage.loading, curriculumPage.loading, examPage.error, curriculumPage.error]);
+  useEffect(() => {
+    const profileClasses = user?.teacherProfile?.classes || [];
+    setAllClasses(profileClasses); setClasses(profileClasses);
+    setSpecializations(user?.teacherProfile?.specializations || []);
+    setCenters(Array.from(new Map(profileClasses.filter((row: any) => row.center).map((row: any) => [row.center.id, row.center])).values()) as Center[]);
+  }, [user]);
+
   // ==================== LOAD DATA ====================
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
-    try {
-      setLoading(true);
-      const [
-        examsRes,
-        curriculumsRes,
-        classesRes,
-        studentsRes,
-        examAssignmentsRes,
-        curriculumAssignmentsRes,
-        centersRes,
-        specializationsRes,
-      ] = await Promise.allSettled([
-        hasPermission("learning.read") ? learningCmsService.exams.list({ status: "published", limit: 100 }) : Promise.resolve({ data: [] }),
-        hasPermission("learning.read") ? learningCmsService.curriculums.list({ status: "published", limit: 100 }) : Promise.resolve({ data: [] }),
-        hasPermission("classes.read") ? academicService.classes.list({ limit: 100, isActive: true }) : Promise.resolve([]),
-        hasPermission("users.read") ? userService.list({ roleCode: "student" }) : Promise.resolve([]),
-        teacherLearningService.examAssignments.list({ limit: 100 }),
-        teacherLearningService.curriculumAssignments.list({ limit: 100 }),
-        hasPermission("centers.read") ? academicService.centers.list({ limit: 100 }) : Promise.resolve([]),
-        hasPermission("specializations.read") ? academicService.specializations.list({ limit: 100 }) : Promise.resolve([]),
-      ]);
-
-      setExams(examsRes.status === "fulfilled" ? examsRes.value?.data ?? [] : []);
-      setCurriculums(curriculumsRes.status === "fulfilled" ? curriculumsRes.value?.data ?? [] : []);
-      const rawClasses = classesRes.status === "fulfilled" ? classesRes.value ?? [] : (user?.teacherProfile?.classes ?? []);
-      setAllClasses(rawClasses);
-      setClasses(rawClasses);
-      setAllStudents(studentsRes.status === "fulfilled" ? studentsRes.value ?? [] : []);
-
-      const rawExams = examAssignmentsRes.status === "fulfilled" ? examAssignmentsRes.value?.data ?? [] : [];
-      setExamAssignments(rawExams);
-
-      // Asynchronously fetch assignment details to load recipient student profiles & exams
-      Promise.all(
-        rawExams.map((item: any) =>
-          teacherLearningService.examAssignments.get(item.id)
-            .catch(() => item)
-        )
-      ).then((detailed) => {
-        setExamAssignments(detailed);
-      });
-
-      const rawCurriculums = curriculumAssignmentsRes.status === "fulfilled" ? curriculumAssignmentsRes.value?.data ?? [] : [];
-      setCurriculumAssignments(rawCurriculums);
-
-      // Asynchronously fetch curriculum assignment details to load recipient student profiles
-      Promise.all(
-        rawCurriculums.map((item: any) =>
-          teacherLearningService.curriculumAssignments.get(item.id)
-            .catch(() => item)
-        )
-      ).then((detailed) => {
-        setCurriculumAssignments(detailed);
-      });
-
-      const rawCenters = (centersRes.status === "fulfilled" ? centersRes.value ?? [] : []).filter((c: any) => c.isActive !== false);
-      setCenters(rawCenters);
-      setSpecializations(specializationsRes.status === "fulfilled" ? specializationsRes.value ?? [] : []);
-    } catch (err: any) {
-      message.error(getErrorMessage(err, "Tải dữ liệu thất bại"), 5);
-    } finally {
-      setLoading(false);
-    }
+    if (activeTab === "exam") examPage.reload(); else curriculumPage.reload();
   };
 
   // Auto initialize selectedCenterId based on user context
@@ -625,89 +539,8 @@ export default function TeacherAssignments() {
     [allStudents]
   );
 
-  const filteredExamAssignments = useMemo(() => {
-    return examAssignments.filter((record) => {
-      const itemCenterId = getRecordCenterId(record);
-
-      // Strict Teacher Center Boundary: Never show records from other centers
-      if (isTeacher) {
-        if (itemCenterId && userCenters.length > 0 && !userCenters.includes(itemCenterId) && !isMyRecord(record)) {
-          return false;
-        }
-      }
-
-      // Center Filter
-      if (selectedCenterId !== "all") {
-        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
-        if (!itemCenterId && record.classId) {
-          const cls = allClasses.find((c) => c.id === record.classId);
-          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
-        }
-      }
-
-      // Scope Filter
-      if (assignmentScope === "my" && isTeacher) {
-        if (!isMyRecord(record)) return false;
-      }
-
-      // Search Keyword
-      if (searchKeyword.trim()) {
-        const kw = searchKeyword.toLowerCase();
-        const title = (record.title || "").toLowerCase();
-        const examNames = (record.exams || []).map((e: any) => `${e.exam?.title || ""} ${e.exam?.code || ""}`).join(" ").toLowerCase();
-        const clsName = (record.class?.name || allClasses.find((c) => c.id === record.classId)?.name || "").toLowerCase();
-        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
-        const studentNames = (record.students || []).map((s: any) => resolveStudentName(s)).join(" ").toLowerCase();
-        if (!title.includes(kw) && !examNames.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw) && !studentNames.includes(kw)) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [examAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, userCenters, resolveStudentName]);
-
-  const filteredCurriculumAssignments = useMemo(() => {
-    return curriculumAssignments.filter((record) => {
-      const itemCenterId = getRecordCenterId(record);
-
-      // Strict Teacher Center Boundary: Never show records from other centers
-      if (isTeacher) {
-        if (itemCenterId && userCenters.length > 0 && !userCenters.includes(itemCenterId) && !isMyRecord(record)) {
-          return false;
-        }
-      }
-
-      // Center Filter
-      if (selectedCenterId !== "all") {
-        if (itemCenterId && itemCenterId !== selectedCenterId) return false;
-        if (!itemCenterId && record.classId) {
-          const cls = allClasses.find((c) => c.id === record.classId);
-          if (cls?.centerId && cls.centerId !== selectedCenterId) return false;
-        }
-      }
-
-      // Scope Filter
-      if (assignmentScope === "my" && isTeacher) {
-        if (!isMyRecord(record)) return false;
-      }
-
-      // Search Keyword
-      if (searchKeyword.trim()) {
-        const kw = searchKeyword.toLowerCase();
-        const title = (record.title || record.curriculum?.title || "").toLowerCase();
-        const curCode = (record.curriculum?.code || "").toLowerCase();
-        const clsName = (record.class?.name || allClasses.find((c) => c.id === record.classId)?.name || "").toLowerCase();
-        const centerName = (getCenterName(itemCenterId) || "").toLowerCase();
-        const studentNames = (record.students || []).map((s: any) => resolveStudentName(s)).join(" ").toLowerCase();
-        if (!title.includes(kw) && !curCode.includes(kw) && !clsName.includes(kw) && !centerName.includes(kw) && !studentNames.includes(kw)) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [curriculumAssignments, selectedCenterId, assignmentScope, isTeacher, searchKeyword, allClasses, centers, allStudents, teacherClassIds, userCenters, resolveStudentName]);
+  const filteredExamAssignments = examAssignments;
+  const filteredCurriculumAssignments = curriculumAssignments;
 
   // Helper to resolve all class IDs for a student
   const getStudentClassIds = useCallback((student: StudentOption): string[] => {
@@ -995,23 +828,13 @@ export default function TeacherAssignments() {
       return;
     }
 
-    let resolvedStudentIds = rawStudentIds;
-    if (values.classId && !resolvedStudentIds.length) {
-      const classStudents = getStudentsForClass(values.classId);
-      resolvedStudentIds = classStudents
-        .map((s: any) => s.studentProfile?.id || s.id)
-        .filter(Boolean);
-      if (!resolvedStudentIds.length) {
-        message.warning("Lớp học đã chọn hiện chưa có học sinh nào!");
-        return;
-      }
-    }
+    const resolvedStudentIds = rawStudentIds;
 
     try {
       setSubmitting(true);
       await teacherLearningService.curriculumAssignments.create({
         curriculumId: values.curriculumId,
-        studentIds: Array.from(new Set(resolvedStudentIds)),
+        studentIds: resolvedStudentIds.length ? Array.from(new Set(resolvedStudentIds)) : undefined,
         classId: values.classId || undefined,
         title: values.title || undefined,
         instructions: values.instructions || undefined,
@@ -1142,7 +965,7 @@ export default function TeacherAssignments() {
       render: (_: any, record: any) => {
         const students = record.students || [];
         const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
-        const cnt = record.studentIds?.length ?? studentList.length;
+        const cnt = record.studentCount ?? record.studentIds?.length ?? studentList.length;
         if (cnt) {
           const tooltipContent = (
             <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
@@ -1308,7 +1131,7 @@ export default function TeacherAssignments() {
       render: (_: any, record: any) => {
         const students = record.students || [];
         const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
-        const cnt = record.studentIds?.length ?? studentList.length;
+        const cnt = record.studentCount ?? record.studentIds?.length ?? studentList.length;
         if (cnt) {
           const tooltipContent = (
             <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
@@ -1381,14 +1204,7 @@ export default function TeacherAssignments() {
   ];
 
   // ==================== STUDENT MANAGEMENT ====================
-  const reloadStudents = async () => {
-    try {
-      const res = await userService.list({ roleCode: "student", limit: 100 });
-      setAllStudents(res || []);
-    } catch (e) {
-      console.error("Failed to reload students", e);
-    }
-  };
+  const reloadStudents = async () => { setAllStudents([]); };
 
   // ==================== RENDER ====================
   return (
@@ -1428,7 +1244,7 @@ export default function TeacherAssignments() {
                       <BankOutlined className="text-indigo-500" />
                       Trung tâm:
                     </span>
-                    <Select
+                    <ServerSelect endpoint="/centers" onRecords={remember(setCenters)}
                       value={selectedCenterId}
                       onChange={(val) => setSelectedCenterId(val)}
                       className="min-w-[210px]"
@@ -1491,23 +1307,9 @@ export default function TeacherAssignments() {
                     <Segmented
                       value={assignmentScope}
                       onChange={(val: any) => setAssignmentScope(val)}
-                      options={
-                        isTeacher
-                          ? displayCenters.length > 1
-                            ? [
-                              { label: "Bài của tôi", value: "my" },
-                              { label: "Toàn trung tâm", value: "center" },
-                              { label: "Tất cả trung tâm của tôi", value: "all" },
-                            ]
-                            : [
-                              { label: "Bài của tôi", value: "my" },
-                              { label: "Toàn trung tâm", value: "center" },
-                            ]
-                          : [
-                            { label: "Theo trung tâm", value: "center" },
-                            { label: "Tất cả hệ thống (All)", value: "all" },
-                          ]
-                      }
+                      options={isTeacher ? [{ label: "Bài của tôi", value: "my" }] : [
+                        { label: "Theo trung tâm", value: "center" }, { label: "Tất cả hệ thống", value: "all" },
+                      ]}
                     />
                   </div>
                 </div>
@@ -1556,8 +1358,8 @@ export default function TeacherAssignments() {
                   )}
                 </div>
                 <div className="text-slate-400 font-medium">
-                  {activeTab === "exam" && `Hiển thị ${filteredExamAssignments.length} / ${examAssignments.length} bài thi`}
-                  {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumAssignments.length} giáo trình đã giao`}
+                  {activeTab === "exam" && `Hiển thị ${filteredExamAssignments.length} / ${examPage.total} bài thi`}
+                  {activeTab === "curriculum" && `Hiển thị ${filteredCurriculumAssignments.length} / ${curriculumPage.total} giáo trình đã giao`}
                 </div>
               </div>
             </div>
@@ -1615,7 +1417,7 @@ export default function TeacherAssignments() {
                             dataSource={filteredExamAssignments}
                             columns={examAssignmentColumns}
                             rowKey="id"
-                            pagination={{ pageSize: 10, showSizeChanger: false }}
+                            pagination={examPage.pagination}
                             bordered={false}
                             scroll={{ x: 1000 }}
                             className="rounded-2xl overflow-hidden"
@@ -1668,7 +1470,7 @@ export default function TeacherAssignments() {
                             dataSource={filteredCurriculumAssignments}
                             columns={curriculumAssignmentColumns}
                             rowKey="id"
-                            pagination={{ pageSize: 10, showSizeChanger: false }}
+                            pagination={curriculumPage.pagination}
                             bordered={false}
                             scroll={{ x: 1000 }}
                             className="rounded-2xl overflow-hidden"
@@ -1708,28 +1510,11 @@ export default function TeacherAssignments() {
               </span>
             }
           >
-            <Select
-              showSearch
-              placeholder="Chọn lớp học..."
-              optionFilterProp="children"
-              className="rounded-xl"
-              allowClear
-              onChange={handleClassChangeForExam}
-            >
-              {assignableClasses.map((c: any) => {
-                const specName = c.specializationName || (getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)));
-                return (
-                  <Select.Option key={c.id} value={c.id}>
-                    {c.name}
-                    {specName && (
-                      <span className="text-slate-400 text-xs ml-1.5 font-normal">
-                        ({specName})
-                      </span>
-                    )}
-                  </Select.Option>
-                );
-              })}
-            </Select>
+            <ServerSelect endpoint="/classes" query={{ centerId: selectedCenterId === "all" ? undefined : selectedCenterId }}
+              placeholder="Chọn lớp học..." allowClear className="rounded-xl"
+              onRecords={rows => { remember(setAllClasses)(rows); remember(setClasses)(rows); }}
+              options={assignableClasses.map(row => ({ label: row.name, value: row.id }))}
+              onChange={handleClassChangeForExam} />
           </Form.Item>
 
           <div>
@@ -1754,36 +1539,12 @@ export default function TeacherAssignments() {
                 ) : undefined
               }
             >
-              <SafeSelect
-                mode="multiple"
-                showSearch
-                placeholder={selectedClassForExam ? "Chọn bài thi thuộc môn học của lớp..." : "Chọn bài thi..."}
-                optionFilterProp="children"
-                optionLabelProp="label"
-                className="rounded-xl"
-                onChange={handleExamSelectionChange}
-              >
-                {modalExams.map((e) => (
-                  <Select.Option
-                    key={e.id}
-                    value={e.id}
-                    label={`${e.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}${e.title || e.code}`}
-                  >
-                    <div className="flex items-center justify-between py-0.5">
-                      <span>
-                        <span className="font-semibold text-slate-700">{e.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}</span>
-                        {e.title || e.code}
-                      </span>
-                      <div className="flex items-center gap-1.5 text-xs">
-                        {e.code && <span className="text-slate-400">({e.code})</span>}
-                        {e.specializationId && getSpecializationName(e.specializationId) && (
-                          <span className="text-indigo-500">• {getSpecializationName(e.specializationId)}</span>
-                        )}
-                      </div>
-                    </div>
-                  </Select.Option>
-                ))}
-              </SafeSelect>
+              <ServerSelect endpoint="/learning/exams" mode="multiple"
+                query={{ status: "published", specializationId: getClassSpecializationId(selectedClassForExam) }}
+                optionLabel={row => `${row.examType === "exam" ? "[Kiểm tra]" : "[Ôn tập]"} ${row.title || row.code}`}
+                onRecords={remember(setExams)} onChange={handleExamSelectionChange}
+                options={exams.map(row => ({ label: row.title || row.code, value: row.id }))}
+                placeholder="Chọn bài thi..." className="rounded-xl" />
             </Form.Item>
           </div>
 
@@ -1804,14 +1565,8 @@ export default function TeacherAssignments() {
                       className="mb-0"
                       initialValue=""
                     >
-                      <Select className="w-52 text-xs font-medium" size="small">
-                        <Select.Option value="">Bản mới nhất (Latest)</Select.Option>
-                        {versions.map((v: any) => (
-                          <Select.Option key={v.id} value={v.id}>
-                            Phiên bản {v.versionNumber} ({v.questionCount} câu){v.isCurrent ? " (Hiện tại)" : ""}
-                          </Select.Option>
-                        ))}
-                      </Select>
+                      <ServerSelect endpoint={`/learning/exams/${examId}/versions`}
+                        allowClear placeholder="Phiên bản hiện tại" optionLabel={row => `v${row.versionNumber}`} />
                     </Form.Item>
                   </div>
                 );
@@ -1829,18 +1584,13 @@ export default function TeacherAssignments() {
               </div>
             ) : undefined}
           >
-            <SafeSelect
-              mode="multiple"
-              showSearch
-              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForExam ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}
-              optionFilterProp="label"
-              className="rounded-xl"
-              options={getStudentsForClass(selectedClassForExam).map((s) => ({
-                key: s.studentProfile?.id || s.id,
-                value: s.studentProfile?.id || s.id,
-                label: `${s.fullName || s.code} @${s.code}`,
-              }))}
-            />
+            <ServerSelect endpoint="/users" mode="multiple"
+              query={{ roleCode: "student", classId: selectedClassForExam, centerId: selectedCenterId === "all" ? undefined : selectedCenterId }}
+              optionValue={row => row.student?.id || row.studentProfile?.id || row.id}
+              optionLabel={row => `${row.fullName} @${row.code}`}
+              onRecords={rows => remember(setAllStudents)(rows.map(mapUserResponse))}
+              options={allStudents.map(row => ({ label: row.fullName || row.code, value: row.studentProfile?.id || row.id }))}
+              placeholder="Tìm học sinh (bỏ trống để giao cả lớp)" className="rounded-xl" />
           </Form.Item>
 
           <Form.Item name="title" label="Tiêu đề (tùy chọn)">
@@ -1886,28 +1636,11 @@ export default function TeacherAssignments() {
               </span>
             }
           >
-            <Select
-              showSearch
-              placeholder="Chọn lớp học (tùy chọn)..."
-              optionFilterProp="children"
-              className="rounded-xl"
-              allowClear
-              onChange={handleClassChangeForCurriculum}
-            >
-              {assignableClasses.map((c: any) => {
-                const specName = c.specializationName || (getClassSpecializationId(c.id) && getSpecializationName(getClassSpecializationId(c.id)));
-                return (
-                  <Select.Option key={c.id} value={c.id}>
-                    {c.name}
-                    {specName && (
-                      <span className="text-slate-400 text-xs ml-1.5 font-normal">
-                        ({specName})
-                      </span>
-                    )}
-                  </Select.Option>
-                );
-              })}
-            </Select>
+            <ServerSelect endpoint="/classes" query={{ centerId: selectedCenterId === "all" ? undefined : selectedCenterId }}
+              placeholder="Chọn lớp học..." allowClear className="rounded-xl"
+              onRecords={rows => { remember(setAllClasses)(rows); remember(setClasses)(rows); }}
+              options={assignableClasses.map(row => ({ label: row.name, value: row.id }))}
+              onChange={handleClassChangeForCurriculum} />
           </Form.Item>
 
           <div>
@@ -1932,18 +1665,10 @@ export default function TeacherAssignments() {
                 ) : undefined
               }
             >
-              <Select showSearch placeholder={selectedClassForCurriculum ? "Chọn giáo trình thuộc môn học của lớp..." : "Chọn giáo trình..."} optionFilterProp="children" className="rounded-xl">
-                {modalDirectCurriculums.map((c) => (
-                  <Select.Option key={c.id} value={c.id}>
-                    {c.title || c.code} <span className="text-slate-400 text-xs ml-1">({c.code})</span>
-                    {c.specializationId && getSpecializationName(c.specializationId) && (
-                      <span className="text-purple-600 text-xs ml-1.5 font-normal">
-                        • {getSpecializationName(c.specializationId)}
-                      </span>
-                    )}
-                  </Select.Option>
-                ))}
-              </Select>
+              <ServerSelect endpoint="/learning/curriculums"
+                query={{ status: "published", specializationId: getClassSpecializationId(selectedClassForCurriculum) }}
+                onRecords={remember(setCurriculums)} options={curriculums.map(row => ({ label: row.title || row.code, value: row.id }))}
+                placeholder="Chọn giáo trình..." className="rounded-xl" />
             </Form.Item>
           </div>
 
@@ -1957,18 +1682,13 @@ export default function TeacherAssignments() {
               </div>
             ) : undefined}
           >
-            <SafeSelect
-              mode="multiple"
-              showSearch
-              placeholder={allStudents.length === 0 ? "Đang tải học sinh..." : (selectedClassForCurriculum ? "Chọn học sinh cụ thể trong lớp (hoặc bỏ trống để giao cả lớp)..." : "Chọn học sinh cụ thể...")}
-              optionFilterProp="label"
-              className="rounded-xl"
-              options={getStudentsForClass(selectedClassForCurriculum).map((s) => ({
-                key: s.studentProfile?.id || s.id,
-                value: s.studentProfile?.id || s.id,
-                label: `${s.fullName || s.code} @${s.code}`,
-              }))}
-            />
+            <ServerSelect endpoint="/users" mode="multiple"
+              query={{ roleCode: "student", classId: selectedClassForCurriculum, centerId: selectedCenterId === "all" ? undefined : selectedCenterId }}
+              optionValue={row => row.student?.id || row.studentProfile?.id || row.id}
+              optionLabel={row => `${row.fullName} @${row.code}`}
+              onRecords={rows => remember(setAllStudents)(rows.map(mapUserResponse))}
+              options={allStudents.map(row => ({ label: row.fullName || row.code, value: row.studentProfile?.id || row.id }))}
+              placeholder="Tìm học sinh (bỏ trống để giao cả lớp)" className="rounded-xl" />
           </Form.Item>
 
           <Form.Item name="title" label="Tiêu đề (tùy chọn)">

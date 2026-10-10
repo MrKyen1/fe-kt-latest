@@ -1,3 +1,4 @@
+import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -96,22 +97,11 @@ function AttemptHistoryModal({
   assignmentStudentId, examId, title, open, onClose,
 }: { assignmentStudentId: string | null; examId?: string | null; title?: string; open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  const [attempts, setAttempts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !assignmentStudentId) return;
-    setLoading(true);
-    studentLearningService.examAssignments
-      .attempts(assignmentStudentId)
-      .then((res: any) => {
-        const arr = Array.isArray(res) ? res : res?.data ?? [];
-        const filtered = examId ? arr.filter((x: any) => x.examId === examId) : arr;
-        setAttempts(filtered);
-      })
-      .catch(() => message.error("Không thể tải lịch sử làm bài"))
-      .finally(() => setLoading(false));
-  }, [open, assignmentStudentId, examId]);
+  const historyPage = useServerPagination(`/learning/student/exam-assignments/${assignmentStudentId}/attempts`, {
+    examId: examId || undefined, sortBy: "attemptNumber", sortOrder: "DESC",
+  }, 10, open && !!assignmentStudentId);
+  const attempts = historyPage.data;
+  const loading = historyPage.loading;
 
   const columns = [
     {
@@ -205,7 +195,7 @@ function AttemptHistoryModal({
       ) : attempts.length === 0 ? (
         <Empty description="Chưa có lần làm bài nào" />
       ) : (
-        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={false} size="small" scroll={{ x: 550 }} className="rounded-xl overflow-hidden" />
+        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={historyPage.pagination} size="small" scroll={{ x: 550 }} className="rounded-xl overflow-hidden" />
       )}
     </Modal>
   );
@@ -223,6 +213,7 @@ export default function StudentMyExams() {
 
   // ---- Curriculum assignments (giáo trình) ----
   const [curriculumItems, setCurriculumItems] = useState<any[]>([]);
+  const [selectedCurriculumDetail, setSelectedCurriculumDetail] = useState<any>(null);
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<string | null>(null);
 
   // ---- Starting exam ----
@@ -240,6 +231,29 @@ export default function StudentMyExams() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 5;
 
+  const examList = useServerPagination("/learning/student/exam-items", {
+    search: searchText.trim() || undefined,
+    examType: filterType === "all" ? undefined : filterType,
+    completion: filterStatus === "all" ? undefined : filterStatus,
+  }, pageSize, activeTab === "exam-assignments");
+  const curriculumList = useServerPagination("/learning/student/curriculums", {}, 8, activeTab === "curriculums");
+  useEffect(() => { setExamAssignments(examList.data); }, [examList.data]);
+  useEffect(() => { setCurriculumItems(curriculumList.data); }, [curriculumList.data]);
+  useEffect(() => {
+    setLoading(activeTab === "exam-assignments" ? examList.loading : curriculumList.loading);
+    const error = activeTab === "exam-assignments" ? examList.error : curriculumList.error;
+    if (error) message.error(error.message);
+  }, [activeTab, examList.loading, curriculumList.loading, examList.error, curriculumList.error]);
+  useEffect(() => {
+    let current = true;
+    if (activeTab === "curriculums" && selectedCurriculumId) {
+      studentLearningService.curriculums.get(selectedCurriculumId).then(detail => {
+        if (current) setSelectedCurriculumDetail({ ...detail, curriculumId: selectedCurriculumId });
+      }).catch(error => { if (current) message.error(error.message); });
+    }
+    return () => { current = false; };
+  }, [selectedCurriculumId, activeTab]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchText, filterType, filterStatus]);
@@ -247,62 +261,7 @@ export default function StudentMyExams() {
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
-    try {
-      setLoading(true);
-
-      const [examRes, curriculumRes] = await Promise.allSettled([
-        studentLearningService.examAssignments.list({ page: 1, limit: 100 }),
-        studentLearningService.curriculums.list({ page: 1, limit: 100 }),
-      ]);
-
-      // --- Exam assignments ---
-      if (examRes.status === "fulfilled" && examRes.value?.data) {
-        const summaryList = examRes.value.data as any[];
-        const enriched = await enrichExamAssignments(summaryList);
-        setExamAssignments(enriched);
-      }
-
-      // --- Curriculum items ---
-      if (curriculumRes.status === "fulfilled" && curriculumRes.value?.data) {
-        const cList = curriculumRes.value.data as any[];
-        const enrichedC = await Promise.allSettled(
-          cList.map(async (item: any) => {
-            try {
-              const [studentDetail, cmsDetail] = await Promise.allSettled([
-                studentLearningService.curriculums.get(item.curriculumId),
-                hasPermission("learning.read") ? learningCmsService.curriculums.get(item.curriculumId) : Promise.resolve({}),
-              ]);
-              const sVal = studentDetail.status === "fulfilled" ? studentDetail.value : {};
-              const cVal =
-                cmsDetail.status === "fulfilled" && (cmsDetail.value as any)?.data
-                  ? (cmsDetail.value as any).data
-                  : cmsDetail.status === "fulfilled"
-                  ? cmsDetail.value
-                  : {};
-
-              return {
-                ...item,
-                ...sVal,
-                curriculum: {
-                  ...(item.curriculum ?? {}),
-                  ...((sVal as any)?.curriculum ?? {}),
-                  ...cVal,
-                },
-              };
-            } catch {
-              return item;
-            }
-          })
-        );
-        setCurriculumItems(
-          enrichedC.map((r: any) => (r.status === "fulfilled" ? r.value : null)).filter(Boolean)
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load student exams data:", err);
-    } finally {
-      setLoading(false);
-    }
+    if (activeTab === "exam-assignments") examList.reload(); else curriculumList.reload();
   };
 
   const handleStartExam = async (assignmentStudentId: string, examId: string, restart = false) => {
@@ -376,47 +335,16 @@ export default function StudentMyExams() {
   };
 
   // ==================== FLATTENED ASSIGNED EXAMS LIST ====================
-  const allAssignedExamItems = useMemo(() => {
-    return flattenAssignedExams(examAssignments);
-  }, [examAssignments]);
-
-  const filteredAssignedExams = useMemo(() => {
-    return allAssignedExamItems.filter((item: any) => {
-      // 1. Search text filter
-      if (searchText.trim()) {
-        const query = searchText.toLowerCase().trim();
-        const matchesTitle = item.examTitle.toLowerCase().includes(query);
-        const matchesAssignment = item.assignmentTitle.toLowerCase().includes(query);
-        const matchesClass = item.className ? item.className.toLowerCase().includes(query) : false;
-        if (!matchesTitle && !matchesAssignment && !matchesClass) {
-          return false;
-        }
-      }
-
-      // 2. Type filter
-      if (filterType === "exam" && !item.isExamType) return false;
-      if (filterType === "practice" && item.isExamType) return false;
-
-      // 3. Status filter
-      if (filterStatus === "completed" && !item.isCompleted) return false;
-      if (filterStatus === "pending" && item.isCompleted) return false;
-
-      return true;
-    });
-  }, [allAssignedExamItems, searchText, filterType, filterStatus]);
-
-  const paginatedAssignedExams = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredAssignedExams.slice(startIndex, startIndex + pageSize);
-  }, [filteredAssignedExams, currentPage, pageSize]);
-
-  const totalAssignedCount = allAssignedExamItems.length;
-  const completedAssignedCount = allAssignedExamItems.filter((x) => x.isCompleted).length;
-  const pendingAssignedCount = totalAssignedCount - completedAssignedCount;
+  const allAssignedExamItems = examAssignments;
+  const filteredAssignedExams = examAssignments;
+  const paginatedAssignedExams = examAssignments;
+  const totalAssignedCount = (examList.meta?.completed ?? 0) + (examList.meta?.pending ?? 0);
+  const completedAssignedCount = examList.meta?.completed ?? 0;
+  const pendingAssignedCount = examList.meta?.pending ?? 0;
 
   // ==================== EXAM ASSIGNMENTS RENDER ====================
   const renderExamAssignments = () => {
-    if (examAssignments.length === 0) {
+    if (examAssignments.length === 0 && !searchText && filterType === "all" && filterStatus === "all") {
       return (
         <div className="py-16 text-center">
           <Empty description={
@@ -724,19 +652,19 @@ export default function StudentMyExams() {
                 <span className="text-xs text-slate-500 font-medium">
                   Hiển thị{" "}
                   <strong>
-                    {Math.min((currentPage - 1) * pageSize + 1, filteredAssignedExams.length)}
+                    {Math.min((examList.pagination.current - 1) * pageSize + 1, examList.total)}
                   </strong>{" "}
                   -{" "}
                   <strong>
-                    {Math.min(currentPage * pageSize, filteredAssignedExams.length)}
+                    {Math.min(examList.pagination.current * pageSize, examList.total)}
                   </strong>{" "}
-                  trên <strong>{filteredAssignedExams.length}</strong> bài thi
+                  trên <strong>{examList.total}</strong> bài thi
                 </span>
                 <Pagination
-                  current={currentPage}
+                  current={examList.pagination.current}
                   pageSize={pageSize}
-                  total={filteredAssignedExams.length}
-                  onChange={(page) => setCurrentPage(page)}
+                  total={examList.total}
+                  onChange={examList.pagination.onChange}
                   showSizeChanger={false}
                   size="small"
                 />
@@ -778,7 +706,7 @@ export default function StudentMyExams() {
               </p>
             </div>
             <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3.5 py-1 rounded-full shadow-xs">
-              {curriculumItems.length} giáo trình
+              {curriculumList.total} giáo trình
             </span>
           </div>
 
@@ -908,10 +836,9 @@ export default function StudentMyExams() {
     }
 
     // 2. Drill-down view: Khi học sinh click vào một giáo trình cụ thể (Image 3)
-    const selectedItem = curriculumItems.find((item: any) => item.curriculumId === selectedCurriculumId);
+    const selectedItem = selectedCurriculumDetail?.curriculumId === selectedCurriculumId ? selectedCurriculumDetail : curriculumItems.find((item: any) => item.curriculumId === selectedCurriculumId);
     if (!selectedItem) {
-      setSelectedCurriculumId(null);
-      return null;
+      return <Spin />;
     }
 
     const curriculumId = selectedItem.curriculumId;
@@ -1301,7 +1228,9 @@ export default function StudentMyExams() {
                       <Badge count={curriculumItems.length} style={{ backgroundColor: "#7c3aed" }} />
                     </span>
                   ),
-                  children: <div className="p-6">{renderCurriculums()}</div>,
+                  children: <div className="p-6">{renderCurriculums()}
+                    {!selectedCurriculumId && curriculumList.total > 8 && <Pagination {...curriculumList.pagination} showSizeChanger={false} className="mt-6 text-center" />}
+                  </div>,
                 },
               ]}
             />

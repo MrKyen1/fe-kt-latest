@@ -1,3 +1,4 @@
+import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -23,6 +24,8 @@ import {
   Typography,
   ConfigProvider,
   Spin,
+  Pagination,
+  Alert,
 } from "antd";
 import {
   UploadOutlined,
@@ -162,6 +165,12 @@ export default function AdminHomepageCms() {
   const [uploadAltText, setUploadAltText] = useState("");
   const [aboutSelectedMedia, setAboutSelectedMedia] = useState<HomepageMedia | null>(null);
 
+  const mediaPage = useServerPagination<HomepageMedia>("/admin/homepage/media", { search: mediaSearch || undefined }, 12,
+    activeTab === "media" || mediaPickerOpen);
+  const centerPage = useServerPagination<Center>("/centers", {}, 10, activeTab === "facilities" && facilitiesSubTab === "info");
+  useEffect(() => { setMediaList(mediaPage.data); }, [mediaPage.data]);
+  useEffect(() => { setCenters(centerPage.data); }, [centerPage.data]);
+
   // Live watched media for modals
   const watchedSlideMediaId = Form.useWatch("mediaId", slideForm);
   const watchedGalleryMediaId = Form.useWatch("mediaId", galleryForm);
@@ -182,15 +191,10 @@ export default function AdminHomepageCms() {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [adminData, media, centerList] = await Promise.all([
-        homepageService.getAdmin(),
-        homepageService.listMedia().catch(() => []),
-        academicService.centers.list().catch(() => []),
-      ]);
-
+      const adminData = await homepageService.getAdmin();
       setHomepageData(adminData);
-      setMediaList(media || []);
-      setCenters(centerList || []);
+      mediaPage.reload();
+      centerPage.reload();
 
       // Populate About Form
       if (adminData?.about) {
@@ -558,13 +562,7 @@ export default function AdminHomepageCms() {
   };
 
   // Filtered Media list
-  const filteredMediaList = useMemo(() => {
-    if (!mediaSearch.trim()) return mediaList;
-    const q = mediaSearch.toLowerCase();
-    return mediaList.filter(
-      (m) => (m.altText && m.altText.toLowerCase().includes(q)) || (m.url && m.url.toLowerCase().includes(q))
-    );
-  }, [mediaList, mediaSearch]);
+  const filteredMediaList = mediaList;
 
   // ==================== TAB ITEMS DEFINITION ====================
 
@@ -1498,11 +1496,13 @@ export default function AdminHomepageCms() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-800 text-sm">
-                Danh sách ảnh trong thư viện ({filteredMediaList.length}
+                Danh sách ảnh trong thư viện ({mediaPage.total}
                 {mediaSearch ? ` / ${mediaList.length}` : ""})
               </h4>
             </div>
 
+            <Pagination {...mediaPage.pagination} className="mb-3" />
+            {mediaPage.error && <Alert type="error" message={mediaPage.error.message} />}
             {filteredMediaList.length === 0 ? (
               <Empty
                 description={
@@ -2012,6 +2012,7 @@ export default function AdminHomepageCms() {
                   </Upload>
                 </div>
 
+                <Pagination {...mediaPage.pagination} className="mb-3" />
                 {mediaList.length === 0 ? (
                   <Empty description="Chưa có ảnh nào trong thư viện. Hãy tải ảnh lên trước!" />
                 ) : (

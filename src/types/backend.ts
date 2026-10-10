@@ -789,6 +789,8 @@ export interface AuditLog {
 }
 
 export interface UserListQuery {
+  includeInactive?: boolean;
+  classIds?: string;
   isActive?: boolean;
   search?: string;
   code?: string;

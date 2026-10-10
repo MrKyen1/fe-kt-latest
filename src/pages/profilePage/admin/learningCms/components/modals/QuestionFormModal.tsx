@@ -1,3 +1,4 @@
+import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
@@ -113,11 +114,7 @@ function ChoiceFields({
     <>
       {type === "reading_comprehension" && (
         <Form.Item name="passageId" label="Bài đọc liên quan" rules={[{ required: true, message: "Vui lòng chọn bài đọc liên quan!" }]}>
-          <Select placeholder="Chọn bài đọc..." className="rounded-xl">
-            {passages.map((p) => (
-              <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
-            ))}
-          </Select>
+          <ServerSelect endpoint="/learning/reading-passages" placeholder="Chọn bài đọc..." className="rounded-xl" />
         </Form.Item>
       )}
       <Form.List name="options">
@@ -859,7 +856,7 @@ function MediaItemRow({
   restField,
   index,
   remove,
-  filteredMedia,
+  filteredMedia: seedMedia,
   availableRoles,
   onPreviewAsset,
   currentType,
@@ -867,6 +864,7 @@ function MediaItemRow({
 }: MediaItemRowProps) {
   const { hasPermission } = useAuth();
   const canUpload = hasPermission("learning.media.upload");
+  const [filteredMedia, setFilteredMedia] = useState<MediaItem[]>(seedMedia);
   const initialRow = form.getFieldValue(["mediaIds", name]);
 
   const [itemState, setItemState] = useState<{
@@ -1145,16 +1143,13 @@ function MediaItemRow({
             </div>
           </Upload.Dragger>
         ) : (
-          <Select
+          <ServerSelect endpoint="/learning/media-assets" onRecords={rows => setFilteredMedia(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} optionLabel={row => row.altText || row.originalName || row.url.split("/").pop()}
             showSearch
             placeholder="Tìm kiếm tệp theo tên hoặc mô tả trong thư viện..."
             className="w-full"
             allowClear
             size="middle"
-            filterOption={(input, option) => {
-              const label = (option?.label as string) ?? "";
-              return label.toLowerCase().includes(input.toLowerCase());
-            }}
+
             onChange={(val) => {
               form.setFieldValue(["mediaIds", name, "mediaId"], val);
               form.setFieldValue(["mediaIds", name, "file"], undefined);
@@ -1185,36 +1180,7 @@ function MediaItemRow({
                 fileType: undefined,
               });
             }}
-          >
-            {filteredMedia.map((asset) => {
-              const isImgAsset = asset.type === "image" || asset.mimeType?.startsWith("image");
-              const isAudAsset = asset.type === "audio" || asset.mimeType?.startsWith("audio");
-              const fileName = asset.altText ?? asset.url.split("/").pop();
-              return (
-                <Select.Option key={asset.id} value={asset.id} label={fileName}>
-                  <div className="flex items-center gap-2 py-0.5">
-                    {isImgAsset ? (
-                      <span className="w-4 h-4 rounded bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                        <LucideImage size={11} />
-                      </span>
-                    ) : isAudAsset ? (
-                      <span className="w-4 h-4 rounded bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-                        <Volume2 size={11} />
-                      </span>
-                    ) : (
-                      <span className="w-4 h-4 rounded bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
-                        <Video size={11} />
-                      </span>
-                    )}
-                    <span className="font-medium text-slate-700 truncate">{fileName}</span>
-                    <span className="text-[10px] text-slate-400 ml-auto uppercase font-mono">
-                      {asset.type || "FILE"}
-                    </span>
-                  </div>
-                </Select.Option>
-              );
-            })}
-          </Select>
+          />
         )
       )}
 
@@ -1726,9 +1692,7 @@ export default function QuestionFormModal({
           </Col>
           <Col xs={24} md={12}>
             <Form.Item name="difficultyLevelId" label="Level độ khó">
-              <Select className="rounded-xl" placeholder="Chọn level" allowClear>
-                {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
-              </Select>
+              <ServerSelect endpoint="/learning/levels" className="rounded-xl" placeholder="Chọn level" allowClear />
             </Form.Item>
           </Col>
         </Row>
@@ -1736,22 +1700,18 @@ export default function QuestionFormModal({
         <Row gutter={[16, 0]}>
           <Col xs={24} md={12}>
             <Form.Item name="skillId" label="Kỹ năng">
-              <Select className="rounded-xl" placeholder="Chọn kỹ năng" allowClear>
-                {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
-              </Select>
+              <ServerSelect endpoint="/learning/skills" className="rounded-xl" placeholder="Chọn kỹ năng" allowClear />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item name="topicId" label="Chủ đề">
-              <Select className="rounded-xl" placeholder="Chọn chủ đề" allowClear>
-                {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-              </Select>
+              <ServerSelect endpoint="/learning/topics" className="rounded-xl" placeholder="Chọn chủ đề" allowClear />
             </Form.Item>
           </Col>
         </Row>
 
         <Form.Item name="tagIds" label="Thẻ gắn">
-          <SafeSelect
+          <ServerSelect endpoint="/learning/tags"
             mode="multiple"
             showSearch
             optionFilterProp="label"

@@ -1,4 +1,5 @@
-import { Typography, Row, Col, Spin, Tag, Empty } from "antd";
+import { useServerPagination } from "../../hooks/useServerPagination";
+import { Typography, Row, Col, Spin, Tag, Empty, Pagination, Alert } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
@@ -28,99 +29,16 @@ export default function Teachers() {
     if (saved) setCustomText(saved);
   }, []);
 
+  const directory = useServerPagination("/homepage/teachers", {}, 12);
   useEffect(() => {
-    let active = true;
-
-    async function loadTeachers() {
-      try {
-        setLoading(true);
-
-        const [teachersRes, specsRes, centersRes] = await Promise.allSettled([
-          userService.list({ roleCode: "teacher", isActive: true }),
-          academicService.specializations.list().catch(() => []),
-          academicService.centers.list().catch(() => []),
-        ]);
-
-        if (!active) return;
-
-        const rawTeachers: User[] =
-          teachersRes.status === "fulfilled" && Array.isArray(teachersRes.value)
-            ? teachersRes.value
-            : [];
-
-        const specsList: Specialization[] =
-          specsRes.status === "fulfilled" && Array.isArray(specsRes.value)
-            ? specsRes.value
-            : [];
-
-        const centersList: any[] =
-          centersRes.status === "fulfilled" && Array.isArray(centersRes.value)
-            ? centersRes.value
-            : [];
-
-        if (rawTeachers.length > 0) {
-          const mapped: TeacherItem[] = rawTeachers.map((t) => {
-            // Chuyên môn: lấy từ teacherProfile.specializations hoặc ánh xạ từ specializationIds
-            const rawSpecs = t.teacherProfile?.specializations || [];
-            const specNamesFromObj = rawSpecs
-              .map((s: any) => s.name || s.specialization?.name)
-              .filter(Boolean);
-            const specNamesFromIds = (t.teacherProfile?.specializationIds || [])
-              .map((id) => specsList.find((s) => s.id === id)?.name)
-              .filter(Boolean);
-            const combinedSpecs = Array.from(new Set([...specNamesFromObj, ...specNamesFromIds]));
-            const subjectText = combinedSpecs.length > 0 ? combinedSpecs.join(" • ") : "Giáo viên chuyên môn";
-
-            // Mô tả kinh nghiệm
-            const descText =
-              t.teacherProfile?.description ||
-              (t.teacherProfile?.yearsOfExperience
-                ? `${t.teacherProfile.yearsOfExperience} năm kinh nghiệm giảng dạy`
-                : "Giáo viên tâm huyết, giàu kinh nghiệm đồng hành cùng sự phát triển của học sinh.");
-
-            // Tên các trung tâm trực thuộc
-            const teacherClasses = t.teacherProfile?.classes || [];
-            const teacherCenterNames = Array.from(
-              new Set([
-                ...teacherClasses.map((c: any) => c.center?.name || centersList.find((cen: any) => cen.id === c.centerId)?.name),
-                ...(t.centerIds || []).map((cid: string) => centersList.find((cen: any) => cen.id === cid)?.name),
-                centersList.find((c: any) => c.id === (t.centerId || (t as any).teacherProfile?.centerId))?.name,
-              ].filter(Boolean))
-            );
-            const centerDisplayText =
-              teacherCenterNames.length > 0 ? teacherCenterNames.join(" • ") : undefined;
-
-            return {
-              id: t.id,
-              // Tên lấy từ fullName, nếu chưa có thì lấy name/code
-              name: t.fullName || (t as any).name || t.code || "Giáo viên",
-              // Ảnh đại diện từ hệ thống
-              avatar: t.avatar ? resolveMediaUrl(t.avatar) : undefined,
-              subject: subjectText,
-              desc: descText,
-              centerName: centerDisplayText,
-            };
-          });
-
-          setTeachers(mapped);
-        } else {
-          setTeachers([]);
-        }
-      } catch {
-        if (active) {
-          setTeachers([]);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadTeachers();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+    setLoading(directory.loading);
+    setTeachers(directory.data.map(item => ({
+      id: item.id, name: item.fullName, avatar: item.avatar ? resolveMediaUrl(item.avatar) : undefined,
+      subject: item.specializations?.map((row: any) => row.name).join(" • ") || "Giáo viên chuyên môn",
+      desc: item.description || `${item.yearsOfExperience || 0} năm kinh nghiệm giảng dạy`,
+      centerName: item.centers?.map((row: any) => row.name).join(" • "),
+    })));
+  }, [directory.data, directory.loading]);
 
   if (customText) {
     return (
@@ -224,6 +142,8 @@ export default function Teachers() {
           <Empty description="Chưa có thông tin giáo viên từ hệ thống" />
         </div>
       )}
+      {directory.error && <Alert type="error" title={directory.error.message} />}
+      {directory.total > 12 && <Pagination {...directory.pagination} showSizeChanger={false} className="mt-6 text-center" />}
     </section>
   );
 }

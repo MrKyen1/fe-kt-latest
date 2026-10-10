@@ -1,3 +1,5 @@
+import { useServerPagination } from "../../../../../../hooks/useServerPagination";
+import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { useState, useMemo } from "react";
 import {
   Badge,
@@ -15,6 +17,8 @@ import {
   Tag,
   Tooltip,
   message,
+  Pagination,
+  Alert,
 } from "antd";
 import {
   ArrowDownOutlined,
@@ -113,103 +117,6 @@ interface Props {
 
 // ── Filter helpers ────────────────────────────────────────────
 
-function filterAvailableQuestions(
-  allQuestions: Question[],
-  examQuestions: ExamQuestion[],
-  search: string,
-  typeFilter:   string | undefined,
-  skillFilter:  string | undefined,
-  levelFilter:  string | undefined,
-  topicFilter:  string | undefined,
-  tagFilter:    string | undefined,
-  tagsList:     TaxItem[],
-  questionDetailsCache: Record<string, any>,
-): Question[] {
-  const examIds = new Set(examQuestions.map((eq) => eq.questionId));
-  const targetTag = tagFilter ? tagsList.find((t) => t.id === tagFilter) : undefined;
-  const targetTagName = targetTag?.name?.trim().toLowerCase();
-
-  return allQuestions.filter((q: any) => {
-    if (q.status !== "published") return false;
-    if (examIds.has(q.id)) return false;
-
-    const detail = questionDetailsCache[q.id] ?? q;
-
-    if (search.trim()) {
-      const query = search.trim().toLowerCase();
-      const searchable = [
-        q.prompt, q.instruction, q.explanation,
-        detail.prompt, detail.instruction, detail.explanation,
-        ...(q.options ?? []).map((o: any) => o.content),
-        ...(detail.options ?? []).map((o: any) => o.content),
-      ].filter(Boolean).join(" ").toLowerCase();
-      if (!searchable.includes(query)) return false;
-    }
-
-    if (typeFilter && (q.type ?? detail.type) !== typeFilter) return false;
-
-    if (skillFilter) {
-      const qSkillId = q.skillId ?? q.skill?.id ?? detail.skillId ?? detail.skill?.id;
-      if (qSkillId !== skillFilter) return false;
-    }
-
-    if (levelFilter) {
-      const qLevelId = q.difficultyLevelId ?? q.levelId ?? q.difficultyLevel?.id ?? q.level?.id ??
-                       detail.difficultyLevelId ?? detail.levelId ?? detail.difficultyLevel?.id ?? detail.level?.id;
-      if (qLevelId !== levelFilter) return false;
-    }
-
-    if (topicFilter) {
-      const qTopicId = q.topicId ?? q.topic?.id ?? detail.topicId ?? detail.topic?.id;
-      if (qTopicId !== topicFilter) return false;
-    }
-
-    if (tagFilter) {
-      const sources = [q, detail];
-      let hasTagMatch = false;
-
-      for (const src of sources) {
-        if (!src) continue;
-
-        const tagIds = src.tagIds;
-        if (Array.isArray(tagIds) && tagIds.includes(tagFilter)) {
-          hasTagMatch = true;
-          break;
-        }
-
-        const tagsArr = src.tags;
-        if (Array.isArray(tagsArr)) {
-          for (const t of tagsArr) {
-            if (!t) continue;
-            if (typeof t === "string") {
-              if (t === tagFilter || (targetTagName && t.trim().toLowerCase() === targetTagName)) {
-                hasTagMatch = true;
-                break;
-              }
-            } else if (typeof t === "object") {
-              const tid = t.id ?? t.tagId ?? t.tag?.id;
-              if (tid && tid === tagFilter) {
-                hasTagMatch = true;
-                break;
-              }
-              const tName = (t.name ?? t.tag?.name)?.trim().toLowerCase();
-              if (targetTagName && tName && tName === targetTagName) {
-                hasTagMatch = true;
-                break;
-              }
-            }
-          }
-        }
-        if (hasTagMatch) break;
-      }
-
-      if (!hasTagMatch) return false;
-    }
-
-    return true;
-  });
-}
-
 // ── Component ────────────────────────────────────────────────
 
 /**
@@ -292,18 +199,12 @@ export default function ManageQuestionsModal({
     examQLevelFilter || examQTopicFilter || examQTagFilter
   );
 
-  const available = filterAvailableQuestions(
-    allQuestions,
-    examQuestions,
-    examQSearch,
-    examQTypeFilter,
-    examQSkillFilter,
-    examQLevelFilter,
-    examQTopicFilter,
-    examQTagFilter,
-    tags,
-    questionDetails,
-  );
+  const availablePage = useServerPagination<Question>("/learning/questions", {
+    specializationId: selectedExam?.specializationId, status: "published", excludeExamId: selectedExam?.id,
+    search: examQSearch || undefined, type: examQTypeFilter, skillId: examQSkillFilter,
+    levelId: examQLevelFilter, topicId: examQTopicFilter, tagIds: examQTagFilter,
+  }, 10, open && !!selectedExam && tabMode === "manual");
+  const available = availablePage.data;
 
   const getQuestionObj = (questionId: string) => {
     const q = allQuestions.find((allQ) => allQ.id === questionId);
@@ -464,6 +365,8 @@ export default function ManageQuestionsModal({
         </div>
       )}
 
+      {tabMode === "manual" && <div className="mb-3 flex justify-end"><Pagination {...availablePage.pagination} /></div>}
+      {availablePage.error && <Alert type="error" message={availablePage.error.message} />}
       <Row gutter={24} className="pt-2">
         {/* Left: current questions */}
         <Col span={12}>
@@ -542,7 +445,7 @@ export default function ManageQuestionsModal({
                   onChange={(v) => setTabMode(v as "manual" | "random")}
                   size="small"
                 />
-                {tabMode === "manual" && <Badge count={available.length} color="green" />}
+                {tabMode === "manual" && <Badge count={availablePage.total} color="green" />}
                 {tabMode === "random" && randomResult && (
                   <Badge count={randomResult.totalCount} color="purple" overflowCount={999} />
                 )}
@@ -574,18 +477,10 @@ export default function ManageQuestionsModal({
                     <Select placeholder="Loại câu hỏi" value={examQTypeFilter} onChange={onExamQTypeFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
                       {QUESTION_TYPES.map((qt) => <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>)}
                     </Select>
-                    <Select placeholder="Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                      {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
-                    </Select>
-                    <Select placeholder="Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                      {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
-                    </Select>
-                    <Select placeholder="Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                      {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-                    </Select>
-                    <Select placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false}>
-                      {tags.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-                    </Select>
+                    <ServerSelect endpoint="/learning/skills" placeholder="Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/levels" placeholder="Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/topics" placeholder="Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/tags" placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false} />
                   </div>
 
                   {hasActiveFilters && (
@@ -632,6 +527,7 @@ export default function ManageQuestionsModal({
                             try {
                               setAddingQuestionId(q.id);
                               await onAddQuestion(q.id);
+                              availablePage.reload();
                             } finally {
                               setAddingQuestionId(null);
                             }
@@ -703,7 +599,7 @@ export default function ManageQuestionsModal({
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Kỹ năng:</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/skills"
                             placeholder="Tất cả"
                             value={crit.skillId}
                             onChange={(v) => {
@@ -714,15 +610,11 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {skills.map((s) => (
-                              <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Cấp độ:</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/levels"
                             placeholder="Tất cả"
                             value={crit.levelId}
                             onChange={(v) => {
@@ -733,15 +625,11 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {levels.map((l) => (
-                              <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Chủ đề:</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/topics"
                             placeholder="Tất cả"
                             value={crit.topicId}
                             onChange={(v) => {
@@ -752,15 +640,11 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {topics.map((t) => (
-                              <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Thẻ gắn (Tag):</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/tags"
                             placeholder="Tất cả"
                             value={crit.tagId}
                             onChange={(v) => {
@@ -771,11 +655,7 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {tags.map((t) => (
-                              <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                       </div>
                     </div>
