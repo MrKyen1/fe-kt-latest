@@ -38,10 +38,11 @@ type Props = SelectProps & {
   optionLabel?: (item: any) => string;
   optionValue?: (item: any) => string;
   onRecords?: (items: any[]) => void;
+  wrapperClassName?: string;
 };
 
 /** Fetch selector options on demand; scrolling requests the next server page. */
-export function ServerSelect({ endpoint, query = {}, optionLabel, optionValue, onRecords, options = [], ...props }: Props) {
+export function ServerSelect({ endpoint, query = {}, optionLabel, optionValue, onRecords, options = [], wrapperClassName = "w-full", ...props }: Props) {
   const actor = useAuth().user?.id ?? "public";
   const selectRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -127,7 +128,7 @@ export function ServerSelect({ endpoint, query = {}, optionLabel, optionValue, o
   const seeds = selected.map(value => known.get(value) || { value, label: "Đang tải tên…" });
   const merged = Array.from(new Map([...seeds, ...(cache.key === key ? cache.options : [])]
     .map(option => [option?.value, option])).values());
-  return <div ref={selectRef} className="w-full"><Select {...props} options={merged} showSearch filterOption={false}
+  return <div ref={selectRef} className={wrapperClassName}><Select {...props} options={merged} showSearch filterOption={false}
     loading={result.loading} onSearch={setSearch}
     onOpenChange={value => { setOpen(value); props.onOpenChange?.(value); }}
     notFoundContent={result.loading ? <Spin size="small" /> : result.error ? "Không thể tải dữ liệu" : "Không có dữ liệu"}

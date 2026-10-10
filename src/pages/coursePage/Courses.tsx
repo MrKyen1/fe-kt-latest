@@ -149,10 +149,10 @@ export default function Courses() {
 
             {/* Level Filter Pills */}
             {availableLevels.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto py-1 scrollbar-none">
-                <ServerSelect endpoint="/learning/levels" placeholder="Tìm cấp độ" allowClear
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto w-full sm:w-auto sm:max-w-[55%] py-1 scrollbar-none">
+                <ServerSelect endpoint="/learning/levels" placeholder="Tìm cấp độ" allowClear wrapperClassName="w-44 shrink-0"
                   value={selectedLevel === "all" ? undefined : selectedLevel}
-                  onChange={value => setSelectedLevel(value || "all")} className="min-w-44" />
+                  onChange={value => setSelectedLevel(value || "all")} className="w-full" />
                 <button
                   type="button"
                   onClick={() => setSelectedLevel("all")}

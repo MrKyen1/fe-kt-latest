@@ -1789,8 +1789,8 @@ export default function LearningCms() {
               {/* Subject selector + quick stats */}
               <div className="flex flex-wrap items-center gap-4">
                 {specializations.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-3 max-w-full bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
-                    <div className="flex items-center gap-2.5 px-2">
+                  <div className="flex items-center gap-3 w-full sm:w-auto max-w-full bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
+                    <div className="flex shrink-0 items-center gap-2.5 px-2">
                       <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-xs">
                         <BookOpenIcon className="w-4 h-4" />
                       </div>
@@ -1799,6 +1799,7 @@ export default function LearningCms() {
                       </span>
                     </div>
                     <ServerSelect endpoint="/specializations" query={{ isActive: true }} onRecords={rows => setSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+                      wrapperClassName="min-w-0 flex-1 sm:flex-none sm:w-[280px]"
                       value={selectedSpecializationId}
                       onChange={handleSubjectChange}
                       size="large"
@@ -1819,7 +1820,7 @@ export default function LearningCms() {
                         </div>
                       )}
                       placeholder="Tìm & chọn môn học..."
-                      className="w-full sm:w-[280px] min-w-0 font-semibold text-sm [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-slate-200 [&_.ant-select-selector]:!bg-white [&_.ant-select-selector]:!shadow-xs hover:[&_.ant-select-selector]:!border-indigo-400 [&_.ant-select-selector]:!h-10 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center"
+                      className="w-full min-w-0 font-semibold text-sm [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-slate-200 [&_.ant-select-selector]:!bg-white [&_.ant-select-selector]:!shadow-xs hover:[&_.ant-select-selector]:!border-indigo-400 [&_.ant-select-selector]:!h-10 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center"
                       popupMatchSelectWidth={false}
                     />
                   </div>

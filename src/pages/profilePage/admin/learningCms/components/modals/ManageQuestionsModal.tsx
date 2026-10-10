@@ -484,7 +484,7 @@ export default function ManageQuestionsModal({
                     <ServerSelect endpoint="/learning/skills" placeholder="Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
                     <ServerSelect endpoint="/learning/levels" placeholder="Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
                     <ServerSelect endpoint="/learning/topics" placeholder="Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
-                    <ServerSelect endpoint="/learning/tags" placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/tags" placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} wrapperClassName="col-span-2 min-w-0" popupMatchSelectWidth={false} />
                   </div>
 
                   {hasActiveFilters && (
