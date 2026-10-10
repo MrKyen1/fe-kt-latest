@@ -1243,15 +1243,16 @@ export default function TeacherAssignments() {
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 {/* Left: Center Select & Scope Filter */}
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+                    <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                       <BankOutlined className="text-indigo-500" />
                       Trung tâm:
                     </span>
                     <ServerSelect endpoint="/centers" onRecords={remember(setCenters)}
+                      wrapperClassName="min-w-0 flex-1 sm:flex-none sm:w-[210px]"
                       value={selectedCenterId}
                       onChange={(val) => setSelectedCenterId(val)}
-                      className="min-w-[210px]"
+                      className="w-full"
                       options={
                         isTeacher
                           ? displayCenters.length > 1
@@ -1562,13 +1563,13 @@ export default function TeacherAssignments() {
                 const versions = examVersionsMap[examId] || [];
                 return (
                   <div key={examId} className="flex items-center justify-between gap-3 text-xs bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
-                    <span className="font-semibold text-slate-700 truncate max-w-[280px]">
+                    <span className="min-w-0 flex-1 font-semibold text-slate-700 truncate max-w-[280px]">
                       {exam?.examType === "exam" ? "[Kiểm tra] " : "[Ôn tập] "}
                       {exam?.title || exam?.code}
                     </span>
                     <Form.Item
                       name={["examVersions", examId]}
-                      className="mb-0"
+                      className="!mb-0 w-[160px] shrink-0"
                       initialValue=""
                     >
                       <ServerSelect endpoint={`/learning/exams/${examId}/versions`}
