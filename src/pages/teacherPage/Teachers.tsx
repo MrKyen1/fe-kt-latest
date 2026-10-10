@@ -1,3 +1,4 @@
+import { PagedCollection } from "../../components/PagedCollection";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { Typography, Row, Col, Spin, Tag, Empty, Pagination, Alert } from "antd";
 import { UserOutlined } from "@ant-design/icons";
@@ -69,11 +70,7 @@ export default function Teachers() {
         </p>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center py-20">
-          <Spin size="large" />
-        </div>
-      ) : teachers.length > 0 ? (
+      <PagedCollection loading={loading} hasData={teachers.length > 0} variant="teachers" footer={directory.total > 12 && <Pagination {...directory.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{teachers.length > 0 ? (
         <Row gutter={[32, 32]} className="justify-center">
           {teachers.map((teacher, index) => (
             <Col xs={24} sm={12} lg={6} key={teacher.id}>
@@ -141,9 +138,9 @@ export default function Teachers() {
         <div className="py-12">
           <Empty description="Chưa có thông tin giáo viên từ hệ thống" />
         </div>
-      )}
+      )}</PagedCollection>
       {directory.error && <Alert type="error" title={directory.error.message} />}
-      {directory.total > 12 && <Pagination {...directory.pagination} showSizeChanger={false} className="mt-6 text-center" />}
+
     </section>
   );
 }

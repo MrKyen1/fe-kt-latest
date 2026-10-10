@@ -1,3 +1,4 @@
+import { PagedCollection } from "../../../../../components/PagedCollection";
 import { Button, Card, Col, Empty, Pagination, Row, Select, Space, Spin } from "antd";
 import { DeleteOutlined, PlayCircleOutlined, SoundOutlined, UploadOutlined } from "@ant-design/icons";
 import { Video } from "lucide-react";
@@ -61,7 +62,7 @@ export default function MediaTab({
     <div className="space-y-4 pt-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-3 min-w-0">
           <span className="text-sm font-medium text-slate-600">Định dạng tệp:</span>
           <Select
             value={typeFilter}
@@ -91,8 +92,20 @@ export default function MediaTab({
       </div>
 
       {/* Gallery grid */}
-      <Spin spinning={loading}>
-        <Row gutter={[16, 16]}>
+      <PagedCollection loading={loading} hasData={media.length > 0} variant="media" footer={pagination.total > 0 && (
+        <div className="flex justify-end pt-2">
+          <Pagination
+            current={pagination.current}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            onChange={pagination.onChange}
+            showSizeChanger
+            pageSizeOptions={["10", "20", "50", "100"]}
+            showTotal={(total) => `Tổng cộng ${total} tệp`}
+          />
+        </div>
+      )}>
+<Row gutter={[16, 16]} style={{ marginInline: 0 }}>
           {media.map((asset) => (
             <Col xs={12} sm={8} md={6} lg={4} key={asset.id}>
               <Card
@@ -192,28 +205,16 @@ export default function MediaTab({
             </Col>
           ))}
 
-          {media.length === 0 && (
+          {!loading && media.length === 0 && (
             <Col span={24}>
               <Empty description="Thư viện tệp trống" />
             </Col>
           )}
         </Row>
-      </Spin>
+</PagedCollection>
 
       {/* Pagination */}
-      {pagination.total > 0 && (
-        <div className="flex justify-end pt-2">
-          <Pagination
-            current={pagination.current}
-            pageSize={pagination.pageSize}
-            total={pagination.total}
-            onChange={pagination.onChange}
-            showSizeChanger
-            pageSizeOptions={["10", "20", "50", "100"]}
-            showTotal={(total) => `Tổng cộng ${total} tệp`}
-          />
-        </div>
-      )}
+
     </div>
   );
 }

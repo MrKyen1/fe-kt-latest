@@ -1,4 +1,5 @@
-import { Button, Input, Table, Tabs } from "antd";
+import Table from "../../../../../components/Table";
+import { Button, Input, Tabs } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { Target, Sparkles, Folder, Tag as TagIcon } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
@@ -140,7 +141,7 @@ export default function TaxonomyTab({
         loading={loading}
         dataSource={dataSource}
         columns={columns}
-        scroll={{ x: 650 }}
+        scroll={{ x: taxTab === "topics" ? 520 : 400 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

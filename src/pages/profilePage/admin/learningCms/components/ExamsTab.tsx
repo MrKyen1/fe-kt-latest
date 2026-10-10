@@ -1,4 +1,6 @@
-import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
 import { AlertTriangle, Clock } from "lucide-react";
 import {
   BookOutlined,
@@ -68,7 +70,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-1 w-full">
       {/* Hàng 1: Trạng thái + Label Có thay đổi (Highlight vàng rực rỡ, không bị rớt dòng) */}
-      <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
+      <div className="flex items-center justify-center gap-1.5 flex-wrap">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-xs shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
           Đang phát hành
@@ -159,6 +161,7 @@ function buildColumns(
     {
       title: "Loại đề",
       dataIndex: "examType",
+      width: 120,
       render: (val?: string) => (
         <Tag
           color={val === "exam" ? "purple" : "blue"}
@@ -170,6 +173,7 @@ function buildColumns(
     },
     {
       title: "Câu hỏi",
+      width: 80,
       render: (_: unknown, record: Exam) => {
         const count = record.questionCount ?? record.questions?.length ?? 0;
         return (
@@ -183,7 +187,7 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
-      width: 220,
+      width: 200,
       align: "center" as const,
       render: (_: string, record: Exam) => (
         <ExamStatusCell exam={record} onToggle={onToggle} onRepublish={onRepublish} />
@@ -191,9 +195,10 @@ function buildColumns(
     },
     {
       title: "Thao tác",
+      width: 220,
       align: "right" as const,
       render: (_: unknown, record: Exam) => (
-        <Space size="small">
+        <Space size="small" wrap>
           <Can perform="learning.write">
             <Button
               type="dashed"
@@ -299,14 +304,24 @@ export default function ExamsTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={exams.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} đề thi
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : exams.length === 0 ? (
+          {exams.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có đề thi nào</span>} />
             </div>
@@ -476,29 +491,15 @@ export default function ExamsTab({
             })
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} đề thi
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}
           dataSource={exams}
           columns={columns}
-          scroll={{ x: 900 }}
+          scroll={{ x: 800 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

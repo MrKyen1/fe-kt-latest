@@ -1,4 +1,6 @@
-import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
 import { Sparkles, Target } from "lucide-react";
 import {
   CopyOutlined,
@@ -224,14 +226,24 @@ export default function QuestionsTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={questions.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} câu hỏi
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : questions.length === 0 ? (
+          {questions.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có câu hỏi nào</span>} />
             </div>
@@ -341,23 +353,9 @@ export default function QuestionsTab({
             })
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} câu hỏi
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}

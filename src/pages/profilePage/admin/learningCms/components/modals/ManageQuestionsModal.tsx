@@ -1,3 +1,4 @@
+import { LoadingRegion } from "../../../../../../components/LoadingRegion";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
 import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { useState, useMemo } from "react";
@@ -380,7 +381,7 @@ export default function ManageQuestionsModal({
                 <Badge count={examQuestions.length} color="indigo" />
               </div>
             }
-            className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
+            className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[calc(100dvh-240px)] min-h-[280px]"
             size="small"
             styles={{ body: { flex: 1, overflow: "auto", padding: 12 } }}
           >
@@ -504,7 +505,7 @@ export default function ManageQuestionsModal({
 
                 {/* Question list */}
                 <div className="flex-1 overflow-y-auto pr-1">
-                <Spin spinning={availablePage.loading}>
+                <LoadingRegion loading={availablePage.loading} hasData={available.length > 0} variant="list">
                 <List
                   split={false}
                   dataSource={available}
@@ -547,7 +548,7 @@ export default function ManageQuestionsModal({
                   )}
                   locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" styles={{ image: { height: 40 } }} /> }}
                 />
-                </Spin>
+                </LoadingRegion>
                 </div>
                 <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
                   <span className="text-[11px] text-slate-400">Tổng: <strong>{availablePage.total}</strong> câu</span>

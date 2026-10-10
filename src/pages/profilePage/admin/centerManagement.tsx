@@ -1,3 +1,5 @@
+import { PagedCollection } from "../../../components/PagedCollection";
+import Table from "../../../components/Table";
 import { useQueryVersion } from "../../../hooks/useQueryVersion";
 import type { ReactNode } from "react";
 import { useServerPagination } from "../../../hooks/useServerPagination";
@@ -23,7 +25,6 @@ import {
   Space,
   Spin,
   Skeleton,
-  Table,
   Tag,
   Tabs,
   Tooltip,
@@ -32,8 +33,7 @@ import {
   Upload,
   Image,
   Segmented,
-  Pagination,
-} from "antd";
+  Pagination} from "antd";
 import type { UploadFile } from "antd";
 import { SafeSelect } from "../../../components/SafeSelect";
 
@@ -313,6 +313,8 @@ export default function CenterManagement() {
   const adminList = useServerPagination("/users", { roleCode: "admin", includeInactive: true, search: adminSearch || undefined }, 5,
     !isTeacher && hasPermission("users.read") && activeSubTab === "admins", mapUserResponse);
   const specializationList = useServerPagination("/specializations", {}, 5, hasPermission("specializations.read") && activeSubTab === "specializations");
+  const specializationCount = useServerPagination("/specializations", {}, 1, hasPermission("specializations.read"));
+  const adminCount = useServerPagination("/users", { roleCode: "admin", includeInactive: true }, 1, !isTeacher && hasPermission("users.read"));
   const teacherCount = useServerPagination("/users", { roleCode: "teacher", centerId: selectedCenterId, includeInactive: true }, 1, !!selectedCenterId && hasPermission("users.read"));
   const studentCount = useServerPagination("/users", { roleCode: "student", centerId: selectedCenterId, includeInactive: true }, 1, !!selectedCenterId && hasPermission("users.read"));
 
@@ -1978,7 +1980,7 @@ export default function CenterManagement() {
                   />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
-                    <SectionLoading loading={centerPage.loading} name="center-list">
+                    <PagedCollection region="center-list" loading={centerPage.loading} hasData={centers.length > 0} variant="centers" footer={centerPage.total > 10 && <Pagination {...centerPage.pagination} size="small" showSizeChanger={false} />}>
                     {filteredCenters.map((center) => {
                       const isSelected = center.id === selectedCenterId;
                       return (
@@ -2009,13 +2011,13 @@ export default function CenterManagement() {
                       );
                     })}
 
-                    {centerPage.total > 10 && <Pagination {...centerPage.pagination} size="small" showSizeChanger={false} />}
+
                     {filteredCenters.length === 0 && (
                       <div className="text-center py-8 text-slate-400 text-xs">
                         Không tìm thấy trung tâm nào
                       </div>
                     )}
-                    </SectionLoading>
+                    </PagedCollection>
                   </div>
                 </div>
               </Col>
@@ -2236,14 +2238,14 @@ export default function CenterManagement() {
                         },
                         {
                           title: "Giáo viên",
-                          value: teacherCount.loading ? "…" : teacherCount.total,
+                          value: teacherCount.loading ? "…" : teacherCount.error ? "?" : teacherCount.total,
                           icon: <TeamOutlined className="text-violet-500 text-lg" />,
                           bg: "bg-violet-50",
                           border: "border-violet-100/60",
                         },
                         {
                           title: "Học sinh",
-                          value: studentCount.loading ? "…" : studentCount.total,
+                          value: studentCount.loading ? "…" : studentCount.error ? "?" : studentCount.total,
                           icon: <UserOutlined className="text-teal-500 text-lg" />,
                           bg: "bg-teal-50",
                           border: "border-teal-100/60",
@@ -2283,7 +2285,18 @@ export default function CenterManagement() {
                         )}
                       </div>
 
-                      <SectionLoading loading={classList.loading} name="classes">
+                      <PagedCollection region="classes" loading={classList.loading} hasData={classes.length > 0} variant="classes" footer={classList.total > CLASSES_PAGE_SIZE && (
+                        <div className="mt-5 flex justify-end">
+                          <Pagination
+                            current={classList.pagination.current}
+                            pageSize={CLASSES_PAGE_SIZE}
+                            total={classList.total}
+                            onChange={classList.pagination.onChange}
+                            showSizeChanger={false}
+                            size="small"
+                          />
+                        </div>
+                      )}>
                       <Row gutter={[16, 16]}>
                         {paginatedCenterClasses.map((cls) => {
                           const classStudentsCount = (cls as any).studentCount ?? 0;
@@ -2369,19 +2382,8 @@ export default function CenterManagement() {
                         )}
                       </Row>
 
-                      {classList.total > CLASSES_PAGE_SIZE && (
-                        <div className="mt-5 flex justify-end">
-                          <Pagination
-                            current={classList.pagination.current}
-                            pageSize={CLASSES_PAGE_SIZE}
-                            total={classList.total}
-                            onChange={classList.pagination.onChange}
-                            showSizeChanger={false}
-                            size="small"
-                          />
-                        </div>
-                      )}
-                      </SectionLoading>
+
+                      </PagedCollection>
                     </div>
 
                     {/* GOOGLE MAP EMBED (If exists) */}
@@ -2418,7 +2420,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <TeamOutlined />
-                                Giáo viên ({teacherCount.loading ? "…" : teacherCount.total})
+                                Giáo viên ({teacherCount.loading ? "…" : teacherCount.error ? "?" : teacherCount.total})
                               </span>
                             ),
                             children: (
@@ -2465,8 +2467,19 @@ export default function CenterManagement() {
                                   )}
                                 </div>
 
-                                <SectionLoading loading={isMobile && teacherList.loading} name="teachers">
-                                {isMobile ? (
+                                <SectionLoading loading={false} name="teachers">
+                                {isMobile ? <PagedCollection loading={teacherList.loading} hasData={teachers.length > 0} variant="list" footer={teacherList.total > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={teacherList.pagination.current}
+                                          pageSize={5}
+                                          total={teacherList.total}
+                                          onChange={teacherList.pagination.onChange}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}>{(
                                   /* Mobile Card List: Giáo viên */
                                   <div className="space-y-3">
                                     {filteredTeachers.length === 0 ? (
@@ -2579,20 +2592,9 @@ export default function CenterManagement() {
                                         })
                                     )}
 
-                                    {teacherList.total > 5 && (
-                                      <div className="pt-2 flex justify-center">
-                                        <Pagination
-                                          current={teacherList.pagination.current}
-                                          pageSize={5}
-                                          total={teacherList.total}
-                                          onChange={teacherList.pagination.onChange}
-                                          size="small"
-                                          showSizeChanger={false}
-                                        />
-                                      </div>
-                                    )}
+
                                   </div>
-                                ) : (
+                                )}</PagedCollection> : (
                                   <Table
                                     rowKey="id"
                                     dataSource={filteredTeachers}
@@ -2614,7 +2616,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <UserOutlined />
-                                Học sinh ({studentCount.loading ? "…" : studentCount.total})
+                                Học sinh ({studentCount.loading ? "…" : studentCount.error ? "?" : studentCount.total})
                               </span>
                             ),
                             children: (
@@ -2659,8 +2661,19 @@ export default function CenterManagement() {
                                   </Button>
                                 </div>
 
-                                <SectionLoading loading={isMobile && studentList.loading} name="students">
-                                {isMobile ? (
+                                <SectionLoading loading={false} name="students">
+                                {isMobile ? <PagedCollection loading={studentList.loading} hasData={students.length > 0} variant="list" footer={studentList.total > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={studentList.pagination.current}
+                                          pageSize={5}
+                                          total={studentList.total}
+                                          onChange={studentList.pagination.onChange}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}>{(
                                   /* Mobile Card List: Học sinh */
                                   <div className="space-y-3">
                                     {filteredStudents.length === 0 ? (
@@ -2759,20 +2772,9 @@ export default function CenterManagement() {
                                         })
                                     )}
 
-                                    {studentList.total > 5 && (
-                                      <div className="pt-2 flex justify-center">
-                                        <Pagination
-                                          current={studentList.pagination.current}
-                                          pageSize={5}
-                                          total={studentList.total}
-                                          onChange={studentList.pagination.onChange}
-                                          size="small"
-                                          showSizeChanger={false}
-                                        />
-                                      </div>
-                                    )}
+
                                   </div>
-                                ) : (
+                                )}</PagedCollection> : (
                                   <Table
                                     key={selectedCenterId}
                                     rowKey="id"
@@ -2795,7 +2797,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <BookOutlined />
-                                Chuyên môn ({specializationList.loading ? "…" : specializationList.total})
+                                Chuyên môn ({specializationCount.loading ? "…" : specializationCount.error ? "?" : specializationCount.total})
                               </span>
                             ),
                             children: (
@@ -2815,8 +2817,19 @@ export default function CenterManagement() {
                                   )}
                                 </div>
 
-                                <SectionLoading loading={isMobile && specializationList.loading} name="specializations">
-                                {isMobile ? (
+                                <SectionLoading loading={false} name="specializations">
+                                {isMobile ? <PagedCollection loading={specializationList.loading} hasData={specializations.length > 0} variant="list" footer={specializationList.total > 5 && (
+                                      <div className="pt-2 flex justify-center">
+                                        <Pagination
+                                          current={specializationList.pagination.current}
+                                          pageSize={5}
+                                          total={specializationList.total}
+                                          onChange={specializationList.pagination.onChange}
+                                          size="small"
+                                          showSizeChanger={false}
+                                        />
+                                      </div>
+                                    )}>{(
                                   /* Mobile Card List: Chuyên môn */
                                   <div className="space-y-2.5">
                                     {specializations.length === 0 ? (
@@ -2863,20 +2876,9 @@ export default function CenterManagement() {
                                         ))
                                     )}
 
-                                    {specializationList.total > 5 && (
-                                      <div className="pt-2 flex justify-center">
-                                        <Pagination
-                                          current={specializationList.pagination.current}
-                                          pageSize={5}
-                                          total={specializationList.total}
-                                          onChange={specializationList.pagination.onChange}
-                                          size="small"
-                                          showSizeChanger={false}
-                                        />
-                                      </div>
-                                    )}
+
                                   </div>
-                                ) : (
+                                )}</PagedCollection> : (
                                   <Table
                                     rowKey="id"
                                     dataSource={specializations}
@@ -2900,7 +2902,7 @@ export default function CenterManagement() {
                                   label: (
                                     <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                       <SafetyCertificateOutlined />
-                                      Quản trị viên ({adminList.loading ? "…" : adminList.total})
+                                      Quản trị viên ({adminCount.loading ? "…" : adminCount.error ? "?" : adminCount.total})
                                     </span>
                                   ),
                                   children: (
@@ -2928,8 +2930,19 @@ export default function CenterManagement() {
                                         </Button>
                                       </div>
 
-                                      <SectionLoading loading={isMobile && adminList.loading} name="admins">
-                                {isMobile ? (
+                                      <SectionLoading loading={false} name="admins">
+                                {isMobile ? <PagedCollection loading={adminList.loading} hasData={admins.length > 0} variant="list" footer={adminList.total > 5 && (
+                                            <div className="pt-2 flex justify-center">
+                                              <Pagination
+                                                current={adminList.pagination.current}
+                                                pageSize={5}
+                                                total={adminList.total}
+                                                onChange={adminList.pagination.onChange}
+                                                size="small"
+                                                showSizeChanger={false}
+                                              />
+                                            </div>
+                                          )}>{(
                                         /* Mobile Card List: Quản trị viên */
                                         <div className="space-y-2.5">
                                           {filteredAdmins.length === 0 ? (
@@ -2969,20 +2982,9 @@ export default function CenterManagement() {
                                               ))
                                           )}
 
-                                          {adminList.total > 5 && (
-                                            <div className="pt-2 flex justify-center">
-                                              <Pagination
-                                                current={adminList.pagination.current}
-                                                pageSize={5}
-                                                total={adminList.total}
-                                                onChange={adminList.pagination.onChange}
-                                                size="small"
-                                                showSizeChanger={false}
-                                              />
-                                            </div>
-                                          )}
+
                                         </div>
-                                      ) : (
+                                      )}</PagedCollection> : (
                                         <Table
                                           rowKey="id"
                                           dataSource={filteredAdmins}

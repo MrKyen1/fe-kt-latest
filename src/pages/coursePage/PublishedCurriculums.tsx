@@ -1,3 +1,4 @@
+import { PagedCollection } from "../../components/PagedCollection";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { Typography, Row, Col, Spin, Alert, Tag, Empty, Pagination } from "antd";
 import { Link, useNavigate } from "react-router-dom";
@@ -57,11 +58,7 @@ export default function PublishedCurriculums() {
 
         {error && <Alert type="error" showIcon className="mb-8" message={error} />}
 
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <Spin size="large" />
-          </div>
-        ) : curriculums.length === 0 ? (
+        <PagedCollection loading={isLoading} hasData={curriculums.length > 0} variant="cards" footer={catalog.total > 12 && <Pagination {...catalog.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{curriculums.length === 0 ? (
           <div className="bg-white p-16 rounded-3xl shadow-sm border border-slate-100 text-center">
             <Empty description="Chưa có giáo trình nào được phát hành." />
           </div>
@@ -198,8 +195,8 @@ export default function PublishedCurriculums() {
               );
             })}
           </Row>
-        )}
-        {catalog.total > 12 && <Pagination {...catalog.pagination} showSizeChanger={false} className="mt-6 text-center" />}
+        )}</PagedCollection>
+
       </div>
     </div>
   );

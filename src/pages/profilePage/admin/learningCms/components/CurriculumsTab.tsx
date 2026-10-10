@@ -1,5 +1,7 @@
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
 import { useMemo } from "react";
-import { Button, Empty, Pagination, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -276,14 +278,24 @@ export default function CurriculumsTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={curriculums.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} giáo trình
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : curriculums.length === 0 ? (
+          {curriculums.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có giáo trình nào</span>} />
             </div>
@@ -406,23 +418,9 @@ export default function CurriculumsTab({
             })
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} giáo trình
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}

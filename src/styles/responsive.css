@@ -5,15 +5,8 @@
 
 /* ── Tablet & Mobile (< 1024px) ───────────────────────────── */
 @media (max-width: 1023.98px) {
-  /* Bảng antd luôn có thể cuộn ngang thay vì bóp méo cột */
-  .ant-table-wrapper .ant-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .ant-table-wrapper .ant-table-content > table,
-  .ant-table-wrapper .ant-table-body > table {
-    min-width: max-content;
-  }
+  /* Ant Table owns horizontal scrolling and synchronizes its header/body.
+     A second scrolling container or body-only min-width breaks that alignment. */
 
   /* Tabs điều hướng cuộn ngang mượt */
   .ant-tabs-nav-wrap {

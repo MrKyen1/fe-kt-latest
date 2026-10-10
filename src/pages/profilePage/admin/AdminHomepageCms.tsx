@@ -1,3 +1,6 @@
+import { LoadingRegion } from "../../../components/LoadingRegion";
+import { PagedCollection } from "../../../components/PagedCollection";
+import Table from "../../../components/Table";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -7,7 +10,6 @@ import {
   Form,
   Input,
   Button,
-  Table,
   Modal,
   Switch,
   Upload,
@@ -25,8 +27,7 @@ import {
   ConfigProvider,
   Spin,
   Pagination,
-  Alert,
-} from "antd";
+  Alert} from "antd";
 import {
   UploadOutlined,
   PlusOutlined,
@@ -1501,9 +1502,9 @@ export default function AdminHomepageCms() {
               </h4>
             </div>
 
-            <Pagination {...mediaPage.pagination} className="mb-3" />
+
             {mediaPage.error && <Alert type="error" message={mediaPage.error.message} />}
-            {filteredMediaList.length === 0 ? (
+            <PagedCollection loading={mediaPage.loading} hasData={mediaList.length > 0} variant="media" footer={<Pagination {...mediaPage.pagination} className="mb-3" />}>{filteredMediaList.length === 0 ? (
               <Empty
                 description={
                   mediaSearch
@@ -1558,7 +1559,7 @@ export default function AdminHomepageCms() {
                   </div>
                 ))}
               </div>
-            )}
+            )}</PagedCollection>
           </div>
         </div>
       ),
@@ -1568,7 +1569,7 @@ export default function AdminHomepageCms() {
   return (
     <ConfigProvider theme={ANT_THEME}>
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
-        <Spin spinning={loading} size="large">
+        <LoadingRegion loading={loading} hasData={!!homepageData} variant="detail">
           <div className="max-w-[1500px] mx-auto space-y-6">
             {/* ── Page Header Card (Chuẩn Learning CMS) ──────────────── */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white border border-slate-200/80 p-6 rounded-3xl shadow-sm">
@@ -2012,8 +2013,8 @@ export default function AdminHomepageCms() {
                   </Upload>
                 </div>
 
-                <Pagination {...mediaPage.pagination} className="mb-3" />
-                {mediaList.length === 0 ? (
+
+                <PagedCollection loading={mediaPage.loading} hasData={mediaList.length > 0} variant="media" footer={<Pagination {...mediaPage.pagination} className="mb-3" />}>{mediaList.length === 0 ? (
                   <Empty description="Chưa có ảnh nào trong thư viện. Hãy tải ảnh lên trước!" />
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[420px] overflow-y-auto p-1">
@@ -2039,14 +2040,14 @@ export default function AdminHomepageCms() {
                       </div>
                     ))}
                   </div>
-                )}
+                )}</PagedCollection>
               </div>
             </Modal>
 
             {/* LIGHTBOX PREVIEW ELEMENT (Tương tự Learning CMS) */}
             {previewElement}
           </div>
-        </Spin>
+        </LoadingRegion>
       </div>
     </ConfigProvider>
   );
