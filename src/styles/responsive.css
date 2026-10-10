@@ -15,42 +15,99 @@
     min-width: max-content;
   }
 
-  /* Tabs điều hướng cuộn ngang mượt */
-  .ant-tabs-nav-wrap {
-    -webkit-overflow-scrolling: touch;
+  /* Tabs điều hướng cuộn ngang mượt mà, vuốt qua lại dễ dàng giữa các tab */
+  .ant-tabs .ant-tabs-nav {
+    margin-bottom: 12px !important;
+  }
+  .ant-tabs .ant-tabs-nav-wrap {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .ant-tabs .ant-tabs-nav-wrap::-webkit-scrollbar {
+    display: none !important;
+  }
+  .ant-tabs .ant-tabs-nav-list {
+    min-width: max-content !important;
+    transform: none !important;
+    padding-bottom: 2px !important;
+  }
+  .ant-tabs .ant-tabs-nav-operations {
+    display: none !important;
   }
 }
 
 /* ── Mobile (< 768px) ─────────────────────────────────────── */
 @media (max-width: 767.98px) {
-  /* Modal gần full màn hình, nội dung cuộn bên trong */
+  /* Khi modal đóng, ẩn hoàn toàn wrapper để không chặn click trên màn hình */
+  .ant-modal-wrap[style*="display: none"],
+  .ant-modal-wrap[style*="display:none"] {
+    display: none !important;
+  }
+
+  /* Modal wrapper khi mở: hỗ trợ cuộn và căn giữa an toàn */
+  .ant-modal-wrap:not([style*="display: none"]):not([style*="display:none"]) {
+    display: flex !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+    padding: 16px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modal container: margin: auto tự động căn giữa khi ngắn, không bị cắt top/bottom khi dài */
   .ant-modal-wrap .ant-modal {
-    max-width: calc(100vw - 16px) !important;
-    margin: 8px auto !important;
-    top: 8px !important;
+    max-width: calc(100vw - 32px) !important;
+    width: 100% !important;
+    margin: auto !important;
+    top: 0 !important;
     padding-bottom: 0 !important;
   }
-  .ant-modal-wrap.ant-modal-centered .ant-modal {
+
+  .ant-modal-wrap.ant-modal-centered .ant-modal,
+  .ant-modal-wrap .ant-modal.ant-modal-centered {
     top: 0 !important;
   }
+
+  .ant-modal-wrap .ant-modal.ant-modal-confirm {
+    max-width: min(400px, calc(100vw - 32px)) !important;
+  }
+
+  /* Modal content: luôn nằm trọn trong viewport (100dvh - 32px) */
   .ant-modal .ant-modal-content {
     padding: 16px !important;
-    max-height: calc(100dvh - 16px);
-    display: flex;
-    flex-direction: column;
+    max-height: calc(100dvh - 32px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
+
+  /* Header cố định ở trên đỉnh */
+  .ant-modal .ant-modal-header {
+    flex-shrink: 0 !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Body cuộn mượt mà ở giữa */
   .ant-modal .ant-modal-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    max-height: none !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
+
+  /* Footer cố định ở dưới đáy */
   .ant-modal .ant-modal-footer {
+    flex-shrink: 0 !important;
+    margin-top: 12px !important;
     flex-wrap: wrap;
     gap: 8px;
     display: flex;
     justify-content: flex-end;
   }
+
   .ant-modal .ant-modal-footer > .ant-btn + .ant-btn {
     margin-inline-start: 0 !important;
   }

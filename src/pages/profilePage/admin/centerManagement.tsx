@@ -49,6 +49,7 @@ import {
   EnvironmentOutlined,
   UploadOutlined,
   SafetyCertificateOutlined,
+  FileExcelOutlined,
 } from "@ant-design/icons";
 
 import { userService } from "../../../services/userService";
@@ -123,6 +124,7 @@ export default function CenterManagement() {
   const { isMobile } = useResponsive();
   const { user, hasPermission } = useAuth();
   const isTeacher = user?.role === "teacher";
+  const canExportStudents = (user?.role === "admin" || user?.role === "teacher") && hasPermission("users.read");
   const basePath = isTeacher ? "/teacher/centers" : "/admin/dashboard/centers";
 
   // Mobile card pagination states
@@ -241,6 +243,7 @@ export default function CenterManagement() {
   const [adminSearch, setAdminSearch] = useState("");
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [isExportingStudent, setIsExportingStudent] = useState(false);
 
   // ================= MODAL STATE =================
   const [centerModalOpen, setCenterModalOpen] = useState(false);
@@ -1110,6 +1113,85 @@ export default function CenterManagement() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportStudents = (overrideIsActive?: boolean) => {
+    if (!canExportStudents) {
+      message.error("Bạn không có quyền xuất danh sách học sinh.");
+      return;
+    }
+
+    const executeExport = async (isActiveVal: boolean) => {
+      try {
+        setIsExportingStudent(true);
+        const hideLoading = message.loading({
+          content: `Đang xuất danh sách học sinh ${isActiveVal ? "đang hoạt động" : "đã nghỉ"}...`,
+          duration: 0,
+        });
+
+        await userService.exportStudents({
+          centerId: selectedCenterId || undefined,
+          search: studentSearch.trim() || undefined,
+          isActive: isActiveVal,
+        });
+
+        hideLoading();
+        message.success("Xuất danh sách học sinh thành công!");
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.name === "AbortError") {
+          return;
+        }
+        message.error(err?.message || "Xuất Excel thất bại. Vui lòng thử lại!");
+      } finally {
+        setIsExportingStudent(false);
+      }
+    };
+
+    if (overrideIsActive !== undefined) {
+      executeExport(overrideIsActive);
+      return;
+    }
+
+    if (studentStatusFilter === "active") {
+      executeExport(true);
+    } else if (studentStatusFilter === "inactive") {
+      executeExport(false);
+    } else {
+      Modal.confirm({
+        title: "Chọn loại danh sách học sinh cần xuất",
+        icon: <FileExcelOutlined className="text-emerald-500 text-xl" />,
+        centered: true,
+        content: (
+          <div className="py-2 text-sm text-slate-600 space-y-3">
+            <p>Hệ thống hỗ trợ xuất file Excel riêng theo từng trạng thái học sinh. Vui lòng chọn danh sách bạn muốn tải:</p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                type="primary"
+                className="bg-emerald-600 hover:bg-emerald-700 rounded-xl h-9 font-medium"
+                onClick={() => {
+                  Modal.destroyAll();
+                  executeExport(true);
+                }}
+              >
+                Xuất học sinh Đang hoạt động
+              </Button>
+              <Button
+                className="border-slate-300 hover:border-slate-400 rounded-xl h-9 font-medium"
+                onClick={() => {
+                  Modal.destroyAll();
+                  executeExport(false);
+                }}
+              >
+                Xuất học sinh Đã nghỉ
+              </Button>
+            </div>
+          </div>
+        ),
+        footer: null,
+        closable: true,
+        maskClosable: true,
+      });
     }
   };
 
@@ -2491,6 +2573,69 @@ export default function CenterManagement() {
                         activeKey={activeSubTab}
                         onChange={handleSubTabChange}
                         className="custom-tabs border-b-0"
+                        renderTabBar={(tabBarProps, DefaultTabBar) => {
+                          if (isMobile) {
+                            return (
+                              <div className="mb-3.5 pb-2.5 border-b border-slate-100">
+                                <div className="text-xs font-semibold text-slate-500 mb-1.5 flex items-center justify-between">
+                                  <span>Danh mục quản lý:</span>
+                                </div>
+                                <Select
+                                  value={activeSubTab}
+                                  onChange={handleSubTabChange}
+                                  className="w-full text-sm font-semibold rounded-xl"
+                                  options={[
+                                    {
+                                      value: "teachers",
+                                      label: (
+                                        <div className="flex items-center gap-2 py-0.5">
+                                          <TeamOutlined className="text-indigo-600" />
+                                          <span className="font-semibold text-slate-700">Giáo viên</span>
+                                          <span className="text-xs text-slate-400 font-normal">({visibleCenterTeachers.length})</span>
+                                        </div>
+                                      ),
+                                    },
+                                    {
+                                      value: "students",
+                                      label: (
+                                        <div className="flex items-center gap-2 py-0.5">
+                                          <UserOutlined className="text-indigo-600" />
+                                          <span className="font-semibold text-slate-700">Học sinh</span>
+                                          <span className="text-xs text-slate-400 font-normal">({centerStudents.length})</span>
+                                        </div>
+                                      ),
+                                    },
+                                    {
+                                      value: "specializations",
+                                      label: (
+                                        <div className="flex items-center gap-2 py-0.5">
+                                          <BookOutlined className="text-indigo-600" />
+                                          <span className="font-semibold text-slate-700">Chuyên môn</span>
+                                          <span className="text-xs text-slate-400 font-normal">({specializations.length})</span>
+                                        </div>
+                                      ),
+                                    },
+                                    ...(!isTeacher
+                                      ? [
+                                          {
+                                            value: "admins",
+                                            label: (
+                                              <div className="flex items-center gap-2 py-0.5">
+                                                <SafetyCertificateOutlined className="text-indigo-600" />
+                                                <span className="font-semibold text-slate-700">Quản trị viên</span>
+                                                <span className="text-xs text-slate-400 font-normal">({admins.length})</span>
+                                              </div>
+                                            ),
+                                          },
+                                        ]
+                                      : []),
+                                  ]}
+                                />
+                              </div>
+                            );
+                          }
+                          return <DefaultTabBar {...tabBarProps} />;
+                        }}
                         items={[
                           {
                             key: "teachers",
@@ -2723,15 +2868,27 @@ export default function CenterManagement() {
                                       />
                                     </div>
                                   </div>
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    disabled={!hasPermission("students.manage")}
-                                    onClick={handleStudentCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto self-start sm:self-end"
-                                  >
-                                    Tạo Học sinh
-                                  </Button>
+                                  <div className="flex items-center gap-2 w-full sm:w-auto self-start sm:self-end">
+                                    {canExportStudents && (
+                                      <Button
+                                        icon={<FileExcelOutlined />}
+                                        loading={isExportingStudent}
+                                        onClick={() => handleExportStudents()}
+                                        className="rounded-xl border-emerald-600 text-emerald-600 hover:text-emerald-700 hover:border-emerald-700 hover:bg-emerald-50 shadow-sm font-semibold flex-1 sm:flex-initial"
+                                      >
+                                        Xuất Excel
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="primary"
+                                      icon={<PlusOutlined />}
+                                      disabled={!hasPermission("students.manage")}
+                                      onClick={handleStudentCreate}
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold flex-1 sm:flex-initial"
+                                    >
+                                      Tạo Học sinh
+                                    </Button>
+                                  </div>
                                 </div>
 
                                 {isMobile ? (
