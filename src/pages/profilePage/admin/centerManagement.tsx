@@ -200,6 +200,8 @@ export default function CenterManagement() {
   const [studentRoleId, setStudentRoleId] = useState("");
   const [specializations, setSpecializations] = useState<any[]>([]);
   const [curriculums, setCurriculums] = useState<any[]>([]);
+  const [classLookupCenters, setClassLookupCenters] = useState<any[]>([]);
+  const [classLookupSpecializations, setClassLookupSpecializations] = useState<any[]>([]);
   const [lookupClasses, setLookupClasses] = useState<any[]>([]);
   const classOptions = Array.from(new Map([...classes, ...lookupClasses].map(row => [row.id, row])).values());
   const [classCurriculums, setClassCurriculums] = useState<any[]>([]);
@@ -608,6 +610,7 @@ export default function CenterManagement() {
   const handleClassCreate = () => {
     if (!hasPermission("classes.manage")) return;
     setEditingClass(null);
+    setAddingCurriculumId(undefined);
     classForm.resetFields();
     if (selectedCenterId) {
       classForm.setFieldsValue({ centerId: selectedCenterId });
@@ -618,6 +621,7 @@ export default function CenterManagement() {
   const handleClassEdit = (record: any) => {
     if (!hasPermission("classes.manage")) return;
     setEditingClass(record);
+    setAddingCurriculumId(undefined);
     const mapped = classCurriculums.filter((cc) => cc.classId === record.id);
     classForm.setFieldsValue({
       name: record.name,
@@ -1388,7 +1392,7 @@ export default function CenterManagement() {
           <div className="flex flex-wrap gap-1">
             {tClasses.map((c) => {
               const isCurrentCenter = c.centerId === selectedCenterId;
-              const centerObj = centers.find((cen) => cen.id === c.centerId);
+              const centerObj = (c as any).center || centers.find((cen) => cen.id === c.centerId);
               return (
                 <Tooltip
                   key={c.id}
@@ -2351,7 +2355,7 @@ export default function CenterManagement() {
                                     <div className="mt-1">
                                       <span className="text-[10px] text-emerald-600 bg-emerald-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
                                         <LucideBookOpen size={10} />
-                                        {specializations.find(s => s.id === cls.specializationId)?.name || "Môn học khác"}
+                                        {(cls as any).specialization?.name || specializations.find(s => s.id === cls.specializationId)?.name || "—"}
                                       </span>
                                     </div>
                                   )}
@@ -3178,7 +3182,10 @@ export default function CenterManagement() {
                   label="Thuộc trung tâm"
                   rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
                 >
-                  <ServerSelect endpoint="/centers"  placeholder="Chọn trung tâm" className="rounded-xl" />
+                  <ServerSelect endpoint="/centers" placeholder="Chọn trung tâm" className="rounded-xl"
+                    options={[...centers, ...classLookupCenters, selectedCenter, editingClass?.center].filter(Boolean)
+                      .map(center => ({ value: center.id, label: center.name }))}
+                    onRecords={rows => setClassLookupCenters(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} />
                 </Form.Item>
 
                 <Form.Item
@@ -3186,7 +3193,11 @@ export default function CenterManagement() {
                   label="Môn học (Chuyên môn)"
                   rules={[{ required: true, message: "Vui lòng chọn môn học cho lớp!" }]}
                 >
-                  <ServerSelect endpoint="/specializations"  placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass} />
+                  <ServerSelect endpoint="/specializations" placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass}
+                    options={[...specializations, ...classLookupSpecializations, editingClass?.specialization].filter(Boolean)
+                      .map(spec => ({ value: spec.id, label: spec.name }))}
+                    onRecords={rows => setClassLookupSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
+                    onChange={() => classForm.setFieldValue("curriculumIds", [])} />
                 </Form.Item>
 
                 {editingClass ? <div className="mb-4">
@@ -3198,7 +3209,9 @@ export default function CenterManagement() {
                         catch (error) { message.error(getErrorMessage(error)); }
                       }}>Gỡ</Button> }]} />
                   <ServerSelect endpoint="/learning/curriculums" query={{ status: "published", specializationId: classSpecializationId }}
-                    value={addingCurriculumId} onChange={setAddingCurriculumId} placeholder="Chọn giáo trình để thêm" className="w-full mt-2" />
+                    value={addingCurriculumId} onChange={setAddingCurriculumId} placeholder="Chọn giáo trình để thêm" className="w-full mt-2"
+                    options={curriculums.map(curr => ({ value: curr.id, label: curr.title || curr.code }))}
+                    onRecords={rows => setCurriculums(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} />
                   <Button disabled={!addingCurriculumId} className="mt-2" onClick={async () => {
                     try { await teacherLearningService.classCurriculums.create({ classId: editingClass.id, curriculumId: addingCurriculumId! });
                       setAddingCurriculumId(undefined); mappingPage.reload(); classList.reload(); }
@@ -3211,6 +3224,7 @@ export default function CenterManagement() {
                     placeholder="Chọn giáo trình gắn với lớp"
                     allowClear
                     className="rounded-xl"
+                    onRecords={rows => setCurriculums(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                     options={curriculums.map((curr) => ({
                       label: curr.title || curr.code,
                       value: curr.id,
@@ -3440,7 +3454,8 @@ export default function CenterManagement() {
                           });
                           teacherForm.setFieldsValue({ classIds: validClassIds });
                         }}
-                        options={centers.map((c) => ({ label: c.name, value: c.id }))}
+                        options={[...centers, selectedCenter, ...(editingTeacher?.teacherProfile?.classes || []).map((cls: any) => cls.center)]
+                          .filter(Boolean).map((c) => ({ label: c.name, value: c.id }))}
                       />
                     </Form.Item>
                   </Col>
@@ -3474,7 +3489,7 @@ export default function CenterManagement() {
                           selectedTeacherCenterIds.includes(c.centerId)
                       )
                       .map((c) => {
-                        const centerObj = centers.find((cen) => cen.id === c.centerId);
+                        const centerObj = (c as any).center || centers.find((cen) => cen.id === c.centerId);
                         return {
                           label: centerObj ? `${c.name} (${centerObj.name})` : c.name,
                           value: c.id,
@@ -3902,7 +3917,8 @@ export default function CenterManagement() {
                       // Clear class selection if center changes to prevent mismatch
                       studentForm.setFieldsValue({ classIds: [] });
                     }}
-                    options={visibleCenters.map(c => ({ label: c.name, value: c.id }))}
+                    options={[...visibleCenters, selectedCenter, ...(editingStudent?.studentProfile?.classes || []).map((cls: any) => cls.center)]
+                      .filter(Boolean).map(c => ({ label: c.name, value: c.id }))}
                   />
                 </Form.Item>
 

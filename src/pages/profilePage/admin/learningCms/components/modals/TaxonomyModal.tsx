@@ -89,7 +89,7 @@ export default function TaxonomyModal({
 
         {taxTab === "topics" && (
           <Form.Item name="parentId" label="Chủ đề cha (nếu có)">
-            <ServerSelect endpoint="/learning/topics" query={{ excludeId: editingItem?.id }} placeholder="Chọn chủ đề cha..." className="rounded-xl" allowClear />
+            <ServerSelect endpoint="/learning/topics" options={[...topics, editingItem?.parent].filter(Boolean).map(item => ({ value: item.id, label: item.name }))} query={{ excludeId: editingItem?.id }} placeholder="Chọn chủ đề cha..." className="rounded-xl" allowClear />
           </Form.Item>
         )}
       </Form>

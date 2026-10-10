@@ -88,6 +88,7 @@ interface CurriculumOption {
 }
 interface ClassOption {
   id: string;
+  center?: { id?: string; name?: string };
   name?: string;
   centerId?: string;
   specializationId?: string;
@@ -430,12 +431,16 @@ export default function TeacherAssignments() {
   // ==================== HELPER RESOLVERS ====================
   const getCenterName = (centerId?: string) => {
     if (!centerId) return undefined;
-    return centers.find((c) => c.id === centerId)?.name;
+    return centers.find((c) => c.id === centerId)?.name
+      || allClasses.find((c: any) => c.center?.id === centerId)?.center?.name
+      || (user?.teacherProfile?.classes || []).find((c: any) => c.center?.id === centerId)?.center?.name;
   };
 
   const getSpecializationName = (specId?: string) => {
     if (!specId) return undefined;
-    return specializations.find((s) => s.id === specId)?.name;
+    return specializations.find((s) => s.id === specId)?.name
+      || allClasses.find((c: any) => c.specialization?.id === specId)?.specialization?.name
+      || (user?.teacherProfile?.specializations || []).find((s: any) => s.id === specId)?.name;
   };
 
   const getClassSpecializationId = (classId?: string) => {

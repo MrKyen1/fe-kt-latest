@@ -187,8 +187,8 @@ export default function QuestionPopoverContent({
 }: Props) {
   if (!question) return null;
 
-  const skill = skills.find((s) => s.id === (question.skillId ?? (question as any).skill?.id));
-  const level = levels.find(
+  const skill = (question as any).skill || skills.find((s) => s.id === (question.skillId ?? (question as any).skill?.id));
+  const level = (question as any).difficultyLevel || (question as any).level || levels.find(
     (l) =>
       l.id ===
       (question.difficultyLevelId ??
@@ -196,17 +196,19 @@ export default function QuestionPopoverContent({
         (question as any).difficultyLevel?.id ??
         (question as any).level?.id)
   );
-  const topic = topics.find((t) => t.id === (question.topicId ?? (question as any).topic?.id));
+  const topic = (question as any).topic || topics.find((t) => t.id === (question.topicId ?? (question as any).topic?.id));
 
   const qTagIds = [
     ...(question.tagIds ?? []),
     ...(Array.isArray((question as any).tags)
-      ? (question as any).tags.map((t: any) => (typeof t === "string" ? t : t?.id))
+      ? (question as any).tags.map((t: any) => (typeof t === "string" ? t : t?.tag?.id || t?.tagId || t?.id))
       : []),
   ].filter(Boolean);
 
+  const relatedTags = new Map([...tags, ...((question as any).tags || []).map((item: any) => item.tag || item)]
+    .filter((item: any) => item && typeof item === "object").map((item: any) => [item.id, item]));
   const qTags = Array.from(new Set(qTagIds))
-    .map((tid) => tags.find((t) => t.id === tid))
+    .map((tid) => relatedTags.get(tid))
     .filter(Boolean) as TaxonomyItem[];
 
   const promptMedia = extractPromptMedia(question);

@@ -118,7 +118,7 @@ export default function ExamFormModal({
             }
 
           >
-            <ServerSelect endpoint="/learning/curriculums" allowClear placeholder="Chọn giáo trình..." className="rounded-xl" />
+            <ServerSelect endpoint="/learning/curriculums" options={curriculums.map(item => ({ value: item.id, label: item.title }))} allowClear placeholder="Chọn giáo trình..." className="rounded-xl" />
           </Form.Item>
         )}
 

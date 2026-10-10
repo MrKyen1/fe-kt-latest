@@ -173,16 +173,22 @@ export default function AdminHomepageCms() {
   useEffect(() => { setCenters(centerPage.data); }, [centerPage.data]);
 
   // Live watched media for modals
+  const [knownMedia, setKnownMedia] = useState<HomepageMedia[]>([]);
+  useEffect(() => {
+    if (mediaPage.data.length) setKnownMedia(previous => Array.from(new Map([...previous, ...mediaPage.data].map(item => [item.id, item])).values()).slice(-200));
+  }, [mediaPage.data]);
   const watchedSlideMediaId = Form.useWatch("mediaId", slideForm);
   const watchedGalleryMediaId = Form.useWatch("mediaId", galleryForm);
 
   const selectedSlideMedia = useMemo(() => {
-    return mediaList.find((m) => m.id === watchedSlideMediaId);
-  }, [mediaList, watchedSlideMediaId]);
+    return knownMedia.find((m) => m.id === watchedSlideMediaId)
+      || (editingSlide?.mediaId === watchedSlideMediaId ? editingSlide?.media : undefined);
+  }, [knownMedia, watchedSlideMediaId, editingSlide]);
 
   const selectedGalleryMedia = useMemo(() => {
-    return mediaList.find((m) => m.id === watchedGalleryMediaId);
-  }, [mediaList, watchedGalleryMediaId]);
+    return knownMedia.find((m) => m.id === watchedGalleryMediaId)
+      || (editingGallery?.mediaId === watchedGalleryMediaId ? editingGallery?.media : undefined);
+  }, [knownMedia, watchedGalleryMediaId, editingGallery]);
 
   // Load all initial data
   useEffect(() => {
@@ -558,7 +564,10 @@ export default function AdminHomepageCms() {
   };
 
   const openMediaPicker = (onSelect: (media: HomepageMedia) => void) => {
-    setMediaPickerCallback(() => onSelect);
+    setMediaPickerCallback(() => (media: HomepageMedia) => {
+      setKnownMedia(previous => Array.from(new Map([...previous, media].map(item => [item.id, item])).values()).slice(-200));
+      onSelect(media);
+    });
     setMediaPickerOpen(true);
   };
 

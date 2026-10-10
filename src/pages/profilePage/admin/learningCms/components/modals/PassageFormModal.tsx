@@ -56,7 +56,7 @@ export default function PassageFormModal({ open, onCancel, form, onFinish, isEdi
           </Col>
           <Col span={12}>
             <Form.Item name="levelId" label="Level (Độ khó)">
-              <ServerSelect endpoint="/learning/levels" placeholder="Chọn level..." className="rounded-xl" allowClear />
+              <ServerSelect endpoint="/learning/levels" options={levels.map(item => ({ value: item.id, label: item.name }))} placeholder="Chọn level..." className="rounded-xl" allowClear />
             </Form.Item>
           </Col>
         </Row>
