@@ -1,3 +1,5 @@
+import { useQueryVersion } from "../../../hooks/useQueryVersion";
+import type { ReactNode } from "react";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { mapUserResponse } from "../../../services/userService";
 import { ServerSelect } from "../../../components/ServerSelect";
@@ -20,6 +22,7 @@ import {
   Select,
   Space,
   Spin,
+  Skeleton,
   Table,
   Tag,
   Tabs,
@@ -120,6 +123,59 @@ interface StudentFormValues {
   centerId?: string;
   classIds: string[];
   parentFullName?: string;
+}
+
+function SkeletonLine({ width = "100%" }: { width?: string }) {
+  return <div aria-hidden="true" className="h-4 rounded-md bg-slate-100 animate-pulse shrink-0" style={{ width, maxWidth: "100%" }} />;
+}
+
+function ClassCardsSkeleton() {
+  return <Row gutter={[16, 16]}>
+    {Array.from({ length: CLASSES_PAGE_SIZE }, (_, index) => (
+      <Col xs={24} sm={12} md={8} key={index}>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
+          <SkeletonLine width="70%" />
+          <SkeletonLine width="45%" />
+          <SkeletonLine width="85%" />
+          <div className="border-t border-slate-50 pt-3 flex justify-between"><SkeletonLine width="30%" /><SkeletonLine width="35%" /></div>
+        </div>
+      </Col>
+    ))}
+  </Row>;
+}
+
+function SectionLoading({ loading, name, children }: { loading: boolean; name: string; children: ReactNode }) {
+  if (!loading) return <>{children}</>;
+  if (!["center-list", "center-detail", "classes"].includes(name)) {
+    return <div data-testid={`${name}-loading`} role="status" aria-label="Đang tải dữ liệu">
+      <Spin spinning size="large"><div className="min-h-[240px]" /></Spin>
+    </div>;
+  }
+  return <div role="status" aria-label="Đang tải dữ liệu" data-testid={`${name}-loading`}>
+    {name === "center-list" ? (
+      <div className="space-y-2">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="rounded-2xl border border-slate-100 p-3.5 flex items-center gap-2">
+            <Skeleton.Avatar active size={16} shape="square" /><SkeletonLine width="75%" />
+          </div>
+        ))}
+      </div>
+    ) : name === "classes" ? <ClassCardsSkeleton /> : (
+      <div className="space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-100 p-6 min-h-[195px] space-y-5">
+          <div className="flex items-center gap-3"><Skeleton.Avatar active size={40} shape="square" /><SkeletonLine width="45%" /></div>
+          <SkeletonLine width="65%" />
+          <Row gutter={[16, 16]}>{Array.from({ length: 3 }, (_, index) => <Col xs={24} md={8} key={index}><SkeletonLine width="85%" /></Col>)}</Row>
+        </div>
+        <Row gutter={[16, 16]}>{Array.from({ length: 3 }, (_, index) => (
+          <Col xs={24} sm={8} key={index}><div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center justify-between">
+            <div className="space-y-2 flex-1"><SkeletonLine width="60%" /><SkeletonLine width="35%" /></div><Skeleton.Avatar active size={40} shape="square" />
+          </div></Col>
+        ))}</Row>
+        <div className="bg-white rounded-3xl border border-slate-100 p-6 space-y-5"><SkeletonLine width="30%" /><ClassCardsSkeleton /></div>
+      </div>
+    )}
+  </div>;
 }
 
 export default function CenterManagement() {
@@ -239,6 +295,10 @@ export default function CenterManagement() {
 
   const [studentClassIds, setStudentClassIds] = useState<string[]>([]);
   const [selectedCenterDetail, setSelectedCenterDetail] = useState<any>(null);
+  const centerVersion = useQueryVersion("/centers");
+  const [centerDetailRequest, setCenterDetailRequest] = useState<{ id: string | null; version: string; pending: boolean }>({ id: null, version: "", pending: false });
+  const centerDetailLoading = !!selectedCenterId && hasPermission("centers.read") &&
+    (centerDetailRequest.id !== selectedCenterId || centerDetailRequest.version !== centerVersion || centerDetailRequest.pending);
   const centerPage = useServerPagination("/centers", { search: centerSearch || undefined }, 10, hasPermission("centers.read"));
   const classList = useServerPagination("/classes", { centerId: selectedCenterId }, CLASSES_PAGE_SIZE, !!selectedCenterId && hasPermission("classes.read"));
   const teacherList = useServerPagination("/users", {
@@ -265,15 +325,17 @@ export default function CenterManagement() {
   useEffect(() => {
     if (!selectedCenterId && centerPage.data.length) setSelectedCenterId(centerPage.data[0].id);
   }, [centerPage.data, selectedCenterId]);
+  useEffect(() => { setStudentClassIds([]); }, [selectedCenterId]);
   useEffect(() => {
     let current = true;
-    setStudentClassIds([]);
     if (selectedCenterId && hasPermission("centers.read")) {
+      setCenterDetailRequest({ id: selectedCenterId, version: centerVersion, pending: true });
       academicService.centers.get(selectedCenterId).then(value => { if (current) setSelectedCenterDetail(value); })
-        .catch(() => { if (current) message.error("Không thể tải trung tâm"); });
+        .catch(() => { if (current) message.error("Không thể tải trung tâm"); })
+        .finally(() => { if (current) setCenterDetailRequest({ id: selectedCenterId, version: centerVersion, pending: false }); });
     }
     return () => { current = false; };
-  }, [selectedCenterId]);
+  }, [selectedCenterId, centerVersion]);
   useEffect(() => {
     const error = centerPage.error || classList.error || teacherList.error || studentList.error || adminList.error || specializationList.error;
     if (error) message.error(error.message);
@@ -328,8 +390,6 @@ export default function CenterManagement() {
   const loadData = async () => {
     centerPage.reload(); classList.reload(); teacherList.reload(); studentList.reload(); adminList.reload(); specializationList.reload();
     teacherCount.reload(); studentCount.reload();
-    if (selectedCenterId && hasPermission("centers.read")) academicService.centers.get(selectedCenterId).then(setSelectedCenterDetail).catch(error => message.error(getErrorMessage(error)));
-
   };
 
   const getTeacherRoleId = () => roles.find((r) => r.code?.toLowerCase() === "teacher")?.id || "";
@@ -1892,7 +1952,7 @@ export default function CenterManagement() {
                 <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-[80px] z-10 transition-all">
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold text-slate-800 m-0">
-                      Trung tâm ({visibleCenters.length})
+                      Trung tâm ({centerPage.loading ? "…" : centerPage.total})
                     </h3>
                     {!isTeacher && (
                       <Button
@@ -1918,6 +1978,7 @@ export default function CenterManagement() {
                   />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
+                    <SectionLoading loading={centerPage.loading} name="center-list">
                     {filteredCenters.map((center) => {
                       const isSelected = center.id === selectedCenterId;
                       return (
@@ -1954,13 +2015,16 @@ export default function CenterManagement() {
                         Không tìm thấy trung tâm nào
                       </div>
                     )}
+                    </SectionLoading>
                   </div>
                 </div>
               </Col>
 
               {/* RIGHT WORKSPACE: DETAIL WORKSPACE */}
               <Col xs={24} lg={18}>
-                {!selectedCenterId ? (
+                {centerDetailLoading || (!selectedCenterId && centerPage.loading) ? (
+                  <SectionLoading loading name="center-detail"><></></SectionLoading>
+                ) : !selectedCenterId ? (
                   <div className="flex flex-col items-center justify-center min-h-[450px] bg-white rounded-3xl border border-slate-100 shadow-sm p-12 text-center">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -2165,21 +2229,21 @@ export default function CenterManagement() {
                       {[
                         {
                           title: "Lớp học",
-                          value: classList.total,
+                          value: classList.loading ? "…" : classList.total,
                           icon: <BookOutlined className="text-indigo-500 text-lg" />,
                           bg: "bg-indigo-50",
                           border: "border-indigo-100/60",
                         },
                         {
                           title: "Giáo viên",
-                          value: teacherCount.total,
+                          value: teacherCount.loading ? "…" : teacherCount.total,
                           icon: <TeamOutlined className="text-violet-500 text-lg" />,
                           bg: "bg-violet-50",
                           border: "border-violet-100/60",
                         },
                         {
                           title: "Học sinh",
-                          value: studentCount.total,
+                          value: studentCount.loading ? "…" : studentCount.total,
                           icon: <UserOutlined className="text-teal-500 text-lg" />,
                           bg: "bg-teal-50",
                           border: "border-teal-100/60",
@@ -2219,6 +2283,7 @@ export default function CenterManagement() {
                         )}
                       </div>
 
+                      <SectionLoading loading={classList.loading} name="classes">
                       <Row gutter={[16, 16]}>
                         {paginatedCenterClasses.map((cls) => {
                           const classStudentsCount = (cls as any).studentCount ?? 0;
@@ -2316,6 +2381,7 @@ export default function CenterManagement() {
                           />
                         </div>
                       )}
+                      </SectionLoading>
                     </div>
 
                     {/* GOOGLE MAP EMBED (If exists) */}
@@ -2352,7 +2418,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <TeamOutlined />
-                                Giáo viên ({teacherCount.total})
+                                Giáo viên ({teacherCount.loading ? "…" : teacherCount.total})
                               </span>
                             ),
                             children: (
@@ -2399,6 +2465,7 @@ export default function CenterManagement() {
                                   )}
                                 </div>
 
+                                <SectionLoading loading={isMobile && teacherList.loading} name="teachers">
                                 {isMobile ? (
                                   /* Mobile Card List: Giáo viên */
                                   <div className="space-y-3">
@@ -2529,14 +2596,17 @@ export default function CenterManagement() {
                                   <Table
                                     rowKey="id"
                                     dataSource={filteredTeachers}
+                                    loading={{ spinning: teacherList.loading, size: "large" }}
                                     columns={renderedTeacherColumns}
                                     pagination={teacherList.pagination}
-                                    locale={{ emptyText: "Không tìm thấy giáo viên nào" }}
+                                    locale={{ emptyText: teacherList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy giáo viên nào" }}
                                     scroll={{ x: 800 }}
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </SectionLoading>
                               </div>
+
                             ),
                           },
                           {
@@ -2544,7 +2614,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <UserOutlined />
-                                Học sinh ({studentCount.total})
+                                Học sinh ({studentCount.loading ? "…" : studentCount.total})
                               </span>
                             ),
                             children: (
@@ -2589,6 +2659,7 @@ export default function CenterManagement() {
                                   </Button>
                                 </div>
 
+                                <SectionLoading loading={isMobile && studentList.loading} name="students">
                                 {isMobile ? (
                                   /* Mobile Card List: Học sinh */
                                   <div className="space-y-3">
@@ -2706,14 +2777,17 @@ export default function CenterManagement() {
                                     key={selectedCenterId}
                                     rowKey="id"
                                     dataSource={filteredStudents}
+                                    loading={{ spinning: studentList.loading, size: "large" }}
                                     columns={studentColumns}
                                     pagination={studentList.pagination}
-                                    locale={{ emptyText: "Không tìm thấy học sinh nào" }}
+                                    locale={{ emptyText: studentList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy học sinh nào" }}
                                     scroll={{ x: 850 }}
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </SectionLoading>
                               </div>
+
                             ),
                           },
                           {
@@ -2721,7 +2795,7 @@ export default function CenterManagement() {
                             label: (
                               <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                 <BookOutlined />
-                                Chuyên môn ({specializationList.total})
+                                Chuyên môn ({specializationList.loading ? "…" : specializationList.total})
                               </span>
                             ),
                             children: (
@@ -2741,6 +2815,7 @@ export default function CenterManagement() {
                                   )}
                                 </div>
 
+                                <SectionLoading loading={isMobile && specializationList.loading} name="specializations">
                                 {isMobile ? (
                                   /* Mobile Card List: Chuyên môn */
                                   <div className="space-y-2.5">
@@ -2805,14 +2880,17 @@ export default function CenterManagement() {
                                   <Table
                                     rowKey="id"
                                     dataSource={specializations}
+                                    loading={{ spinning: specializationList.loading, size: "large" }}
                                     columns={renderedSpecializationColumns}
                                     pagination={specializationList.pagination}
-                                    locale={{ emptyText: "Không tìm thấy chuyên môn nào" }}
+                                    locale={{ emptyText: specializationList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy chuyên môn nào" }}
                                     scroll={{ x: 600 }}
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </SectionLoading>
                               </div>
+
                             ),
                           },
                           ...(!isTeacher
@@ -2822,7 +2900,7 @@ export default function CenterManagement() {
                                   label: (
                                     <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
                                       <SafetyCertificateOutlined />
-                                      Quản trị viên ({adminList.total})
+                                      Quản trị viên ({adminList.loading ? "…" : adminList.total})
                                     </span>
                                   ),
                                   children: (
@@ -2850,7 +2928,8 @@ export default function CenterManagement() {
                                         </Button>
                                       </div>
 
-                                      {isMobile ? (
+                                      <SectionLoading loading={isMobile && adminList.loading} name="admins">
+                                {isMobile ? (
                                         /* Mobile Card List: Quản trị viên */
                                         <div className="space-y-2.5">
                                           {filteredAdmins.length === 0 ? (
@@ -2907,14 +2986,17 @@ export default function CenterManagement() {
                                         <Table
                                           rowKey="id"
                                           dataSource={filteredAdmins}
+                                    loading={{ spinning: adminList.loading, size: "large" }}
                                           columns={adminColumns}
                                           pagination={adminList.pagination}
-                                          locale={{ emptyText: "Không tìm thấy quản trị viên nào" }}
+                                          locale={{ emptyText: adminList.loading ? <div className="min-h-[160px]" /> : "Không tìm thấy quản trị viên nào" }}
                                           scroll={{ x: 700 }}
                                           className="border border-slate-100 rounded-2xl overflow-hidden"
                                         />
                                       )}
-                                    </div>
+                                    </SectionLoading>
+                              </div>
+
                                   ),
                                 },
                               ]

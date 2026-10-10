@@ -19,10 +19,12 @@ import {
   message,
   Pagination,
   Alert,
+  Spin,
 } from "antd";
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
+  CheckOutlined,
   DeleteOutlined,
   PlusOutlined,
   SendOutlined,
@@ -66,6 +68,7 @@ interface Question {
 
 interface ExamQuestion {
   questionId: string;
+  question?: Question;
 }
 
 interface Exam {
@@ -155,6 +158,7 @@ export default function ManageQuestionsModal({
   onBulkAttach,
 }: Props) {
   const examQuestions = selectedExam?.questions ?? [];
+  const examQuestionIds = new Set(examQuestions.map(question => question.questionId));
 
   // Tab mode: "manual" (manual pick from question bank) | "random" (random criteria & bulk attach)
   const [tabMode, setTabMode] = useState<"manual" | "random">("manual");
@@ -365,7 +369,6 @@ export default function ManageQuestionsModal({
         </div>
       )}
 
-      {tabMode === "manual" && <div className="mb-3 flex justify-end"><Pagination {...availablePage.pagination} /></div>}
       {availablePage.error && <Alert type="error" message={availablePage.error.message} />}
       <Row gutter={24} className="pt-2">
         {/* Left: current questions */}
@@ -377,14 +380,14 @@ export default function ManageQuestionsModal({
                 <Badge count={examQuestions.length} color="indigo" />
               </div>
             }
-            className="rounded-2xl border-slate-100 shadow-sm"
+            className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
             size="small"
+            styles={{ body: { flex: 1, overflow: "auto", padding: 12 } }}
           >
             <List
-              style={{ maxHeight: 460, overflowY: "auto" }}
               dataSource={examQuestions}
               renderItem={(eq: ExamQuestion, index) => {
-                const q = allQuestions.find((q) => q.id === eq.questionId);
+                const q = eq.question ?? allQuestions.find((q) => q.id === eq.questionId);
                 const detail = q
                   ? { ...q, ...(questionDetails[q.id] ?? {}) }
                   : questionDetails[eq.questionId] ?? { id: eq.questionId };
@@ -445,20 +448,20 @@ export default function ManageQuestionsModal({
                   onChange={(v) => setTabMode(v as "manual" | "random")}
                   size="small"
                 />
-                {tabMode === "manual" && <Badge count={availablePage.total} color="green" />}
+                {tabMode === "manual" && <Badge count={availablePage.total} color="green" overflowCount={999} />}
                 {tabMode === "random" && randomResult && (
                   <Badge count={randomResult.totalCount} color="purple" overflowCount={999} />
                 )}
               </div>
             }
-            className="rounded-2xl border-slate-100 shadow-sm"
+            className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
             size="small"
-            styles={{ body: { paddingTop: 8 } }}
+            styles={{ body: { flex: 1, display: "flex", flexDirection: "column", padding: 12, overflow: "hidden" } }}
           >
             {tabMode === "manual" ? (
-              <>
+              <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Filter panel */}
-                <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden">
+                <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden shrink-0">
                   <div className="px-3 pt-3 pb-2">
                     <Input
                       placeholder="Tìm theo đề bài, đáp án, giải thích..."
@@ -487,7 +490,7 @@ export default function ManageQuestionsModal({
                     <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
                       <span className="text-[11px] text-indigo-600 flex items-center gap-1">
                         <Search size={12} />
-                        <span>Tìm thấy <strong>{available.length}</strong> câu hỏi</span>
+                        <span>Tìm thấy <strong>{availablePage.total}</strong> câu hỏi</span>
                       </span>
                       <button
                         onClick={onResetFilters}
@@ -500,14 +503,15 @@ export default function ManageQuestionsModal({
                 </div>
 
                 {/* Question list */}
+                <div className="flex-1 overflow-y-auto pr-1">
+                <Spin spinning={availablePage.loading}>
                 <List
                   split={false}
-                  style={{ maxHeight: 340, overflowY: "auto" }}
                   dataSource={available}
                   renderItem={(q: Question, index) => (
                     <QuestionRowItem
                       key={q.id}
-                      index={index + 1}
+                      index={(availablePage.pagination.current - 1) * availablePage.pagination.pageSize + index + 1}
                       question={questionDetails[q.id] ? { ...q, ...questionDetails[q.id] } : q}
                       skills={skills}
                       levels={levels}
@@ -516,7 +520,9 @@ export default function ManageQuestionsModal({
                       variant="indigo"
                       placement="left"
                       action={
-                        <Button
+                        examQuestionIds.has(q.id) ? (
+                          <Button type="dashed" size="small" disabled icon={<CheckOutlined />} className="text-xs text-emerald-600">Đã thêm</Button>
+                        ) : <Button
                           type="dashed"
                           size="small"
                           icon={<PlusOutlined />}
@@ -541,9 +547,15 @@ export default function ManageQuestionsModal({
                   )}
                   locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" styles={{ image: { height: 40 } }} /> }}
                 />
-              </>
+                </Spin>
+                </div>
+                <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
+                  <span className="text-[11px] text-slate-400">Tổng: <strong>{availablePage.total}</strong> câu</span>
+                  {availablePage.total > availablePage.pagination.pageSize && <Pagination {...availablePage.pagination} size="small" showSizeChanger={false} />}
+                </div>
+              </div>
             ) : (
-              <div style={{ maxHeight: 460, overflowY: "auto" }} className="pr-1 space-y-3">
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
                 {/* Random Criteria configuration */}
                 <div className="space-y-2">
                   {criteriaList.map((crit, idx) => (

@@ -37,10 +37,11 @@ export function invalidateAfterMutation(url: string, method: string) {
   if (["/users", "/centers", "/classes", "/specializations"].includes(resource) || path === "/auth/me") {
     add("/users", "/classes", "/centers", "/specializations", "/homepage/teachers", "/learning/teacher", "/learning/student", "/learning/leaderboard");
   }
+  if (resource === "/specializations") add("/learning/cms-summary");
   if (path.startsWith("/learning/teacher/")) add("/learning/teacher", "/learning/student", "/classes", "/learning/leaderboard");
   else if (path.startsWith("/learning/student/")) add("/learning/student", "/learning/teacher", "/learning/leaderboard");
   else if (path.startsWith("/learning/")) {
-    add("/learning/questions", "/learning/exams", "/learning/curriculums", "/learning/teacher", "/learning/student", "/classes");
+    add("/learning/cms-summary", "/learning/questions", "/learning/exams", "/learning/curriculums", "/learning/teacher", "/learning/student", "/classes");
   }
   if (path.startsWith("/admin/homepage")) add("/admin/homepage", "/homepage");
   invalidateQueries([...prefixes]);

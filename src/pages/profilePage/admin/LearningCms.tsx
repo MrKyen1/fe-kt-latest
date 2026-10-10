@@ -1,3 +1,4 @@
+import { useLearningCmsSummary } from "../../../hooks/useLearningCmsSummary";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { ServerSelect, LearningLookupScope } from "../../../components/ServerSelect";
 // ============================================================
@@ -221,6 +222,10 @@ export default function LearningCms() {
     }
     return specializations[0]?.id || undefined;
   }, [urlSubjectId, specializations]);
+
+  const cmsSummary = useLearningCmsSummary(selectedSpecializationId, subjectsLoaded && !!selectedSpecializationId);
+  const tabCount = (field: "questions" | "exams" | "curriculums" | "draftExams") =>
+    cmsSummary.data?.[field] ?? (cmsSummary.error ? "?" : "…");
 
   const subjectOptions = useMemo(() => {
     return specializations.map((spec) => ({
@@ -1704,7 +1709,7 @@ export default function LearningCms() {
       label: (
         <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
           <QuestionCircleOutlined /> Câu hỏi
-          <Badge count={questionsTotal} color="indigo" style={{ marginLeft: 4 }} />
+          <Badge count={tabCount("questions")} showZero overflowCount={9999} title={cmsSummary.error ? "Không tải được số lượng" : undefined} color="indigo" style={{ marginLeft: 4 }} />
         </span>
       ),
       children: (
@@ -1735,7 +1740,7 @@ export default function LearningCms() {
       label: (
         <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
           <BookOutlined /> Đề thi
-          <Badge count={examsTotal} color="blue" style={{ marginLeft: 4 }} />
+          <Badge count={tabCount("exams")} showZero overflowCount={9999} title={cmsSummary.error ? "Không tải được số lượng" : undefined} color="blue" style={{ marginLeft: 4 }} />
         </span>
       ),
       children: (
@@ -1763,7 +1768,7 @@ export default function LearningCms() {
       label: (
         <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold">
           <FileTextOutlined /> Giáo trình
-          <Badge count={curriculumsTotal} color="purple" style={{ marginLeft: 4 }} />
+          <Badge count={tabCount("curriculums")} showZero overflowCount={9999} title={cmsSummary.error ? "Không tải được số lượng" : undefined} color="purple" style={{ marginLeft: 4 }} />
         </span>
       ),
       children: (
@@ -1849,7 +1854,7 @@ export default function LearningCms() {
                 )}
 
                 <div className="flex gap-3 items-center">
-                  <Badge count={exams.filter((e) => e.status === "draft").length} overflowCount={99} color="blue">
+                  <Badge count={tabCount("draftExams")} showZero overflowCount={9999} color="blue">
                     <div className="bg-blue-50/80 border border-blue-100 text-blue-700 px-3.5 py-2 rounded-xl text-xs font-bold">
                       Đề thi nháp
                     </div>
