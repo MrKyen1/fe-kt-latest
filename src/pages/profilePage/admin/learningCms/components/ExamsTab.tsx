@@ -1,3 +1,4 @@
+import { CONTENT_STATUS_LABELS } from "../constants";
 import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
@@ -63,7 +64,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
   if (exam.status !== "published") {
     return (
       <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200">
-        Bản nháp
+        {CONTENT_STATUS_LABELS[exam.status] || exam.status}
       </span>
     );
   }
@@ -74,7 +75,7 @@ function ExamStatusCell({ exam, onToggle, onRepublish }: {
       <div className="flex items-center justify-center gap-1.5 flex-wrap">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-xs shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-          Đang phát hành
+          {CONTENT_STATUS_LABELS.published}
         </span>
 
         {exam.hasUnpublishedChanges && (
@@ -122,7 +123,7 @@ function buildColumns(
     {
       title: "Đề thi",
       dataIndex: "title",
-      width: 200,
+      minWidth: 280,
       render: (val: string, record: Exam) => (
         <Tooltip
           title={
@@ -163,7 +164,7 @@ function buildColumns(
     {
       title: "Loại đề",
       dataIndex: "examType",
-      width: 120,
+      minWidth: 130,
       render: (val?: string) => (
         <Tag
           color={val === "exam" ? "purple" : "blue"}
@@ -174,8 +175,8 @@ function buildColumns(
       ),
     },
     {
-      title: "Câu hỏi",
-      width: 80,
+      title: <span className="whitespace-nowrap">Câu hỏi</span>,
+      minWidth: 110,
       render: (_: unknown, record: Exam) => {
         const count = record.questionCount ?? record.questions?.length ?? 0;
         return (
@@ -189,7 +190,7 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
-      width: 200,
+      minWidth: 220,
       align: "center" as const,
       render: (_: string, record: Exam) => (
         <ExamStatusCell exam={record} onToggle={onToggle} onRepublish={onRepublish} />
@@ -197,6 +198,7 @@ function buildColumns(
     },
     {
       title: "Thao tác",
+      minWidth: 240,
       align: "right" as const,
       render: (_: unknown, record: Exam) => (
         <Space size="small" wrap>
@@ -386,7 +388,7 @@ export default function ExamsTab({
                             record.status === "published" ? "bg-emerald-500" : "bg-slate-400"
                           }`}
                         />
-                        {record.status === "published" ? "Đang phát hành" : "Bản nháp"}
+                        {CONTENT_STATUS_LABELS[record.status] || record.status}
                       </span>
 
                       {record.hasUnpublishedChanges && (
@@ -501,7 +503,8 @@ export default function ExamsTab({
           loading={loading}
           dataSource={exams}
           columns={headerColumns}
-          scroll={{ x: 800 }}
+          tableLayout="auto"
+          scroll={{ x: 980 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

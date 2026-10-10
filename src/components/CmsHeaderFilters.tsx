@@ -2,7 +2,7 @@ import { createContext, useContext, useState } from "react";
 import { Button, Checkbox, Input, InputNumber } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ServerSelect } from "./ServerSelect";
-import { QUESTION_TYPE_LABELS } from "../pages/profilePage/admin/learningCms/constants";
+import { QUESTION_TYPE_LABELS, CONTENT_STATUS_LABELS } from "../pages/profilePage/admin/learningCms/constants";
 
 export type CmsFilters = Record<string, string | string[]>;
 export const CmsHeaderFilterContext = createContext<{
@@ -22,9 +22,9 @@ const statuses: Field = {
   key: "statuses",
   label: "Trạng thái",
   options: [
-    { value: "draft", label: "Nháp" },
-    { value: "published", label: "Đã phát hành" },
-    { value: "archived", label: "Lưu trữ" },
+    { value: "draft", label: CONTENT_STATUS_LABELS.draft },
+    { value: "published", label: CONTENT_STATUS_LABELS.published },
+    { value: "archived", label: CONTENT_STATUS_LABELS.archived },
   ],
 };
 const search: Field = { key: "search", label: "Tìm kiếm", text: true };

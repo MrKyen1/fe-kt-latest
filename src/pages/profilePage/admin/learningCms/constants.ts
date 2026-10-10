@@ -81,3 +81,9 @@ export const PAGE_SIZE_OPTIONS     = ["10", "20", "50", "100"];
 
 // ── API list limit (prevents unbounded queries) ──────────────
 export const LIST_LIMIT = 100;
+
+export const CONTENT_STATUS_LABELS: Record<string, string> = {
+  draft: "Nháp",
+  published: "Đang phát hành",
+  archived: "Lưu trữ",
+};

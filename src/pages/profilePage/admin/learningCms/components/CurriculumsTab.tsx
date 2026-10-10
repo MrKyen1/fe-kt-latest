@@ -1,3 +1,4 @@
+import { CONTENT_STATUS_LABELS } from "../constants";
 import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
@@ -164,7 +165,7 @@ function buildColumns(
           color={val === "published" ? "success" : "default"}
           className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
         >
-          {val === "published" ? "Đang phát hành" : "Nháp"}
+          {CONTENT_STATUS_LABELS[val] || val}
         </Tag>
       ),
     },
@@ -349,7 +350,7 @@ export default function CurriculumsTab({
                       color={record.status === "published" ? "success" : "default"}
                       className="rounded-full px-2.5 py-0.5 border-none text-[10px] font-semibold m-0"
                     >
-                      {record.status === "published" ? "Đang phát hành" : "Bản nháp"}
+                      {CONTENT_STATUS_LABELS[record.status] || record.status}
                     </Tag>
                   </div>
 
