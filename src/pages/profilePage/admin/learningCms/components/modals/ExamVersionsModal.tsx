@@ -1,7 +1,9 @@
+import { PagedCollection } from "../../../../../../components/PagedCollection";
+import Table from "../../../../../../components/Table";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
 import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState } from "react";
-import { Button, Modal, Table, Tag, Spin, message, Pagination } from "antd";
+import { Button, Modal, Tag, Spin, message, Pagination } from "antd";
 import { PlusOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
 import { History, AlertTriangle, HelpCircle } from "lucide-react";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
@@ -33,11 +35,11 @@ const ExamVersionQuestionsList = ({ examId, versionId, versionNumber }: { examId
   const page = useServerPagination(`/learning/exams/${examId}/versions/${versionId}/questions`, {}, 5);
   return <div className="p-4 space-y-3">
     <div>Snapshot phiên bản v{versionNumber}: {page.total} câu hỏi</div>
-    <Pagination {...page.pagination} size="small" />
-    <Spin spinning={page.loading}><div className="space-y-3 max-h-[520px] overflow-y-auto">
+
+    <PagedCollection loading={page.loading} hasData={page.data.length > 0} variant="list" footer={<Pagination {...page.pagination} size="small" />}><div className="space-y-3">
       {page.error ? <div>{page.error.message}</div> : page.data.map((question, index) => <ExamVersionQuestionCard key={question.id} question={question}
         index={(page.pagination.current - 1) * page.pagination.pageSize + index} />)}
-    </div></Spin>
+    </div></PagedCollection>
   </div>;
 };
 

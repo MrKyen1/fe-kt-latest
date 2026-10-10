@@ -1,3 +1,5 @@
+import { PagedCollection } from "../../components/PagedCollection";
+import { LoadingRegion } from "../../components/LoadingRegion";
 import { Pagination } from "antd";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button, Modal, Table, Progress, Tooltip } from "antd";
@@ -317,11 +319,7 @@ export default function CurriculumExams() {
           Quay lại danh sách khóa học
         </button>
 
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <Spin size="large" />
-          </div>
-        ) : error ? (
+        <LoadingRegion loading={isLoading} hasData={!!curriculum} variant="detail" >{error ? (
           <Alert type="error" showIcon message={error} />
         ) : !curriculum ? null : (
           <>
@@ -408,12 +406,13 @@ export default function CurriculumExams() {
               </Title>
             </div>
 
-            {exams.length === 0 ? (
+
+          <PagedCollection loading={examPage.loading} hasData={exams.length > 0} variant="list" footer={<Pagination {...examPage.pagination} className="mb-4" />}>{exams.length === 0 ? (
               <div className="bg-white p-16 rounded-3xl shadow-sm border border-slate-100 text-center">
                 <Empty description="Giáo trình này chưa có bài thi nào." />
               </div>
             ) : (
-              <><Pagination {...examPage.pagination} className="mb-4" />
+              <>
               <Row gutter={[0, 16]}>
                 {exams.map((entry, idx) => {
                   const exam = entry.exam;
@@ -548,9 +547,8 @@ export default function CurriculumExams() {
                   );
                 })}
               </Row></>
-            )}
-          </>
-        )}
+            )}</PagedCollection></>
+        )}</LoadingRegion>
       </div>
 
       <AttemptHistoryModal

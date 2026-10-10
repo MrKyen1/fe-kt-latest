@@ -1,3 +1,5 @@
+import { PagedCollection } from "../../../components/PagedCollection";
+import Table from "../../../components/Table";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useEffect, useState, useMemo } from "react";
@@ -12,7 +14,6 @@ import {
   Pagination,
   Row,
   Spin,
-  Table,
   Tag,
   Tabs,
   Typography,
@@ -23,8 +24,7 @@ import {
   Tooltip,
   Input,
   Select,
-  Radio,
-} from "antd";
+  Radio} from "antd";
 import {
   History,
   BookOpen,
@@ -190,13 +190,7 @@ function AttemptHistoryModal({
       }}
       className="rounded-2xl overflow-hidden"
     >
-      {loading ? (
-        <div className="flex justify-center py-10"><Spin size="large" /></div>
-      ) : attempts.length === 0 ? (
-        <Empty description="Chưa có lần làm bài nào" />
-      ) : (
-        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={historyPage.pagination} size="small" scroll={{ x: 550 }} className="rounded-xl overflow-hidden" />
-      )}
+      <Table loading={loading} dataSource={attempts} columns={columns} rowKey="id" pagination={historyPage.pagination} size="small" scroll={{ x: 550 }} className="rounded-xl overflow-hidden" />
     </Modal>
   );
 }
@@ -647,29 +641,7 @@ export default function StudentMyExams() {
             </div>
 
             {/* Pagination Footer */}
-            {filteredAssignedExams.length > 0 && (
-              <div className="px-5 py-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-50/50">
-                <span className="text-xs text-slate-500 font-medium">
-                  Hiển thị{" "}
-                  <strong>
-                    {Math.min((examList.pagination.current - 1) * pageSize + 1, examList.total)}
-                  </strong>{" "}
-                  -{" "}
-                  <strong>
-                    {Math.min(examList.pagination.current * pageSize, examList.total)}
-                  </strong>{" "}
-                  trên <strong>{examList.total}</strong> bài thi
-                </span>
-                <Pagination
-                  current={examList.pagination.current}
-                  pageSize={pageSize}
-                  total={examList.total}
-                  onChange={examList.pagination.onChange}
-                  showSizeChanger={false}
-                  size="small"
-                />
-              </div>
-            )}
+
           </div>
         )}
       </div>
@@ -1135,7 +1107,7 @@ export default function StudentMyExams() {
       }}
     >
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
-        <Spin spinning={loading} size="large">
+        <Spin spinning={false} size="large">
           <div className="max-w-[1100px] mx-auto space-y-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
@@ -1217,7 +1189,29 @@ export default function StudentMyExams() {
                       <Badge count={allAssignedExamItems.length} style={{ backgroundColor: "#4f46e5" }} />
                     </span>
                   ),
-                  children: <div className="p-6">{renderExamAssignments()}</div>,
+                  children: <div className="p-6"><PagedCollection loading={examList.loading} hasData={allAssignedExamItems.length > 0} variant="list" footer={filteredAssignedExams.length > 0 && (
+              <div className="px-5 py-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-50/50">
+                <span className="text-xs text-slate-500 font-medium">
+                  Hiển thị{" "}
+                  <strong>
+                    {Math.min((examList.pagination.current - 1) * pageSize + 1, examList.total)}
+                  </strong>{" "}
+                  -{" "}
+                  <strong>
+                    {Math.min(examList.pagination.current * pageSize, examList.total)}
+                  </strong>{" "}
+                  trên <strong>{examList.total}</strong> bài thi
+                </span>
+                <Pagination
+                  current={examList.pagination.current}
+                  pageSize={pageSize}
+                  total={examList.total}
+                  onChange={examList.pagination.onChange}
+                  showSizeChanger={false}
+                  size="small"
+                />
+              </div>
+            )}>{renderExamAssignments()}</PagedCollection></div>,
                 },
                 {
                   key: "curriculums",
@@ -1228,9 +1222,7 @@ export default function StudentMyExams() {
                       <Badge count={curriculumItems.length} style={{ backgroundColor: "#7c3aed" }} />
                     </span>
                   ),
-                  children: <div className="p-6">{renderCurriculums()}
-                    {!selectedCurriculumId && curriculumList.total > 8 && <Pagination {...curriculumList.pagination} showSizeChanger={false} className="mt-6 text-center" />}
-                  </div>,
+                  children: <div className="p-6"><PagedCollection loading={curriculumList.loading} hasData={curriculumItems.length > 0} variant="list" footer={!selectedCurriculumId && curriculumList.total > 8 && <Pagination {...curriculumList.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{renderCurriculums()}</PagedCollection></div>,
                 },
               ]}
             />

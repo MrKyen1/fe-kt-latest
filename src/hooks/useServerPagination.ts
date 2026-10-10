@@ -81,7 +81,10 @@ export function useServerPagination<T = any>(
   const sameQuery = result.key && JSON.parse(result.key)[0] === key;
   const total = sameQuery ? result.total : 0;
   return {
-    data: enabled && result.key === requestKey ? result.data : EMPTY,
+    // Preserve a resolved page while paging/refetching this exact query only.
+    // A changed account, endpoint, center, tab or filter never reuses old rows.
+    data: enabled && sameQuery ? result.data : EMPTY,
+    isPlaceholderData: !!(enabled && sameQuery && result.key !== requestKey),
     total, generation,
     meta: sameQuery ? result.meta : undefined,
     loading: enabled && (loading || result.key !== requestKey) && !error, error,

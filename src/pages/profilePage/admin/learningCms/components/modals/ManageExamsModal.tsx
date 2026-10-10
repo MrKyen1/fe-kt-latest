@@ -1,3 +1,4 @@
+import { PagedCollection } from "../../../../../../components/PagedCollection";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
 import { useState } from "react";
 import { Badge, Button, Card, Col, Empty, Modal, Row, Tag, Pagination, Alert } from "antd";
@@ -95,7 +96,7 @@ export default function ManageExamsModal({
         <span>Chỉ đề thi dạng <strong>Phát hành (published)</strong> mới có thể thêm vào giáo trình</span>
       </div>
 
-      <Pagination {...availablePage.pagination} className="mb-3" />
+
       {availablePage.error && <Alert type="error" message={availablePage.error.message} />}
       <Row gutter={16}>
         {/* Left: current exams in curriculum */}
@@ -159,7 +160,7 @@ export default function ManageExamsModal({
             className="rounded-2xl border-slate-100 shadow-sm"
             size="small"
           >
-            <div className="divide-y divide-slate-100 max-h-[360px] overflow-y-auto min-h-[140px]">
+            <PagedCollection loading={availablePage.loading} hasData={availableExams.length > 0} variant="list" footer={<Pagination {...availablePage.pagination} className="mb-3" />}><div className="divide-y divide-slate-100 min-h-[140px]">
               {availableExams.length === 0 ? (
                 <Empty description="Không có đề thi đã phát hành" styles={{ image: { height: 40 } }} className="py-6" />
               ) : (
@@ -199,7 +200,7 @@ export default function ManageExamsModal({
                   </div>
                 ))
               )}
-            </div>
+            </div></PagedCollection>
           </Card>
         </Col>
       </Row>

@@ -1,6 +1,7 @@
+import Table from "../../../components/Table";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, message } from "antd";
+import { Button, Card, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, message } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { learningCmsService } from "../../../services/learningCmsService";
 

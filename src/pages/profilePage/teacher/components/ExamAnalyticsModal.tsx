@@ -1,3 +1,5 @@
+import { ContentSkeleton } from "../../../../components/LoadingRegion";
+import Table from "../../../../components/Table";
 import { useServerPagination } from "../../../../hooks/useServerPagination";
 import { apiClient, unwrapData } from "../../../../services/apiClient";
 import React, { useEffect, useState, useMemo } from "react";
@@ -6,7 +8,6 @@ import {
   Tabs,
   Row,
   Col,
-  Table,
   Tag,
   Input,
   Segmented,
@@ -16,8 +17,7 @@ import {
   message,
   Button,
   Pagination,
-  Alert,
-} from "antd";
+  Alert} from "antd";
 import {
   BarChartOutlined,
   TeamOutlined,
@@ -410,12 +410,7 @@ export function ExamAnalyticsModal({
         className="rounded-3xl overflow-hidden max-w-[96vw]"
         styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
       >
-        {loading ? (
-          <div className="flex flex-col justify-center items-center py-20">
-            <Spin size="large" />
-            <span className="text-slate-400 text-sm mt-3">Đang phân tích dữ liệu bài thi...</span>
-          </div>
-        ) : (
+        {loading ? <ContentSkeleton variant="stats" /> : (
           <div>
             {activeTab === "overview" && <><Pagination {...questionPage.pagination} className="mb-3" /><Pagination {...studentPage.pagination} className="mb-3" /></>}
             {(studentPage.error || questionPage.error) && <Alert type="error" message={(studentPage.error || questionPage.error)?.message} />}
@@ -780,6 +775,7 @@ export function ExamAnalyticsModal({
                                   size="small"
                                   pagination={false}
                                   rowKey={(r: any) => `${group.examId}_${r.questionId || r.displayIndex}`}
+                                  loading={questionPage.loading}
                                   dataSource={group.questions}
                                   className="overflow-hidden"
                                   columns={[

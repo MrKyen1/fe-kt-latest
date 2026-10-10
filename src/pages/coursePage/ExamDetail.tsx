@@ -1,3 +1,4 @@
+import { ContentSkeleton } from "../../components/LoadingRegion";
 import { useAuth } from "../../contexts/AuthContext";
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -469,11 +470,7 @@ const ExamPage: React.FC = () => {
   }, [attemptId]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <Spin size="large" />
-      </div>
-    );
+    return <ContentSkeleton variant="detail" />;
   }
 
   if (error || !examData) {

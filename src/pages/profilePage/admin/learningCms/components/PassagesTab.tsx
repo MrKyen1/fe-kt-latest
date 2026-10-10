@@ -1,4 +1,6 @@
-import { Button, Empty, Pagination, Space, Spin, Table, Typography } from "antd";
+import { PagedCollection } from "../../../../../components/PagedCollection";
+import Table from "../../../../../components/Table";
+import { Button, Empty, Pagination, Space, Spin, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { BookOpen, Target } from "lucide-react";
 import { PAGE_SIZE_PASSAGES } from "../constants";
@@ -136,14 +138,24 @@ export default function PassagesTab({
         </Can>
       </div>
 
-      {isMobile ? (
+      {isMobile ? <PagedCollection loading={loading} hasData={passages.length > 0} variant="list" footer={pagination.total > 0 && (
+            <div className="pt-2 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-slate-400">
+                Tổng cộng {pagination.total} bài đọc
+              </span>
+              <Pagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={pagination.total}
+                onChange={pagination.onChange}
+                size="small"
+                showSizeChanger={false}
+              />
+            </div>
+          )}>{(
         /* Mobile Card View: cuộn dọc 1 chiều trực quan, không cần vuốt ngang */
         <div className="space-y-3">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center bg-white rounded-2xl border border-slate-100 shadow-xs">
-              <Spin />
-            </div>
-          ) : passages.length === 0 ? (
+          {passages.length === 0 ? (
             <div className="py-10 bg-white rounded-2xl border border-slate-100 text-center shadow-xs">
               <Empty description={<span className="text-slate-400 text-xs">Chưa có bài đọc nào</span>} />
             </div>
@@ -208,23 +220,9 @@ export default function PassagesTab({
             ))
           )}
 
-          {pagination.total > 0 && (
-            <div className="pt-2 flex flex-col items-center justify-center gap-2">
-              <span className="text-xs text-slate-400">
-                Tổng cộng {pagination.total} bài đọc
-              </span>
-              <Pagination
-                current={pagination.current}
-                pageSize={pagination.pageSize}
-                total={pagination.total}
-                onChange={pagination.onChange}
-                size="small"
-                showSizeChanger={false}
-              />
-            </div>
-          )}
+
         </div>
-      ) : (
+      )}</PagedCollection> : (
         <Table
           rowKey="id"
           loading={loading}

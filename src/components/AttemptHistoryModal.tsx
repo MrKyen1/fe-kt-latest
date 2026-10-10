@@ -1,7 +1,8 @@
+import Table from "./Table";
 import { useServerPagination } from "../hooks/useServerPagination";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Modal, Spin, Empty, Table, Tag, Progress, Button, message } from "antd";
+import { Modal, Spin, Empty, Tag, Progress, Button, message } from "antd";
 import { History } from "lucide-react";
 import { studentLearningService } from "../services/studentLearningService";
 import { formatScore } from "../utils/studentExamUtils";
@@ -221,14 +222,7 @@ export function AttemptHistoryModal({
       width={680}
       className="rounded-2xl overflow-hidden"
     >
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Spin size="large" />
-        </div>
-      ) : attempts.length === 0 ? (
-        <Empty description="Chưa có lần làm bài nào" />
-      ) : (
-        <Table
+      <Table loading={loading}
           dataSource={attempts}
           columns={columns}
           rowKey={(r) => r.id || r.attemptNumber || Math.random()}
@@ -236,7 +230,6 @@ export function AttemptHistoryModal({
           size="small"
           className="rounded-xl overflow-hidden"
         />
-      )}
     </Modal>
   );
 }

@@ -1,3 +1,5 @@
+import { ContentSkeleton } from "../../../components/LoadingRegion";
+import Table from "../../../components/Table";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { ServerSelect } from "../../../components/ServerSelect";
 import { mapUserResponse } from "../../../services/userService";
@@ -17,7 +19,6 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Tabs,
   Typography,
@@ -27,8 +28,7 @@ import {
   Progress,
   Alert,
   Segmented,
-  DatePicker,
-} from "antd";
+  DatePicker} from "antd";
 import dayjs from "dayjs";
 import { SafeSelect } from "../../../components/SafeSelect";
 
@@ -173,9 +173,7 @@ function CurriculumAnalyticsModal({
       className="rounded-3xl overflow-hidden"
       styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
     >
-      {loading ? (
-        <div className="flex justify-center py-10"><Spin size="large" /></div>
-      ) : data ? (
+      {loading && !data ? <ContentSkeleton variant="stats" /> : data ? (
         <div className="space-y-4">
           <Row gutter={[16, 16]}>
             <Col span={6}><Card className="rounded-2xl border-slate-100 bg-purple-50 text-center">
@@ -211,6 +209,7 @@ function CurriculumAnalyticsModal({
                 pagination={studentPage.pagination}
                 rowKey="studentId"
                 scroll={{ x: 600 }}
+                loading={studentPage.loading}
                 dataSource={studentsList}
                 columns={[
                   {
@@ -1215,7 +1214,7 @@ export default function TeacherAssignments() {
       }}
     >
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
-        <Spin spinning={loading} size="large">
+        <Spin spinning={false} size="large">
           <div className="max-w-[1400px] mx-auto space-y-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
@@ -1408,12 +1407,13 @@ export default function TeacherAssignments() {
                             </Button>
                           </Can>
                         </div>
-                        {filteredExamAssignments.length === 0 ? (
+                        {filteredExamAssignments.length === 0 && !examPage.loading ? (
                           <div className="py-16 text-center">
                             <Empty description={<span className="text-slate-400">Không tìm thấy bài thi nào phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Bài Thi Mới".</span>} />
                           </div>
                         ) : (
                           <Table
+                            loading={examPage.loading}
                             dataSource={filteredExamAssignments}
                             columns={examAssignmentColumns}
                             rowKey="id"
@@ -1461,12 +1461,13 @@ export default function TeacherAssignments() {
                             </Button>
                           </Can>
                         </div>
-                        {filteredCurriculumAssignments.length === 0 ? (
+                        {filteredCurriculumAssignments.length === 0 && !curriculumPage.loading ? (
                           <div className="py-16 text-center">
                             <Empty description={<span className="text-slate-400">Không tìm thấy giáo trình nào được giao phù hợp với bộ lọc hiện tại.<br />Hãy đổi bộ lọc hoặc nhấn "Giao Giáo Trình Mới".</span>} />
                           </div>
                         ) : (
                           <Table
+                            loading={curriculumPage.loading}
                             dataSource={filteredCurriculumAssignments}
                             columns={curriculumAssignmentColumns}
                             rowKey="id"

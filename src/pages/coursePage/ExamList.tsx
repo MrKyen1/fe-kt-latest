@@ -1,5 +1,7 @@
+import { PagedCollection } from "../../components/PagedCollection";
+import Table from "../../components/Table";
 import { useServerPagination } from "../../hooks/useServerPagination";
-import { Typography, Row, Col, Button, Empty, Spin, Alert, message, Card, Progress, Tag, Tooltip, Modal, Table, Pagination } from "antd";
+import { Typography, Row, Col, Button, Empty, Spin, Alert, message, Card, Progress, Tag, Tooltip, Modal, Pagination } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -296,11 +298,7 @@ export default function ExamList() {
 
         {error && <Alert type="error" showIcon className="mb-8" message={error} />}
 
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <Spin size="large" />
-          </div>
-        ) : isCurriculum && !selectedCurriculum ? (
+        <PagedCollection loading={isLoading} hasData={curriculums.length > 0 || items.length > 0} variant="cards" footer={!selectedCurriculum && <Pagination {...listPage.pagination} className="mt-4" />}>{isCurriculum && !selectedCurriculum ? (
           // CURRICULUMS LIST VIEW
           curriculums.length === 0 ? (
             <div className="bg-white p-16 rounded-3xl shadow-sm border border-slate-100 text-center">
@@ -508,10 +506,10 @@ export default function ExamList() {
               )
             )}
           </>
-        )}
+        )}</PagedCollection>
       </div>
 
-      {!selectedCurriculum && <Pagination {...listPage.pagination} className="mt-4" />}
+
       <AttemptHistoryModal
         open={historyModalOpen}
         onClose={() => setHistoryModalOpen(false)}
@@ -575,13 +573,7 @@ function AttemptHistoryModal({
       title={<div className="flex items-center gap-2 text-indigo-700 font-bold"><HistoryOutlined /><span>Lịch sử làm bài: {title || "Bài thi"}</span></div>}
       width={800}
     >
-      {loading ? (
-        <div className="flex justify-center py-10"><Spin size="large" /></div>
-      ) : attempts.length === 0 ? (
-        <Empty description="Chưa có lần làm bài nào" />
-      ) : (
-        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={historyPage.pagination} size="small" className="rounded-xl overflow-hidden" />
-      )}
+      <Table loading={loading} dataSource={attempts} columns={columns} rowKey="id" pagination={historyPage.pagination} size="small" className="rounded-xl overflow-hidden" />
     </Modal>
   );
 }

@@ -1,5 +1,6 @@
+import Table from "../../../../../../components/Table";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
-import { Alert, Empty, Modal, Table, Tag } from "antd";
+import { Alert, Empty, Modal, Tag } from "antd";
 import { History, Info } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../../constants";
 

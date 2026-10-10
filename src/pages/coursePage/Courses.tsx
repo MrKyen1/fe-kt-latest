@@ -1,3 +1,4 @@
+import { PagedCollection } from "../../components/PagedCollection";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { ServerSelect } from "../../components/ServerSelect";
 import { Typography, Spin, Alert, Button, Empty, Input, Pagination } from "antd";
@@ -184,11 +185,19 @@ export default function Courses() {
 
         {error && <Alert type="error" showIcon message={error} className="rounded-2xl" />}
 
-        {isLoading ? (
-          <div className="flex justify-center py-24">
-            <Spin size="large" />
-          </div>
-        ) : (
+        <PagedCollection loading={isLoading} hasData={curriculums.length > 0} variant="cards" footer={catalog.total > pageSize && (
+                    <div className="flex justify-center pt-8">
+                      <Pagination
+                        current={catalog.pagination.current}
+                        pageSize={pageSize}
+                        total={catalog.total}
+                        onChange={(page) => {
+                          catalog.pagination.onChange(page);
+                        }}
+                        showSizeChanger={false}
+                      />
+                    </div>
+                  )}>{(
           <>
             {/* Lean Action Banner for Teacher / Admin */}
             {(isTeacher || isAdmin) && (
@@ -401,25 +410,12 @@ export default function Courses() {
                   </div>
 
                   {/* Pagination when total items > pageSize */}
-                  {catalog.total > pageSize && (
-                    <div className="flex justify-center pt-8">
-                      <Pagination
-                        current={catalog.pagination.current}
-                        pageSize={pageSize}
-                        total={catalog.total}
-                        onChange={(page) => {
-                          catalog.pagination.onChange(page);
-                          window.scrollTo({ top: 250, behavior: "smooth" });
-                        }}
-                        showSizeChanger={false}
-                      />
-                    </div>
-                  )}
+
                 </>
               )}
             </section>
           </>
-        )}
+        )}</PagedCollection>
       </div>
     </div>
   );

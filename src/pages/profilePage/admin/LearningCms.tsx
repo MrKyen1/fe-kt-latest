@@ -27,7 +27,6 @@ import {
   Modal,
   Select,
   Space,
-  Spin,
   Tabs,
   Tag,
   Tooltip,
@@ -136,8 +135,6 @@ export default function LearningCms() {
   const { user, hasPermission } = useAuth();
   const [subjectsLoaded, setSubjectsLoaded] = useState(false);
 
-  // ── Global loading ─────────────────────────────────────────
-  const [loading, setLoading] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -474,7 +471,7 @@ export default function LearningCms() {
   }, PAGE_SIZE_DEFAULT, subjectsLoaded && !!selectedSpecializationId);
   useEffect(() => {
     const data = resourcePage.data;
-    setLoading(resourcePage.loading);
+    setPassagesLoading(activeTab === "passages" && resourcePage.loading);
     setMediaLoading(activeTab === "media" && resourcePage.loading);
     setQuestionsLoading(activeTab === "questions" && resourcePage.loading);
     setExamsLoading(activeTab === "exams" && resourcePage.loading);
@@ -1653,7 +1650,7 @@ export default function LearningCms() {
           searchPlaceholder={getSearchPlaceholder()}
           columns={taxColumns}
           dataSource={getTaxData()}
-          loading={taxLoading}
+          loading={taxLoading || (activeTab === "taxonomy" && resourcePage.loading)}
           pagination={{
             current: taxPage,
             pageSize: taxPageSize,
@@ -1795,7 +1792,7 @@ export default function LearningCms() {
   return (
     <LearningLookupScope.Provider value={selectedSpecializationId}><ConfigProvider theme={ANT_THEME}>
       <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
-        <Spin spinning={loading} size="large">
+        <div>
           <div className="max-w-[1500px] mx-auto space-y-6">
 
             {/* ── Page header ──────────────────────────────── */}
@@ -1817,7 +1814,7 @@ export default function LearningCms() {
               {/* Subject selector + quick stats */}
               <div className="flex flex-wrap items-center gap-4">
                 {specializations.length > 0 && (
-                  <div className="flex items-center gap-3 bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
+                  <div className="flex flex-wrap items-center gap-3 max-w-full bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
                     <div className="flex items-center gap-2.5 px-2">
                       <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-xs">
                         <BookOpenIcon className="w-4 h-4" />
@@ -1847,7 +1844,7 @@ export default function LearningCms() {
                         </div>
                       )}
                       placeholder="Tìm & chọn môn học..."
-                      className="min-w-[240px] sm:min-w-[280px] font-semibold text-sm [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-slate-200 [&_.ant-select-selector]:!bg-white [&_.ant-select-selector]:!shadow-xs hover:[&_.ant-select-selector]:!border-indigo-400 [&_.ant-select-selector]:!h-10 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center"
+                      className="w-full sm:w-[280px] min-w-0 font-semibold text-sm [&_.ant-select-selector]:!rounded-xl [&_.ant-select-selector]:!border-slate-200 [&_.ant-select-selector]:!bg-white [&_.ant-select-selector]:!shadow-xs hover:[&_.ant-select-selector]:!border-indigo-400 [&_.ant-select-selector]:!h-10 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center"
                       popupMatchSelectWidth={false}
                     />
                   </div>
@@ -2013,7 +2010,7 @@ export default function LearningCms() {
             {previewElement}
 
           </div>
-        </Spin>
+        </div>
       </div>
     </ConfigProvider></LearningLookupScope.Provider>
   );

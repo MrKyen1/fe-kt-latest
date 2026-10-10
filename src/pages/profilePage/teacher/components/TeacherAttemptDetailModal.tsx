@@ -1,3 +1,4 @@
+import { ContentSkeleton } from "../../../../components/LoadingRegion";
 import React, { useEffect, useState } from "react";
 import { Modal, Button, Spin, Empty } from "antd";
 import { EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
@@ -103,12 +104,7 @@ export function TeacherAttemptDetailModal({
       className="rounded-3xl overflow-hidden max-w-[96vw]"
       styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
     >
-      {loading && !activeData ? (
-        <div className="flex flex-col items-center justify-center py-20">
-          <Spin size="large" />
-          <span className="text-slate-400 text-sm mt-3">Đang tải chi tiết bài làm...</span>
-        </div>
-      ) : activeData ? (
+      {loading && !activeData ? <ContentSkeleton variant="detail" /> : activeData ? (
         <div className="space-y-5 pt-1">
           {/* Refined Summary Card */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
