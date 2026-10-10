@@ -1,3 +1,4 @@
+import { useServerPagination } from "../../../../../../hooks/useServerPagination";
 import { Alert, Empty, Modal, Table, Tag } from "antd";
 import { History, Info } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../../constants";
@@ -129,6 +130,7 @@ export default function QuestionVersionsModal({
       : viewingQuestion.prompt
     : "";
 
+  const versionPage = useServerPagination(`/learning/questions/${viewingQuestion?.id}/versions`, {}, 5, open && !!viewingQuestion);
   return (
     <Modal
       title={
@@ -169,9 +171,9 @@ export default function QuestionVersionsModal({
         />
 
         <Table
-          dataSource={questionVersions}
+          dataSource={versionPage.data} loading={versionPage.loading}
           rowKey="id"
-          pagination={{ pageSize: 5 }}
+          pagination={versionPage.pagination}
           size="small"
           className="border border-slate-100 rounded-xl overflow-hidden shadow-sm"
           columns={COLUMNS}

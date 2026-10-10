@@ -1,3 +1,4 @@
+import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, message } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -87,24 +88,13 @@ export default function AdminCourses() {
     [activeKey],
   );
 
-  const loadResource = async (resource = activeResource) => {
-    try {
-      setIsLoading(true);
-      const result = await resource.service.list({ page: 1, limit: 100, isActive: true });
-      setRows((prev) => ({
-        ...prev,
-        [resource.key]: result.data as CmsRow[],
-      }));
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : `Khong the tai ${resource.label}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  const resourcePage = useServerPagination<CmsRow>(`/learning/${activeKey}`, { isActive: true }, 10);
   useEffect(() => {
-    loadResource(activeResource);
-  }, [activeResource]);
+    setRows(prev => ({ ...prev, [activeKey]: resourcePage.data }));
+    setIsLoading(resourcePage.loading);
+    if (resourcePage.error) message.error(resourcePage.error.message);
+  }, [resourcePage.data, resourcePage.loading, resourcePage.error, activeKey]);
+  const loadResource = async (_resource = activeResource) => { resourcePage.reload(); };
 
   const handleCreate = async (values: any) => {
     try {
@@ -197,7 +187,7 @@ export default function AdminCourses() {
               loading={isLoading}
               dataSource={rows[resource.key]}
               columns={columns}
-              pagination={{ pageSize: 10 }}
+              pagination={resourcePage.pagination}
             />
           ),
         }))}

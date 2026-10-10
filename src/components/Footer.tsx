@@ -1,4 +1,6 @@
-import { Layout, Row, Col, Typography, Space, Tag } from "antd";
+import { useQueryVersion } from "../hooks/useQueryVersion";
+import { useServerPagination } from "../hooks/useServerPagination";
+import { Layout, Row, Col, Typography, Space, Tag, Pagination } from "antd";
 import {
   Phone,
   Mail,
@@ -21,26 +23,27 @@ const Footer = memo(function Footer() {
   const [centers, setCenters] = useState<Center[]>([]);
   const [selectedCenterIndex, setSelectedCenterIndex] = useState(0);
 
+  const homepageVersion = useQueryVersion("/homepage");
+  const centerPage = useServerPagination<Center>("/centers/public", {}, 5);
+  useEffect(() => { setCenters(centerPage.data); setSelectedCenterIndex(0); }, [centerPage.data]);
   useEffect(() => {
     let active = true;
 
     Promise.all([
       homepageService.getPublic().catch(() => null),
-      academicService.centers.publicList().catch(() => []),
-    ]).then(([hpData, centersList]) => {
+
+    ]).then(([hpData]) => {
       if (!active) return;
       if (hpData?.footer) {
         setFooterData(hpData.footer);
       }
-      if (Array.isArray(centersList) && centersList.length > 0) {
-        setCenters(centersList.filter((c) => c.isActive !== false));
-      }
+
     });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [homepageVersion]);
 
   const brandName = footerData?.brandName?.trim() || "KATA LANGUAGE ACADEMY";
   const brandDescription =
@@ -102,6 +105,7 @@ const Footer = memo(function Footer() {
 
             <Space orientation="vertical" size="middle" className="w-full">
               {/* Centers tabs/tags */}
+              <Pagination {...centerPage.pagination} size="small" className="mb-3" />
               {centers.length > 0 && (
                 <div className="space-y-2 mb-2">
                   <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">

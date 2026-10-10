@@ -112,8 +112,8 @@ function buildColumns(
       title: "Phân loại",
       width: 190,
       render: (_: unknown, record: Question) => {
-        const skill = skills.find((s) => s.id === record.skillId);
-        const level = levels.find((l) => l.id === record.difficultyLevelId);
+        const skill = (record as any).skill || skills.find((s) => s.id === record.skillId);
+        const level = (record as any).difficultyLevel || levels.find((l) => l.id === record.difficultyLevelId);
         return (
           <div className="text-xs text-slate-500 space-y-0.5">
             {skill && <div className="flex items-center gap-1"><Sparkles size={11} className="text-blue-500 shrink-0" /><span>{skill.name}</span></div>}
@@ -238,8 +238,8 @@ export default function QuestionsTab({
           ) : (
             questions.map((record) => {
               const fullDetail = questionDetails[record.id] || record.detail || record;
-              const skillName = skills.find((s) => s.id === record.skillId)?.name;
-              const levelName = levels.find((l) => l.id === record.difficultyLevelId)?.name;
+              const skillName = (record as any).skill || skills.find((s) => s.id === record.skillId)?.name;
+              const levelName = (record as any).difficultyLevel || levels.find((l) => l.id === record.difficultyLevelId)?.name;
               const typeColor = QUESTION_TYPE_COLORS[record.type] || "default";
               const typeLabel = QUESTION_TYPE_LABELS[record.type] || record.type;
 

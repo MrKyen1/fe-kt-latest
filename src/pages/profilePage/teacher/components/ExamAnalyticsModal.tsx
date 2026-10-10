@@ -1,3 +1,5 @@
+import { useServerPagination } from "../../../../hooks/useServerPagination";
+import { apiClient, unwrapData } from "../../../../services/apiClient";
 import React, { useEffect, useState, useMemo } from "react";
 import {
   Modal,
@@ -13,6 +15,8 @@ import {
   Progress,
   message,
   Button,
+  Pagination,
+  Alert,
 } from "antd";
 import {
   BarChartOutlined,
@@ -63,61 +67,25 @@ export function ExamAnalyticsModal({
   const [detailAttemptSummary, setDetailAttemptSummary] = useState<any>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
+  const studentPage = useServerPagination(`/learning/teacher/exam-assignments/${assignmentId}/analytics/students`, {
+    search: studentSearch || undefined,
+    progressStatus: studentStatusFilter === "all" ? undefined : studentStatusFilter === "not_started" ? "assigned" : studentStatusFilter,
+  }, 8, open && !!assignmentId);
+  const questionPage = useServerPagination(`/learning/teacher/exam-assignments/${assignmentId}/analytics/questions`, {
+    examId: selectedExamFilter === "all" ? undefined : selectedExamFilter,
+  }, 10, open && !!assignmentId && activeTab === "overview");
   useEffect(() => {
-    if (!open || !assignmentId) {
-      setAnalyticsData(null);
-      setAssignmentDetail(null);
-      setAttemptsList([]);
-      setExamDetailsMap({});
-      setSelectedExamFilter("all");
-      setActiveTab("overview");
-      setStudentSearch("");
-      setStudentStatusFilter("all");
-      return;
-    }
-
+    let current = true;
+    if (!open || !assignmentId) { setAnalyticsData(null); setAssignmentDetail(null); return; }
     setLoading(true);
-    Promise.allSettled([
-      teacherLearningService.examAssignments.analytics(assignmentId),
-      teacherLearningService.examAssignments.get(assignmentId),
-      teacherLearningService.examAssignments.attempts(assignmentId, { limit: 100 }),
-    ])
-      .then(([analyticsRes, detailRes, attemptsRes]) => {
-        if (analyticsRes.status === "fulfilled") {
-          setAnalyticsData(analyticsRes.value);
-        }
-        if (detailRes.status === "fulfilled") {
-          const detail = detailRes.value;
-          setAssignmentDetail(detail);
-
-          // Fetch full questions for each exam in assignment to accurately map questions
-          const exams = detail?.exams || [];
-          const examIds: string[] = exams
-            .map((e: any) => e.examId || e.exam?.id)
-            .filter(Boolean);
-
-          if (examIds.length > 0 && hasPermission("learning.read")) {
-            Promise.allSettled(
-              examIds.map((id: string) => learningCmsService.exams.get(id)),
-            ).then((results) => {
-              const map: Record<string, any> = {};
-              results.forEach((res, idx) => {
-                if (res.status === "fulfilled" && res.value) {
-                  map[examIds[idx]] = res.value;
-                }
-              });
-              setExamDetailsMap(map);
-            });
-          }
-        }
-        if (attemptsRes.status === "fulfilled") {
-          const list = (attemptsRes.value as any)?.data || attemptsRes.value || [];
-          setAttemptsList(Array.isArray(list) ? list : []);
-        }
-      })
-      .catch((err) => message.error(getErrorMessage(err, "Không thể tải analytics"), 5))
-      .finally(() => setLoading(false));
+    apiClient.get(`/learning/teacher/exam-assignments/${assignmentId}/analytics/summary`).then(response => {
+      if (!current) return;
+      const data: any = unwrapData(response as any);
+      setAnalyticsData(data); setAssignmentDetail(data.assignment);
+    }).catch(error => { if (current) message.error(getErrorMessage(error)); }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
   }, [open, assignmentId]);
+  const scopedAnalytics = { ...analyticsData, perQuestion: questionPage.data };
 
   // Distinguish Exam vs Practice based on examType
   const isExamType = useMemo(() => {
@@ -127,162 +95,17 @@ export function ExamAnalyticsModal({
   }, [assignmentDetail, attemptsList]);
 
   // Aggregate student stats seamlessly
-  const studentStats = useMemo(() => {
-    if (analyticsData?.students && Array.isArray(analyticsData.students) && analyticsData.students.length > 0) {
-      return analyticsData.students.map((s: any) => {
-        const sAtts = attemptsList
-          .filter((a: any) => a.studentId === s.studentId || a.assignmentStudentId === s.assignmentStudentId)
-          .sort((a: any, b: any) => (a.attemptNumber ?? 0) - (b.attemptNumber ?? 0));
-        const submittedSAtts = sAtts.filter((a: any) => a.status === "submitted");
-        const firstAttempt = submittedSAtts.find((a: any) => a.attemptNumber === 1) || submittedSAtts[0];
-
-        const pcts = [
-          ...submittedSAtts.map((a: any) => parseFloat(a.percentage ?? "0")),
-          parseFloat(s.bestPercentage ?? s.bestScorePct ?? "0"),
-        ].filter((n) => !isNaN(n));
-        const bestPercentage = pcts.length > 0 ? Math.max(...pcts) : null;
-
-        const scores = [
-          ...submittedSAtts.map((a: any) => parseFloat(a.score ?? "0")),
-          parseFloat(s.bestScore ?? "0"),
-        ].filter((n) => !isNaN(n));
-        const bestScore = scores.length > 0 ? Math.max(...scores) : s.bestScore;
-
-        // Ưu tiên tin vào mastered từ backend; fallback sang tính từ percentage
-        const isMastered =
-          s.mastered === true ||
-          (bestPercentage != null && bestPercentage >= 100);
-
-        // Tin vào status từ backend; chỉ điều chỉnh khi rõ ràng mastered
-        const computedStatus = isMastered
-          ? "finished"
-          : (s.status ?? (submittedSAtts.length > 0 ? "finished" : "assigned"));
-
-        return {
-          ...s,
-          status: computedStatus,
-          mastered: isMastered,
-          bestPercentage,
-          bestScore,
-          allAttempts: sAtts,
-          submittedAttempts: submittedSAtts,
-          firstAttemptId: firstAttempt?.id || null,
-          firstAttempt: firstAttempt || null,
-          attemptsCount: submittedSAtts.length,
-          hasInProgress: sAtts.some((a: any) => a.status === "in_progress"),
-        };
-      });
-    }
-
-    const assignedStudents = assignmentDetail?.students || [];
-    const attemptsByStudent = new Map<string, any[]>();
-    for (const att of attemptsList) {
-      if (att.assignmentStudentId) {
-        const arr = attemptsByStudent.get(att.assignmentStudentId) || [];
-        arr.push(att);
-        attemptsByStudent.set(att.assignmentStudentId, arr);
-      }
-      const sId = att.studentId || att.student?.id;
-      if (sId) {
-        const arr = attemptsByStudent.get(sId) || [];
-        arr.push(att);
-        attemptsByStudent.set(sId, arr);
-      }
-    }
-
-    return assignedStudents.map((item: any) => {
-      const student = item.student;
-      const user = student?.user;
-      const sId = item.studentId || student?.id;
-
-      const attsByAssignId = attemptsByStudent.get(item.id) || [];
-      const attsByStudentId = attemptsByStudent.get(sId) || [];
-      const attsMap = new Map<string, any>();
-      [...attsByAssignId, ...attsByStudentId].forEach((a) => attsMap.set(a.id, a));
-      const atts = Array.from(attsMap.values()).sort(
-        (a: any, b: any) => (a.attemptNumber ?? 0) - (b.attemptNumber ?? 0),
-      );
-
-      const submittedAtts = atts.filter((a: any) => a.status === "submitted");
-      const hasInProgress = atts.some((a: any) => a.status === "in_progress");
-      const firstAttempt = submittedAtts.find((a: any) => a.attemptNumber === 1) || submittedAtts[0];
-      const latest = submittedAtts[submittedAtts.length - 1] || atts[atts.length - 1];
-
-      const scores = submittedAtts.map((a: any) => Number(a.score)).filter((n) => !isNaN(n));
-      const pcts = submittedAtts.map((a: any) => Number(a.percentage)).filter((n) => !isNaN(n));
-      const bestScore = scores.length > 0 ? Math.max(...scores) : null;
-      const bestPercentage = pcts.length > 0 ? Math.max(...pcts) : null;
-
-      // Ưu tiên mastered từ backend (item.mastered), fallback sang percentage
-      const isMastered =
-        item.mastered === true ||
-        (bestPercentage != null && bestPercentage >= 100);
-
-      // isFinished: backend đã nộp lượt đầu (finished) dù chưa 100%
-      const isFinished = item.status === "finished" || isMastered;
-
-      // computedStatus: tin vào backend, chỉ điều chỉnh khi mastered
-      let computedStatus = item.status ?? "assigned";
-      if (isMastered) computedStatus = "finished";
-
-      return {
-        studentId: sId,
-        assignmentStudentId: item.id,
-        code: user?.code || student?.code || "—",
-        fullName: user?.fullName || student?.fullName || "Học sinh",
-        email: user?.email || student?.email || "—",
-        status: computedStatus,
-        mastered: isMastered,
-        isFinished,
-        latestAttemptStatus: item.latestAttemptStatus ?? null,
-        masteredExamsCount: item.masteredExamsCount ?? null,
-        totalRequiredExamsCount: item.totalRequiredExamsCount ?? null,
-        attemptsCount: submittedAtts.length,
-        firstAttemptId: firstAttempt?.id || null,
-        firstAttempt: firstAttempt || null,
-        latestAttemptId: latest?.id || null,
-        latestAttempt: latest || null,
-        bestScore,
-        bestPercentage,
-        allAttempts: atts,
-        submittedAttempts: submittedAtts,
-        hasInProgress,
-      };
-    });
-  }, [analyticsData, assignmentDetail, attemptsList, isExamType]);
-
-  const totalAssigned = studentStats.length;
-  // mastered = đã hoàn thành 100%
-  const totalMastered = studentStats.filter((s: any) => s.mastered === true).length;
-  // finished (có thể bao gồm mastered): đã nộp bài, task done
-  const totalFinished = studentStats.filter((s: any) => s.status === "finished").length;
-  // đã nộp nhưng chưa mastered
+  const studentStats = studentPage.data.map((row: any) => ({ ...row,
+    allAttempts: row.attempts ?? [], submittedAttempts: (row.attempts ?? []).filter((attempt: any) => attempt.status === "submitted"),
+  }));
+  const totalAssigned = analyticsData?.assignedCount ?? 0;
+  const totalMastered = analyticsData?.masteredCount ?? 0;
+  const totalFinished = analyticsData?.finishedCount ?? 0;
   const totalSubmittedOnly = totalFinished - totalMastered;
-  const totalInProgress = studentStats.filter(
-    (s: any) => s.status === "in_progress" || s.hasInProgress,
-  ).length;
-  const totalNotStarted = studentStats.filter(
-    (s: any) => s.attemptsCount === 0 && s.status === "assigned",
-  ).length;
-  const completionRate = totalAssigned > 0 ? Math.round((totalMastered / totalAssigned) * 100) : 0;
-
-  const filteredStudents = useMemo(() => {
-    return studentStats.filter((s: any) => {
-      if (studentStatusFilter !== "all") {
-        if (studentStatusFilter === "finished" && s.status !== "finished") return false;
-        if (studentStatusFilter === "in_progress" && (s.status === "finished" || s.attemptsCount === 0)) return false;
-        if (studentStatusFilter === "not_started" && (s.attemptsCount > 0 || s.status !== "assigned")) return false;
-      }
-      if (studentSearch.trim()) {
-        const kw = studentSearch.toLowerCase();
-        const nameMatch = (s.fullName || "").toLowerCase().includes(kw);
-        const codeMatch = (s.code || "").toLowerCase().includes(kw);
-        const emailMatch = (s.email || "").toLowerCase().includes(kw);
-        if (!nameMatch && !codeMatch && !emailMatch) return false;
-      }
-      return true;
-    });
-  }, [studentStats, studentStatusFilter, studentSearch, isExamType]);
+  const totalInProgress = analyticsData?.inProgressCount ?? 0;
+  const totalNotStarted = analyticsData?.notStartedCount ?? 0;
+  const completionRate = totalAssigned > 0 ? Math.round(totalMastered / totalAssigned * 100) : 0;
+  const filteredStudents = studentStats;
 
   // Map each questionId to its exam metadata
   const questionToExamMap = useMemo(() => {
@@ -365,7 +188,7 @@ export function ExamAnalyticsModal({
 
   // Group questions by Exam
   const questionGroups = useMemo(() => {
-    const list: any[] = analyticsData?.perQuestion || [];
+    const list: any[] = scopedAnalytics.perQuestion || [];
     const assignmentExams = assignmentDetail?.exams || [];
 
     const examMetaList = assignmentExams.map((e: any, idx: number) => {
@@ -511,72 +334,24 @@ export function ExamAnalyticsModal({
     }
 
     return result;
-  }, [analyticsData, assignmentDetail, questionToExamMap]);
+  }, [questionPage.data, assignmentDetail, questionToExamMap]);
 
   const totalQuestionCount = useMemo(() => {
-    return questionGroups.reduce((acc, g) => acc + g.questions.length, 0);
-  }, [questionGroups]);
+    return questionPage.total;
+  }, [questionPage.total]);
 
-  const filteredQuestionGroups = useMemo(() => {
-    if (selectedExamFilter === "all") return questionGroups;
-    return questionGroups.filter((g) => g.examId === selectedExamFilter);
-  }, [questionGroups, selectedExamFilter]);
+  const filteredQuestionGroups = questionGroups;
 
   // Map assigned students and their specific progress per exam
-  const examStudentAssignments = useMemo(() => {
-    return questionGroups.map((group) => {
-      const examId = group.examId;
-      const students = studentStats.map((st: any) => {
-        // Find all attempts by this student for this specific exam
-        const examAtts = (st.allAttempts || [])
-          .filter((a: any) => (a.examId || a.exam?.id) === examId)
-          .sort((a: any, b: any) => (a.attemptNumber ?? 0) - (b.attemptNumber ?? 0));
-
-        const submitted = examAtts.filter((a: any) => a.status === "submitted");
-        const inProgress = examAtts.some((a: any) => a.status === "in_progress");
-        const firstAtt = submitted.find((a: any) => a.attemptNumber === 1) || submitted[0];
-        const latestAtt = submitted[submitted.length - 1];
-
-        const scores = submitted.map((a: any) => Number(a.score)).filter((n: any) => !isNaN(n));
-        const pcts = submitted.map((a: any) => Number(a.percentage)).filter((n: any) => !isNaN(n));
-        const bestPct = pcts.length > 0 ? Math.max(...pcts) : null;
-        const bestScore = scores.length > 0 ? Math.max(...scores) : null;
-
-        // Tin vào mastered từ studentStats (sử dụng st.mastered nếu có, fallback sang bestPct)
-        const stMastered = (st as any).mastered === true;
-        let examStatus: "finished" | "submitted" | "in_progress" | "not_started" = "not_started";
-        if (
-          stMastered ||
-          bestPct === 100 ||
-          submitted.some((a: any) => a.mastered === true || Number(a.percentage) >= 100)
-        ) {
-          examStatus = "finished"; // finished = mastered 100%
-        } else if (submitted.length > 0) {
-          examStatus = "submitted"; // submitted = đã nộp nhưng chưa 100%
-        } else if (inProgress) {
-          examStatus = "in_progress";
-        }
-
-        return {
-          studentId: st.studentId,
-          fullName: st.fullName,
-          code: st.code,
-          attemptsCount: submitted.length,
-          hasInProgress: inProgress,
-          firstAttempt: firstAtt,
-          latestAttempt: latestAtt,
-          bestScore,
-          bestPercentage: bestPct,
-          examStatus,
-        };
-      });
-
-      return {
-        ...group,
-        students,
+  const examStudentAssignments = questionGroups.map(group => ({ ...group,
+    students: studentStats.map((student: any) => {
+      const progress = student.examProgress?.find((item: any) => item.examId === group.examId) ?? {};
+      const completed = Number(progress.bestPercentage ?? 0) >= 100;
+      return { ...student, ...progress,
+        examStatus: completed ? "finished" : progress.attemptsCount > 0 ? "submitted" : progress.hasInProgress ? "in_progress" : "not_started",
       };
-    });
-  }, [questionGroups, studentStats]);
+    }),
+  }));
 
   const handleOpenAttemptDetail = (row: any) => {
     const attemptId = row.firstAttemptId || row.latestAttemptId;
@@ -642,6 +417,8 @@ export function ExamAnalyticsModal({
           </div>
         ) : (
           <div>
+            {activeTab === "overview" && <><Pagination {...questionPage.pagination} className="mb-3" /><Pagination {...studentPage.pagination} className="mb-3" /></>}
+            {(studentPage.error || questionPage.error) && <Alert type="error" message={(studentPage.error || questionPage.error)?.message} />}
             <Tabs
               activeKey={activeTab}
               onChange={setActiveTab}
@@ -764,7 +541,7 @@ export function ExamAnalyticsModal({
                               </span>
                             </div>
                             <span className="text-xs text-slate-400">
-                              Tổng {studentStats.length} học sinh trong đợt giao
+                              Tổng {studentPage.total} học sinh trong đợt giao
                             </span>
                           </div>
 
@@ -1129,7 +906,7 @@ export function ExamAnalyticsModal({
                   label: (
                     <span className="flex items-center gap-2 px-1 font-semibold">
                       <TeamOutlined />
-                      <span>Danh sách học sinh & Kết quả ({studentStats.length})</span>
+                      <span>Danh sách học sinh & Kết quả ({studentPage.total})</span>
                     </span>
                   ),
                   children: (
@@ -1143,7 +920,7 @@ export function ExamAnalyticsModal({
                             value={studentStatusFilter}
                             onChange={(val: any) => setStudentStatusFilter(val)}
                             options={[
-                              { label: `Tất cả (${studentStats.length})`, value: "all" },
+                              { label: `Tất cả (${studentPage.total})`, value: "all" },
                               { label: `Đã hoàn thành 100% (${totalFinished})`, value: "finished" },
                               { label: `Cần làm lại / Đang làm (${totalInProgress})`, value: "in_progress" },
                               { label: `Chưa làm (${totalNotStarted})`, value: "not_started" },
@@ -1166,185 +943,13 @@ export function ExamAnalyticsModal({
                         size="small"
                         rowKey="studentId"
                         dataSource={filteredStudents}
-                        pagination={{ pageSize: 8, showSizeChanger: false }}
+                        pagination={studentPage.pagination} loading={studentPage.loading}
                         className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm"
                         expandable={{
                           expandRowByClick: false,
                           rowExpandable: (r: any) => (r.allAttempts?.length || r.attemptsCount || 0) > 0,
-                          expandedRowRender: (r: any) => {
-                            const attempts: any[] = r.submittedAttempts || r.allAttempts || [];
-                            const inProgressAtts = (r.allAttempts || []).filter(
-                              (a: any) => a.status === "in_progress",
-                            );
-                            return (
-                              <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-3 ml-8 my-2">
-                                <div className="text-xs font-bold text-slate-600 mb-2 flex items-center gap-1.5">
-                                  <ClockCircleOutlined className="text-indigo-400" />
-                                  Lịch sử làm bài của {r.fullName}
-                                  <Tag
-                                    color="indigo"
-                                    className="ml-1 text-[10px] font-semibold border-none rounded-full"
-                                  >
-                                    {attempts.length} lượt đã nộp
-                                    {inProgressAtts.length > 0 ? ` + ${inProgressAtts.length} đang làm` : ""}
-                                  </Tag>
-                                </div>
-                                <Table
-                                  size="small"
-                                  pagination={false}
-                                  rowKey="id"
-                                  dataSource={attempts}
-                                  className="rounded-xl overflow-hidden"
-                                  columns={[
-                                    {
-                                      title: "Lượt",
-                                      width: 70,
-                                      render: (_: any, att: any, i: number) => {
-                                        const num = att.attemptNumber ?? i + 1;
-                                        const isFirst = num === 1;
-                                        return (
-                                          <Tag
-                                            color={isFirst ? "purple" : "default"}
-                                            className="font-bold rounded-full px-2.5 m-0 text-xs border-none"
-                                          >
-                                            Lượt {num}
-                                            {isFirst && <span className="ml-1 text-[9px] opacity-70">(đề thi)</span>}
-                                          </Tag>
-                                        );
-                                      },
-                                    },
-                                    {
-                                      title: "Loại",
-                                      width: 110,
-                                      render: (_: any, att: any) => {
-                                        const phase = att.attemptPhase;
-                                        if (phase === "remediation") {
-                                          return (
-                                            <Tag color="orange" className="text-[10px] border-none rounded-full m-0">
-                                              Ôn tập (câu sai)
-                                            </Tag>
-                                          );
-                                        }
-                                        return (
-                                          <Tag color="blue" className="text-[10px] border-none rounded-full m-0">
-                                            Lượt đầu
-                                          </Tag>
-                                        );
-                                      },
-                                    },
-                                    {
-                                      title: "Số câu",
-                                      width: 80,
-                                      align: "center" as const,
-                                      render: (_: any, att: any) => (
-                                        <span className="text-xs text-slate-600 font-semibold">
-                                          {att.attemptQuestionCount ?? att.totalQuestions ?? "—"}
-                                        </span>
-                                      ),
-                                    },
-                                    {
-                                      title: "Điểm",
-                                      width: 120,
-                                      render: (_: any, att: any) => {
-                                        const sc = att.score != null ? Number(att.score) : null;
-                                        const mx = att.maxScore != null ? Number(att.maxScore) : null;
-                                        const pct = att.percentage != null ? parseFloat(att.percentage) : null;
-                                        if (sc == null) return <span className="text-slate-400 text-xs">—</span>;
-                                        return (
-                                          <div>
-                                            <div className="font-bold text-slate-800 text-xs">
-                                              {sc}
-                                              {mx != null ? ` / ${mx}` : ""}
-                                            </div>
-                                            {pct != null && (
-                                              <div
-                                                className={`text-[10px] font-semibold ${
-                                                  pct >= 100
-                                                    ? "text-emerald-600"
-                                                    : pct >= 50
-                                                    ? "text-amber-600"
-                                                    : "text-rose-500"
-                                                }`}
-                                              >
-                                                {pct.toFixed(0)}%
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      },
-                                    },
-                                    {
-                                      title: "Kết quả",
-                                      width: 140,
-                                      render: (_: any, att: any) => {
-                                        const pct = att.percentage != null ? parseFloat(att.percentage) : null;
-                                        const correct = att.attemptCorrectCount;
-                                        const total = att.attemptQuestionCount ?? att.totalQuestions;
-                                        return (
-                                          <div className="flex items-center gap-1.5">
-                                            {correct != null && total != null ? (
-                                              <>
-                                                <Tag color="green" className="text-[10px] m-0 border-none rounded-full">
-                                                  Đúng {correct}
-                                                </Tag>
-                                                <Tag color="volcano" className="text-[10px] m-0 border-none rounded-full">
-                                                  Sai {total - correct}
-                                                </Tag>
-                                              </>
-                                            ) : pct != null ? (
-                                              <span
-                                                className={`text-xs font-semibold ${
-                                                  pct >= 100 ? "text-emerald-600" : "text-rose-500"
-                                                }`}
-                                              >
-                                                {pct.toFixed(0)}%
-                                              </span>
-                                            ) : (
-                                              <span className="text-slate-400 text-xs">—</span>
-                                            )}
-                                          </div>
-                                        );
-                                      },
-                                    },
-                                    {
-                                      title: "Nộp lúc",
-                                      width: 130,
-                                      render: (_: any, att: any) => (
-                                        <span className="text-[11px] text-slate-500">
-                                          {formatDateTime(att.submittedAt || att.createdAt)}
-                                        </span>
-                                      ),
-                                    },
-                                    {
-                                      title: "Thời lượng",
-                                      width: 90,
-                                      render: (_: any, att: any) => (
-                                        <span className="text-[11px] text-slate-500">
-                                          {formatDuration(att.durationSeconds)}
-                                        </span>
-                                      ),
-                                    },
-                                    {
-                                      title: "Xem",
-                                      width: 70,
-                                      align: "right" as const,
-                                      render: (_: any, att: any) => (
-                                        <Button
-                                          type="link"
-                                          size="small"
-                                          icon={<EyeOutlined />}
-                                          onClick={() =>
-                                            handleOpenAttemptDetailById(att.id, r.fullName, att)
-                                          }
-                                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 p-0"
-                                        />
-                                      ),
-                                    },
-                                  ]}
-                                />
-                              </div>
-                            );
-                          },
+                          expandedRowRender: (r: any) => <AnalyticsHistory assignmentId={assignmentId!} studentId={r.studentId}
+                            onView={attempt => { setDetailAttemptId(attempt.id); setDetailStudentName(r.fullName); setDetailAttemptSummary(attempt); setDetailModalOpen(true); }} />,
                         }}
                         columns={[
                           {
@@ -1517,4 +1122,11 @@ export function ExamAnalyticsModal({
       />
     </>
   );
+}
+
+function AnalyticsHistory({ assignmentId, studentId, onView }: { assignmentId: string; studentId: string; onView: (attempt: any) => void }) {
+  const page = useServerPagination(`/learning/teacher/exam-assignments/${assignmentId}/attempts`, { studentId, sortBy: "attemptNumber", sortOrder: "DESC" }, 5);
+  return <Table size="small" rowKey="id" dataSource={page.data} loading={page.loading} pagination={page.pagination}
+    columns={[{ title: "Lượt", dataIndex: "attemptNumber" }, { title: "Trạng thái", dataIndex: "status" }, { title: "Điểm", dataIndex: "score" },
+      { title: "", render: (_, row: any) => <Button type="link" onClick={() => onView(row)}>Chi tiết</Button> }]} />;
 }

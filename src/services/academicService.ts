@@ -10,7 +10,7 @@ import {
   UpdateClassRequest,
   UpdateSpecializationRequest,
 } from "../types/backend";
-import { apiClient, unwrapData } from "./apiClient";
+import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
 function crudService<TItem, TCreate, TUpdate>(path: string) {
   return {
@@ -19,8 +19,8 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
     },
 
     async list(params?: Record<string, unknown>): Promise<TItem[]> {
-      // Backend mới bổ sung pagination mặc định limit=20; gửi limit: 100 nếu chưa chỉ định để không thiếu dữ liệu dropdown/danh sách
-      const queryParams = { limit: 100, ...params };
+      // Single-page helper; paginated UI uses useServerPagination.
+      const queryParams = { limit: 20, ...params };
       const response = await apiClient.get<ApiEnvelope<TItem[]>>(path, { params: queryParams });
       // BE có thể trả { data: [...] } (array) hoặc { data: [...], meta: {...} } (paginated)
       const payload = response.data?.data;

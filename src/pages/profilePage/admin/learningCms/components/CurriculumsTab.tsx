@@ -30,6 +30,9 @@ interface Level {
 }
 
 interface Curriculum {
+  examCount?: number;
+  testCount?: number;
+  practiceCount?: number;
   id: string;
   code?: string;
   title: string;
@@ -102,14 +105,14 @@ function buildColumns(
       width: 120,
       render: (_: unknown, record: Curriculum) => {
         const examList = record.exams ?? [];
-        const count = examList.length;
+        const count = record.examCount ?? examList.length;
 
-        const examCount = examList.filter((item) => {
+        const examCount = record.testCount ?? examList.filter((item) => {
           const type = item.exam?.examType ?? examsMap.get(item.examId)?.examType ?? "practice";
           return type === "exam";
         }).length;
 
-        const practiceCount = examList.filter((item) => {
+        const practiceCount = record.practiceCount ?? examList.filter((item) => {
           const type = item.exam?.examType ?? examsMap.get(item.examId)?.examType ?? "practice";
           return type === "practice";
         }).length;
@@ -287,7 +290,7 @@ export default function CurriculumsTab({
           ) : (
             curriculums.map((record) => {
               const examList = record.exams ?? [];
-              const count = examList.length;
+              const count = record.examCount ?? examList.length;
 
               return (
                 <div

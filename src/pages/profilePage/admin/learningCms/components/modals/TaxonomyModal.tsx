@@ -1,3 +1,4 @@
+import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { OrderedListOutlined } from "@ant-design/icons";
@@ -88,13 +89,7 @@ export default function TaxonomyModal({
 
         {taxTab === "topics" && (
           <Form.Item name="parentId" label="Chủ đề cha (nếu có)">
-            <Select placeholder="Chọn chủ đề cha..." className="rounded-xl" allowClear>
-              {topics
-                .filter((t) => t.id !== editingItem?.id)
-                .map((t) => (
-                  <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                ))}
-            </Select>
+            <ServerSelect endpoint="/learning/topics" query={{ excludeId: editingItem?.id }} placeholder="Chọn chủ đề cha..." className="rounded-xl" allowClear />
           </Form.Item>
         )}
       </Form>

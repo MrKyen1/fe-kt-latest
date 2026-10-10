@@ -1,3 +1,4 @@
+import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { Col, Form, Input, Modal, Row, Select } from "antd";
 import type { FormInstance } from "antd";
 import { ReadOutlined } from "@ant-design/icons";
@@ -55,11 +56,7 @@ export default function PassageFormModal({ open, onCancel, form, onFinish, isEdi
           </Col>
           <Col span={12}>
             <Form.Item name="levelId" label="Level (Độ khó)">
-              <Select placeholder="Chọn level..." className="rounded-xl" allowClear>
-                {levels.map((l) => (
-                  <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-                ))}
-              </Select>
+              <ServerSelect endpoint="/learning/levels" placeholder="Chọn level..." className="rounded-xl" allowClear />
             </Form.Item>
           </Col>
         </Row>

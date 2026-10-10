@@ -1,3 +1,4 @@
+import { ServerSelect } from "../../../../../../components/ServerSelect";
 import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState } from "react";
 import { Form, Input, Modal, Select, Upload, Button, message, Spin } from "antd";
@@ -84,11 +85,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
         </Form.Item>
 
         <Form.Item name="levelId" label="Level (Độ tuổi / Cấp độ)">
-          <Select className="rounded-xl" placeholder="Chọn level" allowClear>
-            {levels.map((l) => (
-              <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-            ))}
-          </Select>
+          <ServerSelect endpoint="/learning/levels" className="rounded-xl" placeholder="Chọn level" allowClear />
         </Form.Item>
 
         {/* Cover Image Upload (Backend 2026-09-16) */}

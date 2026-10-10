@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useServerPagination } from "../../../../../../hooks/useServerPagination";
+import { ServerSelect } from "../../../../../../components/ServerSelect";
+import { useState, useMemo } from "react";
 import {
   Badge,
   Button,
@@ -9,14 +11,15 @@ import {
   InputNumber,
   List,
   Modal,
-  Pagination,
   Row,
   Select,
   Segmented,
-  Spin,
   Tag,
   Tooltip,
   message,
+  Pagination,
+  Alert,
+  Spin,
 } from "antd";
 import {
   ArrowDownOutlined,
@@ -35,7 +38,7 @@ import QuestionRowItem from "../QuestionRowItem";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { Can } from "../../../../../../components/Can";
 import { getErrorMessage } from "../../../../../../services/apiClient";
-import { LearningListQuery, RandomQuestionCriteria } from "../../../../../../types/learning";
+import { RandomQuestionCriteria } from "../../../../../../types/learning";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ interface Question {
 
 interface ExamQuestion {
   questionId: string;
+  question?: Question;
 }
 
 interface Exam {
@@ -114,6 +118,7 @@ interface Props {
   onBulkAttach?:    (items: { questionId: string; orderIndex?: number }[]) => Promise<void>;
 }
 
+// ── Filter helpers ────────────────────────────────────────────
 
 // ── Component ────────────────────────────────────────────────
 
@@ -152,126 +157,11 @@ export default function ManageQuestionsModal({
   onRepublish,
   onBulkAttach,
 }: Props) {
-  const PAGE_SIZE = 10;
-
   const examQuestions = selectedExam?.questions ?? [];
-  const totalExamQuestions = examQuestions.length;
-  const totalExamPages = Math.ceil(totalExamQuestions / PAGE_SIZE) || 1;
+  const examQuestionIds = new Set(examQuestions.map(question => question.questionId));
 
   // Tab mode: "manual" (manual pick from question bank) | "random" (random criteria & bulk attach)
   const [tabMode, setTabMode] = useState<"manual" | "random">("manual");
-
-  // Exam questions pagination state (Left column)
-  const [examPage, setExamPage] = useState<number>(1);
-
-  // Published questions state from server (Right column)
-  const [publishedQuestions, setPublishedQuestions] = useState<Question[]>([]);
-  const [publishedTotal, setPublishedTotal] = useState<number>(0);
-  const [isPublishedLoading, setIsPublishedLoading] = useState<boolean>(false);
-  const [publishedPage, setPublishedPage] = useState<number>(1);
-
-  // Debounced search for published questions
-  const [debouncedSearch, setDebouncedSearch] = useState(examQSearch);
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(examQSearch);
-    }, 300);
-    return () => clearTimeout(handler);
-  }, [examQSearch]);
-
-  // Set of question IDs currently in the exam (for quick duplicate check)
-  const examQuestionIds = useMemo(() => {
-    return new Set(examQuestions.map((eq: any) => eq.questionId));
-  }, [examQuestions]);
-
-  // Sliced questions for current exam page
-  const paginatedExamQuestions = useMemo(() => {
-    const start = (examPage - 1) * PAGE_SIZE;
-    return examQuestions.slice(start, start + PAGE_SIZE);
-  }, [examQuestions, examPage]);
-
-  // Ensure examPage is valid if questions are removed
-  useEffect(() => {
-    if (examPage > totalExamPages) {
-      setExamPage(Math.max(1, totalExamPages));
-    }
-  }, [totalExamPages, examPage]);
-
-  // Reset pagination when modal opens or exam changes
-  useEffect(() => {
-    if (open) {
-      setExamPage(1);
-      setPublishedPage(1);
-    }
-  }, [open, selectedExam?.id]);
-
-  // Reset published page to 1 when filters or search change
-  useEffect(() => {
-    setPublishedPage(1);
-  }, [
-    debouncedSearch,
-    examQTypeFilter,
-    examQSkillFilter,
-    examQLevelFilter,
-    examQTopicFilter,
-    examQTagFilter,
-    selectedExam?.specializationId,
-  ]);
-
-  // Fetch published questions from server with pagination and filters
-  useEffect(() => {
-    if (!open) return;
-
-    let isMounted = true;
-    const fetchQuestions = async () => {
-      setIsPublishedLoading(true);
-      try {
-        const queryParams: LearningListQuery = {
-          page: publishedPage,
-          limit: PAGE_SIZE,
-          status: "published",
-          specializationId: selectedExam?.specializationId,
-          search: debouncedSearch.trim() || undefined,
-          type: examQTypeFilter || undefined,
-          skillId: examQSkillFilter || undefined,
-          levelId: examQLevelFilter || undefined,
-          topicId: examQTopicFilter || undefined,
-          tagIds: examQTagFilter || undefined,
-          sortBy: "createdAt",
-          sortOrder: "DESC",
-        };
-
-        const res = await learningCmsService.questions.list(queryParams);
-        if (isMounted) {
-          setPublishedQuestions((res.data || []) as Question[]);
-          setPublishedTotal(res.meta?.total ?? res.data?.length ?? 0);
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          message.error("Lỗi khi tải danh sách câu hỏi từ ngân hàng");
-        }
-      } finally {
-        if (isMounted) {
-          setIsPublishedLoading(false);
-        }
-      }
-    };
-
-    fetchQuestions();
-    return () => {
-      isMounted = false;
-    };
-  }, [
-    open,
-    publishedPage,
-    debouncedSearch,
-    examQTypeFilter,
-    examQSkillFilter,
-    examQLevelFilter,
-    examQTopicFilter,
-    examQTagFilter,
-    selectedExam?.specializationId,
-  ]);
 
   // Random criteria state
   interface CriteriaItem {
@@ -312,6 +202,13 @@ export default function ManageQuestionsModal({
     examQSearch || examQTypeFilter || examQSkillFilter ||
     examQLevelFilter || examQTopicFilter || examQTagFilter
   );
+
+  const availablePage = useServerPagination<Question>("/learning/questions", {
+    specializationId: selectedExam?.specializationId, status: "published", excludeExamId: selectedExam?.id,
+    search: examQSearch || undefined, type: examQTypeFilter, skillId: examQSkillFilter,
+    levelId: examQLevelFilter, topicId: examQTopicFilter, tagIds: examQTagFilter,
+  }, 10, open && !!selectedExam && tabMode === "manual");
+  const available = availablePage.data;
 
   const getQuestionObj = (questionId: string) => {
     const q = allQuestions.find((allQ) => allQ.id === questionId);
@@ -472,6 +369,7 @@ export default function ManageQuestionsModal({
         </div>
       )}
 
+      {availablePage.error && <Alert type="error" message={availablePage.error.message} />}
       <Row gutter={24} className="pt-2">
         {/* Left: current questions */}
         <Col span={12}>
@@ -479,121 +377,60 @@ export default function ManageQuestionsModal({
             title={
               <div className="flex items-center justify-between">
                 <span>Câu hỏi trong đề thi</span>
-                <Badge count={totalExamQuestions} color="indigo" />
+                <Badge count={examQuestions.length} color="indigo" />
               </div>
             }
             className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
             size="small"
-            styles={{
-              body: {
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                padding: "12px",
-                overflow: "hidden",
-              },
-            }}
+            styles={{ body: { flex: 1, overflow: "auto", padding: 12 } }}
           >
-            <div className="flex-1 overflow-y-auto pr-1">
-              <List
-                dataSource={paginatedExamQuestions}
-                renderItem={(eq: ExamQuestion, localIndex) => {
-                  const globalIndex = (examPage - 1) * PAGE_SIZE + localIndex;
-                  const q = (eq as any).question ?? allQuestions.find((q) => q.id === eq.questionId);
-                  const detail = q
-                    ? { ...q, ...(questionDetails[eq.questionId] ?? {}) }
-                    : questionDetails[eq.questionId] ?? { id: eq.questionId };
-                  return (
-                    <List.Item
-                      actions={[
-                        <Button
-                          type="text"
-                          size="small"
-                          disabled={globalIndex === 0}
-                          icon={<ArrowUpOutlined />}
-                          onClick={() => onReorder(globalIndex, "up")}
-                        />,
-                        <Button
-                          type="text"
-                          size="small"
-                          disabled={globalIndex === totalExamQuestions - 1}
-                          icon={<ArrowDownOutlined />}
-                          onClick={() => onReorder(globalIndex, "down")}
-                        />,
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={() => onRemoveQuestion(eq.questionId)}
-                        />,
-                      ]}
+            <List
+              dataSource={examQuestions}
+              renderItem={(eq: ExamQuestion, index) => {
+                const q = eq.question ?? allQuestions.find((q) => q.id === eq.questionId);
+                const detail = q
+                  ? { ...q, ...(questionDetails[q.id] ?? {}) }
+                  : questionDetails[eq.questionId] ?? { id: eq.questionId };
+                return (
+                  <List.Item
+                    actions={[
+                      <Button type="text" size="small" disabled={index === 0} icon={<ArrowUpOutlined />} onClick={() => onReorder(index, "up")} />,
+                      <Button type="text" size="small" disabled={index === examQuestions.length - 1} icon={<ArrowDownOutlined />} onClick={() => onReorder(index, "down")} />,
+                      <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => onRemoveQuestion(eq.questionId)} />,
+                    ]}
+                  >
+                    <QuestionPopover
+                      question={detail}
+                      skills={skills}
+                      levels={levels}
+                      topics={topics}
+                      tags={tags}
+                      placement="right"
                     >
-                      <QuestionPopover
-                        question={detail}
-                        skills={skills}
-                        levels={levels}
-                        topics={topics}
-                        tags={tags}
-                        placement="right"
-                      >
-                        <div className="cursor-pointer flex-1 pr-2">
-                          <List.Item.Meta
-                            avatar={
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">
-                                {globalIndex + 1}
-                              </div>
-                            }
-                            title={
-                              <div
-                                className="text-xs font-semibold line-clamp-1 text-slate-800"
-                                dangerouslySetInnerHTML={{
-                                  __html: detail?.prompt ?? q?.prompt ?? "(Câu hỏi không tìm thấy)",
-                                }}
-                              />
-                            }
-                            description={
-                              (detail?.type || q?.type) && (
-                                <Tag
-                                  color={QUESTION_TYPE_COLORS[detail?.type || q?.type]}
-                                  className="text-[9px] border-none"
-                                >
-                                  {QUESTION_TYPE_LABELS[detail?.type || q?.type]}
-                                </Tag>
-                              )
-                            }
-                          />
-                        </div>
-                      </QuestionPopover>
-                    </List.Item>
-                  );
-                }}
-                locale={{
-                  emptyText: (
-                    <Empty
-                      description="Đề thi chưa có câu hỏi nào"
-                      styles={{ image: { height: 40 } }}
-                    />
-                  ),
-                }}
-              />
-            </div>
-
-            <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
-              <span className="text-[11px] text-slate-400">
-                Tổng: <strong>{totalExamQuestions}</strong> câu
-              </span>
-              {totalExamQuestions > PAGE_SIZE && (
-                <Pagination
-                  size="small"
-                  current={examPage}
-                  pageSize={PAGE_SIZE}
-                  total={totalExamQuestions}
-                  onChange={(p) => setExamPage(p)}
-                  showSizeChanger={false}
-                />
-              )}
-            </div>
+                      <div className="cursor-pointer flex-1 pr-2">
+                        <List.Item.Meta
+                          avatar={<div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">{index + 1}</div>}
+                          title={
+                            <div
+                              className="text-xs font-semibold line-clamp-1 text-slate-800"
+                              dangerouslySetInnerHTML={{ __html: q?.prompt ?? "(Câu hỏi không tìm thấy)" }}
+                            />
+                          }
+                          description={
+                            q && (
+                              <Tag color={QUESTION_TYPE_COLORS[q.type]} className="text-[9px] border-none">
+                                {QUESTION_TYPE_LABELS[q.type]}
+                              </Tag>
+                            )
+                          }
+                        />
+                      </div>
+                    </QuestionPopover>
+                  </List.Item>
+                );
+              }}
+              locale={{ emptyText: <Empty description="Đề thi chưa có câu hỏi nào" styles={{ image: { height: 40 } }} /> }}
+            />
           </Card>
         </Col>
 
@@ -611,9 +448,7 @@ export default function ManageQuestionsModal({
                   onChange={(v) => setTabMode(v as "manual" | "random")}
                   size="small"
                 />
-                {tabMode === "manual" && (
-                  <Badge count={publishedTotal} color="green" overflowCount={999} />
-                )}
+                {tabMode === "manual" && <Badge count={availablePage.total} color="green" overflowCount={999} />}
                 {tabMode === "random" && randomResult && (
                   <Badge count={randomResult.totalCount} color="purple" overflowCount={999} />
                 )}
@@ -621,21 +456,13 @@ export default function ManageQuestionsModal({
             }
             className="rounded-2xl border-slate-100 shadow-sm flex flex-col h-[600px]"
             size="small"
-            styles={{
-              body: {
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                padding: "12px",
-                overflow: "hidden",
-              },
-            }}
+            styles={{ body: { flex: 1, display: "flex", flexDirection: "column", padding: 12, overflow: "hidden" } }}
           >
             {tabMode === "manual" ? (
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Filter panel */}
                 <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-b from-slate-50 to-white overflow-hidden shrink-0">
-                  <div className="px-3 pt-2.5 pb-2">
+                  <div className="px-3 pt-3 pb-2">
                     <Input
                       placeholder="Tìm theo đề bài, đáp án, giải thích..."
                       prefix={<Search size={13} className="text-slate-400 mr-1" />}
@@ -653,31 +480,20 @@ export default function ManageQuestionsModal({
                     <Select placeholder="Loại câu hỏi" value={examQTypeFilter} onChange={onExamQTypeFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
                       {QUESTION_TYPES.map((qt) => <Select.Option key={qt.value} value={qt.value}>{qt.label}</Select.Option>)}
                     </Select>
-                    <Select placeholder="Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                      {skills.map((s) => <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>)}
-                    </Select>
-                    <Select placeholder="Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                      {levels.map((l) => <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>)}
-                    </Select>
-                    <Select placeholder="Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false}>
-                      {topics.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-                    </Select>
-                    <Select placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false}>
-                      {tags.map((t) => <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>)}
-                    </Select>
+                    <ServerSelect endpoint="/learning/skills" placeholder="Kỹ năng" value={examQSkillFilter} onChange={onExamQSkillFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/levels" placeholder="Cấp độ" value={examQLevelFilter} onChange={onExamQLevelFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/topics" placeholder="Chủ đề" value={examQTopicFilter} onChange={onExamQTopicFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} popupMatchSelectWidth={false} />
+                    <ServerSelect endpoint="/learning/tags" placeholder="Thẻ gắn (Tag)" value={examQTagFilter} onChange={onExamQTagFilter} allowClear size="small" style={{ width: "100%", fontSize: 11 }} className="col-span-2" popupMatchSelectWidth={false} />
                   </div>
 
                   {hasActiveFilters && (
                     <div className="mx-3 mb-2 px-2 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex justify-between items-center">
                       <span className="text-[11px] text-indigo-600 flex items-center gap-1">
                         <Search size={12} />
-                        <span>Tìm thấy <strong>{publishedTotal}</strong> câu hỏi</span>
+                        <span>Tìm thấy <strong>{availablePage.total}</strong> câu hỏi</span>
                       </span>
                       <button
-                        onClick={() => {
-                          onResetFilters();
-                          setPublishedPage(1);
-                        }}
+                        onClick={onResetFilters}
                         className="text-[11px] text-indigo-500 hover:text-indigo-700 underline underline-offset-2 bg-transparent border-none cursor-pointer p-0 font-medium"
                       >
                         Xóa bộ lọc
@@ -688,91 +504,54 @@ export default function ManageQuestionsModal({
 
                 {/* Question list */}
                 <div className="flex-1 overflow-y-auto pr-1">
-                  <Spin spinning={isPublishedLoading}>
-                    <List
-                      split={false}
-                      dataSource={publishedQuestions}
-                      renderItem={(q: Question, localIndex) => {
-                        const globalIndex = (publishedPage - 1) * PAGE_SIZE + localIndex;
-                        const isAlreadyInExam = examQuestionIds.has(q.id);
-                        return (
-                          <QuestionRowItem
-                            key={q.id}
-                            index={globalIndex + 1}
-                            question={questionDetails[q.id] ? { ...q, ...questionDetails[q.id] } : q}
-                            skills={skills}
-                            levels={levels}
-                            topics={topics}
-                            tags={tags}
-                            variant="indigo"
-                            placement="left"
-                            action={
-                              isAlreadyInExam ? (
-                                <Button
-                                  type="dashed"
-                                  size="small"
-                                  disabled
-                                  icon={<CheckOutlined className="text-emerald-500" />}
-                                  className="text-xs text-emerald-600 bg-emerald-50/70 border-emerald-200 cursor-not-allowed opacity-90"
-                                >
-                                  Đã thêm
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="dashed"
-                                  size="small"
-                                  icon={<PlusOutlined />}
-                                  loading={addingQuestionId === q.id}
-                                  disabled={addingQuestionId !== null}
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    try {
-                                      setAddingQuestionId(q.id);
-                                      await onAddQuestion(q.id);
-                                    } finally {
-                                      setAddingQuestionId(null);
-                                    }
-                                  }}
-                                  className="text-xs hover:border-indigo-500 hover:text-indigo-600"
-                                >
-                                  Thêm
-                                </Button>
-                              )
+                <Spin spinning={availablePage.loading}>
+                <List
+                  split={false}
+                  dataSource={available}
+                  renderItem={(q: Question, index) => (
+                    <QuestionRowItem
+                      key={q.id}
+                      index={(availablePage.pagination.current - 1) * availablePage.pagination.pageSize + index + 1}
+                      question={questionDetails[q.id] ? { ...q, ...questionDetails[q.id] } : q}
+                      skills={skills}
+                      levels={levels}
+                      topics={topics}
+                      tags={tags}
+                      variant="indigo"
+                      placement="left"
+                      action={
+                        examQuestionIds.has(q.id) ? (
+                          <Button type="dashed" size="small" disabled icon={<CheckOutlined />} className="text-xs text-emerald-600">Đã thêm</Button>
+                        ) : <Button
+                          type="dashed"
+                          size="small"
+                          icon={<PlusOutlined />}
+                          loading={addingQuestionId === q.id}
+                          disabled={addingQuestionId !== null}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              setAddingQuestionId(q.id);
+                              await onAddQuestion(q.id);
+                              availablePage.reload();
+                            } finally {
+                              setAddingQuestionId(null);
                             }
-                          />
-                        );
-                      }}
-                      locale={{
-                        emptyText: (
-                          <Empty
-                            description={
-                              isPublishedLoading
-                                ? "Đang tải câu hỏi..."
-                                : "Không tìm thấy câu hỏi đã duyệt phù hợp"
-                            }
-                            styles={{ image: { height: 40 } }}
-                          />
-                        ),
-                      }}
-                    />
-                  </Spin>
-                </div>
-
-                {/* Pagination */}
-                <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
-                  <span className="text-[11px] text-slate-400">
-                    Tổng: <strong>{publishedTotal}</strong> câu
-                  </span>
-                  {publishedTotal > PAGE_SIZE && (
-                    <Pagination
-                      size="small"
-                      current={publishedPage}
-                      pageSize={PAGE_SIZE}
-                      total={publishedTotal}
-                      onChange={(p) => setPublishedPage(p)}
-                      showSizeChanger={false}
+                          }}
+                          className="text-xs"
+                        >
+                          Thêm
+                        </Button>
+                      }
                     />
                   )}
+                  locale={{ emptyText: <Empty description="Không tìm thấy câu hỏi đã duyệt phù hợp" styles={{ image: { height: 40 } }} /> }}
+                />
+                </Spin>
+                </div>
+                <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-auto px-1 shrink-0">
+                  <span className="text-[11px] text-slate-400">Tổng: <strong>{availablePage.total}</strong> câu</span>
+                  {availablePage.total > availablePage.pagination.pageSize && <Pagination {...availablePage.pagination} size="small" showSizeChanger={false} />}
                 </div>
               </div>
             ) : (
@@ -832,7 +611,7 @@ export default function ManageQuestionsModal({
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Kỹ năng:</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/skills"
                             placeholder="Tất cả"
                             value={crit.skillId}
                             onChange={(v) => {
@@ -843,15 +622,11 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {skills.map((s) => (
-                              <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Cấp độ:</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/levels"
                             placeholder="Tất cả"
                             value={crit.levelId}
                             onChange={(v) => {
@@ -862,15 +637,11 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {levels.map((l) => (
-                              <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Chủ đề:</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/topics"
                             placeholder="Tất cả"
                             value={crit.topicId}
                             onChange={(v) => {
@@ -881,15 +652,11 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {topics.map((t) => (
-                              <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                         <div>
                           <div className="text-[11px] text-slate-500 mb-0.5">Thẻ gắn (Tag):</div>
-                          <Select
+                          <ServerSelect endpoint="/learning/tags"
                             placeholder="Tất cả"
                             value={crit.tagId}
                             onChange={(v) => {
@@ -900,11 +667,7 @@ export default function ManageQuestionsModal({
                             allowClear
                             size="small"
                             style={{ width: "100%" }}
-                          >
-                            {tags.map((t) => (
-                              <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                            ))}
-                          </Select>
+                           />
                         </div>
                       </div>
                     </div>

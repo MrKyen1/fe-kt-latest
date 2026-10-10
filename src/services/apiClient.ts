@@ -4,6 +4,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 import { ApiEnvelope, ApiError, ApiErrorBody, ApiListResult } from "../types/api";
+import { invalidateAfterMutation } from "./queryCache";
 import { tokenStorage } from "./tokenStorage";
 
 export const API_BASE_URL =
@@ -59,7 +60,10 @@ const notifyAuthFailure = () => {
 };
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    invalidateAfterMutation(response.config.url ?? "", response.config.method ?? "get");
+    return response;
+  },
   async (error: AxiosError<ApiErrorBody>) => {
     const originalRequest = error.config as RetryConfig | undefined;
     const status = error.response?.status;

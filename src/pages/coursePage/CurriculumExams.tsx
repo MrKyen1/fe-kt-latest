@@ -1,3 +1,5 @@
+import { Pagination } from "antd";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { Typography, Row, Col, Spin, Alert, Empty, message, Tag, Button, Modal, Table, Progress, Tooltip } from "antd";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -69,6 +71,9 @@ export default function CurriculumExams() {
     progress?: any;
   }>({ open: false });
 
+  const examPage = useServerPagination("/learning/exams", { curriculumId, status: "published" }, 6, !!curriculumId && hasPermission("learning.read"));
+  useEffect(() => { setExamQuestionCounts(Object.fromEntries(examPage.data.map(exam => [exam.id, exam.questionCount ?? 0]))); }, [examPage.data]);
+
   const isStudent = user?.role === "student";
 
   useEffect(() => {
@@ -84,22 +89,8 @@ export default function CurriculumExams() {
         let cur: any = null;
         if (isStudent && hasPermission("learning.attempt")) {
           const cmsCur = await learningCmsService.curriculums.get(curriculumId!);
-          const studentList: any[] = [];
-          let page = 1;
-          let totalPages = 1;
-          do {
-            const result = await studentLearningService.curriculums.list({ page, limit: 100 });
-            studentList.push(...result.data);
-            totalPages = result.meta?.totalPages ?? 1;
-            page += 1;
-          } while (page <= totalPages);
-
-          // Find if this curriculum is in student's assigned curriculum list
-          const assignedInList = studentList.find((item: any) =>
-            item.curriculumId === curriculumId ||
-            item.curriculum?.id === curriculumId ||
-            (item as any)?.id === curriculumId
-          );
+          const result = await studentLearningService.curriculums.list({ page: 1, limit: 1, curriculumId });
+          const assignedInList = result.data[0];
 
           const studentDetail = assignedInList
             ? await studentLearningService.curriculums.get(curriculumId!)
@@ -208,32 +199,6 @@ export default function CurriculumExams() {
 
         if (active) setCurriculum(cur);
 
-        // Load each exam's detail to get the accurate question count.
-        // The curriculum GET endpoint does NOT include examQuestions in the nested exam
-        // object — only the dedicated exam GET returns the `questions` array.
-        const examMappings = cur.exams ?? [];
-        if (examMappings.length > 0) {
-          const counts: Record<string, number> = {};
-          await Promise.all(
-            examMappings.map(async (mapping) => {
-              const eid = (mapping as any).examId ?? mapping.exam?.id;
-              if (!eid) return;
-              try {
-                const examDetail = await learningCmsService.exams.get(eid);
-                // Backend mapExam() returns field named `questions` = examQuestions array
-                const qArr =
-                  (examDetail as any).questions ??
-                  (examDetail as any).examQuestions ??
-                  [];
-                counts[eid] = (examDetail as any).questionCount ?? (Array.isArray(qArr) ? qArr.length : 0);
-              } catch {
-                counts[eid] = 0;
-              }
-            }),
-          );
-          if (active) setExamQuestionCounts(counts);
-        }
-
         if (active) setError(null);
       } catch (err) {
         if (active)
@@ -330,7 +295,8 @@ export default function CurriculumExams() {
     return "#ef4444";
   };
 
-  const exams: ExamEntry[] = (curriculum?.exams ?? []).map((entry: any) => {
+  const exams: ExamEntry[] = examPage.data.map((exam: any) => {
+    const entry: any = (curriculum?.exams ?? []).find((mapping: any) => (mapping.examId || mapping.exam?.id) === exam.id) ?? { examId: exam.id, exam };
     const isRequired = entry.isRequired ?? entry.curriculumExam?.isRequired ?? false;
     const orderIndex = entry.orderIndex ?? entry.curriculumExam?.orderIndex ?? 0;
     return { ...entry, isRequired, orderIndex };
@@ -438,7 +404,7 @@ export default function CurriculumExams() {
                 <FileText size={20} />
               </div>
               <Title level={2} className="!text-2xl !font-bold !text-slate-800 !m-0">
-                Danh sách bài thi ({exams.length})
+                Danh sách bài thi ({examPage.total})
               </Title>
             </div>
 
@@ -447,6 +413,7 @@ export default function CurriculumExams() {
                 <Empty description="Giáo trình này chưa có bài thi nào." />
               </div>
             ) : (
+              <><Pagination {...examPage.pagination} className="mb-4" />
               <Row gutter={[0, 16]}>
                 {exams.map((entry, idx) => {
                   const exam = entry.exam;
@@ -580,7 +547,7 @@ export default function CurriculumExams() {
                     </Col>
                   );
                 })}
-              </Row>
+              </Row></>
             )}
           </>
         )}

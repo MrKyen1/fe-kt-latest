@@ -1,4 +1,5 @@
-import { Typography, Row, Col, Button, Empty, Spin, Alert, message, Card, Progress, Tag, Tooltip, Modal, Table } from "antd";
+import { useServerPagination } from "../../hooks/useServerPagination";
+import { Typography, Row, Col, Button, Empty, Spin, Alert, message, Card, Progress, Tag, Tooltip, Modal, Table, Pagination } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -178,93 +179,26 @@ export default function ExamList() {
   const isCurriculum = courseId === "curriculums";
   const title = isCurriculum ? "Lộ trình học tập" : "Bài thi được giao";
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      if (isCurriculum) {
-        const response = await studentLearningService.curriculums.list({ page: 1, limit: 100 });
-        const summaryList = response.data as any[];
-
-        // Fetch detail for each curriculum to get exams list
-        const enriched = await Promise.allSettled(
-          summaryList.map(async (item: any) => {
-            const cId = item.curriculumId;
-            if (!cId) return item;
-            try {
-              const detail = await studentLearningService.curriculums.get(cId);
-              const exams = detail.exams || [];
-
-              // Load full exam details for each exam to get the question count
-              const fullExams = await Promise.allSettled(
-                exams.map(async (ep: any) => {
-                  const examId = ep.examId || ep.exam?.id;
-                  if (!examId || !hasPermission("learning.read")) return ep;
-                  try {
-                    const fullExam = await learningCmsService.exams.get(examId);
-                    return {
-                      ...ep,
-                      exam: {
-                        ...ep.exam,
-                        ...fullExam,
-                      },
-                    };
-                  } catch {
-                    return ep;
-                  }
-                })
-              );
-              detail.exams = fullExams
-                .map((r: any) => (r.status === "fulfilled" ? r.value : null))
-                .filter(Boolean);
-
-              // Recalculate progress dynamically on frontend based on attemptsCount > 0
-              const requiredExams = detail.exams.filter((ep: any) => ep.isRequired ?? ep.curriculumExam?.isRequired ?? true);
-              const completedCount = requiredExams.filter((ep: any) => {
-                const attemptsCount = ep.attemptsCount ?? 0;
-                return ep.status === "completed" || ep.completedAt != null || attemptsCount > 0;
-              }).length;
-              const totalRequired = requiredExams.length;
-              const progressPercentage = totalRequired > 0 ? ((completedCount / totalRequired) * 100).toFixed(2) : "100.00";
-
-              return {
-                ...item,
-                ...detail,
-                completedExamsCount: completedCount,
-                totalRequiredExamsCount: totalRequired,
-                progressPercentage,
-              };
-            } catch {
-              return item;
-            }
-          })
-        );
-
-        const enrichedList = enriched
-          .map((r) => (r.status === "fulfilled" ? r.value : null))
-          .filter(Boolean);
-
-        setCurriculums(enrichedList);
-        setSelectedCurriculum((prev: any) => {
-          if (!prev) return null;
-          const fresh = enrichedList.find((c: any) => c.curriculumId === prev.curriculumId);
-          return fresh || prev;
-        });
-      } else {
-        const response = await studentLearningService.examAssignments.list({ page: 1, limit: 100 });
-        const mapped = flattenExamAssignmentRows(response.data as ExamAssignmentRow[]);
-        setItems(mapped);
-      }
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải danh sách bài thi.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  const listPage = useServerPagination(isCurriculum ? "/learning/student/curriculums" : "/learning/student/exam-items", {}, 8, hasPermission("learning.attempt"));
   useEffect(() => {
-    loadData();
-  }, [isCurriculum]);
+    setIsLoading(listPage.loading);
+    setError(listPage.error?.message ?? null);
+    if (isCurriculum) setCurriculums(listPage.data);
+    else setItems(listPage.data.map((row: any) => ({
+      ...row, title: row.examTitle, timeLimit: row.timeLimitSeconds,
+      totalQuestions: row.questionCount ?? 0,
+      start: () => studentLearningService.examAssignments.startAttempt(row.assignmentStudentId, row.examId),
+    })));
+  }, [listPage.data, listPage.loading, listPage.error, isCurriculum]);
+  const loadData = async () => {
+    listPage.reload();
+    if (selectedCurriculum?.curriculumId) setSelectedCurriculum(await studentLearningService.curriculums.get(selectedCurriculum.curriculumId));
+  };
+  const selectCurriculum = async (item: any) => {
+    try { setIsLoading(true); setSelectedCurriculum(await studentLearningService.curriculums.get(item.curriculumId)); }
+    catch (err) { message.error(err instanceof Error ? err.message : "Không thể tải giáo trình"); }
+    finally { setIsLoading(false); }
+  };
 
   const handleStart = async (item: ExamListItem) => {
     try {
@@ -386,7 +320,7 @@ export default function ExamList() {
                     <Card
                       hoverable
                       className="rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300"
-                      onClick={() => setSelectedCurriculum(item)}
+                      onClick={() => selectCurriculum(item)}
                       bodyStyle={{ padding: 24 }}
                     >
                       <div className="flex items-start gap-4">
@@ -577,6 +511,7 @@ export default function ExamList() {
         )}
       </div>
 
+      {!selectedCurriculum && <Pagination {...listPage.pagination} className="mt-4" />}
       <AttemptHistoryModal
         open={historyModalOpen}
         onClose={() => setHistoryModalOpen(false)}
@@ -593,36 +528,13 @@ function AttemptHistoryModal({
   assignmentStudentId, examId, title, open, onClose,
 }: { assignmentStudentId: string | null; examId?: string | null; title?: string; open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  const [attempts, setAttempts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const formatTime = (sec?: number) => {
-    if (!sec) return "—";
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return m > 0 ? `${m}p ${s}s` : `${s}s`;
-  };
-
-  const formatDate = (iso?: string | null) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleString("vi-VN", {
-      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-    });
-  };
-
-  useEffect(() => {
-    if (!open || !assignmentStudentId) return;
-    setLoading(true);
-    studentLearningService.examAssignments
-      .attempts(assignmentStudentId)
-      .then((res: any) => {
-        const arr = Array.isArray(res) ? res : res?.data ?? [];
-        const filtered = examId ? arr.filter((x: any) => x.examId === examId) : arr;
-        setAttempts(filtered);
-      })
-      .catch(() => message.error("Không thể tải lịch sử làm bài"))
-      .finally(() => setLoading(false));
-  }, [open, assignmentStudentId, examId]);
+  const formatTime = (seconds?: number) => seconds == null ? "—" : `${Math.floor(seconds / 60)}p ${seconds % 60}s`;
+  const formatDate = (date?: string) => date ? new Date(date).toLocaleString("vi-VN") : "—";
+  const historyPage = useServerPagination(`/learning/student/exam-assignments/${assignmentStudentId}/attempts`, {
+    examId: examId || undefined, sortBy: "attemptNumber", sortOrder: "DESC",
+  }, 10, open && !!assignmentStudentId);
+  const attempts = historyPage.data;
+  const loading = historyPage.loading;
 
   const columns = [
     { title: "Lần", dataIndex: "attemptNumber", width: 60, render: (n: number) => <span className="font-bold text-indigo-600">#{n}</span> },
@@ -668,7 +580,7 @@ function AttemptHistoryModal({
       ) : attempts.length === 0 ? (
         <Empty description="Chưa có lần làm bài nào" />
       ) : (
-        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={false} size="small" className="rounded-xl overflow-hidden" />
+        <Table dataSource={attempts} columns={columns} rowKey="id" pagination={historyPage.pagination} size="small" className="rounded-xl overflow-hidden" />
       )}
     </Modal>
   );
