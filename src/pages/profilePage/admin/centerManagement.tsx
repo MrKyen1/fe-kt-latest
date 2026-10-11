@@ -4,6 +4,7 @@ import { useQueryVersion } from "../../../hooks/useQueryVersion";
 import type { ReactNode } from "react";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { mapUserResponse } from "../../../services/userService";
+import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 import { ServerSelect } from "../../../components/ServerSelect";
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -55,6 +56,7 @@ import {
   EnvironmentOutlined,
   UploadOutlined,
   SafetyCertificateOutlined,
+  FileExcelOutlined,
 } from "@ant-design/icons";
 
 import { userService } from "../../../services/userService";
@@ -182,6 +184,7 @@ export default function CenterManagement() {
   const { isMobile } = useResponsive();
   const { user, hasPermission } = useAuth();
   const isTeacher = user?.role === "teacher";
+  const canExportStudents = (user?.role === "admin" || user?.role === "teacher") && hasPermission("users.read");
   const basePath = isTeacher ? "/teacher/centers" : "/admin/dashboard/centers";
 
   // Mobile card pagination states
@@ -294,6 +297,7 @@ export default function CenterManagement() {
   const [adminSearch, setAdminSearch] = useState("");
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [isExportingStudent, setIsExportingStudent] = useState(false);
 
   const [studentClassIds, setStudentClassIds] = useState<string[]>([]);
   const [selectedCenterDetail, setSelectedCenterDetail] = useState<any>(null);
@@ -1109,6 +1113,85 @@ export default function CenterManagement() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportStudents = (overrideIsActive?: boolean) => {
+    if (!canExportStudents) {
+      message.error("Bạn không có quyền xuất danh sách học sinh.");
+      return;
+    }
+
+    const executeExport = async (isActiveVal: boolean) => {
+      try {
+        setIsExportingStudent(true);
+        const hideLoading = message.loading({
+          content: `Đang xuất danh sách học sinh ${isActiveVal ? "đang hoạt động" : "đã nghỉ"}...`,
+          duration: 0,
+        });
+
+        await userService.exportStudents({
+          centerId: selectedCenterId || undefined,
+          search: studentSearch.trim() || undefined,
+          isActive: isActiveVal,
+        });
+
+        hideLoading();
+        message.success("Xuất danh sách học sinh thành công!");
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.name === "AbortError") {
+          return;
+        }
+        message.error(err?.message || "Xuất Excel thất bại. Vui lòng thử lại!");
+      } finally {
+        setIsExportingStudent(false);
+      }
+    };
+
+    if (overrideIsActive !== undefined) {
+      executeExport(overrideIsActive);
+      return;
+    }
+
+    if (studentStatusFilter === "active") {
+      executeExport(true);
+    } else if (studentStatusFilter === "inactive") {
+      executeExport(false);
+    } else {
+      Modal.confirm({
+        title: "Chọn loại danh sách học sinh cần xuất",
+        icon: <FileExcelOutlined className="text-emerald-500 text-xl" />,
+        centered: true,
+        content: (
+          <div className="py-2 text-sm text-slate-600 space-y-3">
+            <p>Hệ thống hỗ trợ xuất file Excel riêng theo từng trạng thái học sinh. Vui lòng chọn danh sách bạn muốn tải:</p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                type="primary"
+                className="bg-emerald-600 hover:bg-emerald-700 rounded-xl h-9 font-medium"
+                onClick={() => {
+                  Modal.destroyAll();
+                  executeExport(true);
+                }}
+              >
+                Xuất học sinh Đang hoạt động
+              </Button>
+              <Button
+                className="border-slate-300 hover:border-slate-400 rounded-xl h-9 font-medium"
+                onClick={() => {
+                  Modal.destroyAll();
+                  executeExport(false);
+                }}
+              >
+                Xuất học sinh Đã nghỉ
+              </Button>
+            </div>
+          </div>
+        ),
+        footer: null,
+        closable: true,
+        maskClosable: true,
+      });
     }
   };
 
@@ -2429,7 +2512,7 @@ export default function CenterManagement() {
 
                     {/* USERS ACCORDION/TAB CARD */}
                     <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-sm">
-                      <Tabs
+                      <ResponsiveTabs
                         activeKey={activeSubTab}
                         onChange={handleSubTabChange}
                         className="custom-tabs border-b-0"
@@ -2671,15 +2754,27 @@ export default function CenterManagement() {
                                       />
                                     </div>
                                   </div>
-                                  <Button
-                                    type="primary"
-                                    icon={<PlusOutlined />}
-                                    disabled={!hasPermission("students.manage")}
-                                    onClick={handleStudentCreate}
-                                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold w-full sm:w-auto self-start sm:self-end"
-                                  >
-                                    Tạo Học sinh
-                                  </Button>
+                                  <div className="flex items-center gap-2 w-full sm:w-auto self-start sm:self-end">
+                                    {canExportStudents && (
+                                      <Button
+                                        icon={<FileExcelOutlined />}
+                                        loading={isExportingStudent}
+                                        onClick={() => handleExportStudents()}
+                                        className="rounded-xl border-emerald-600 text-emerald-600 hover:text-emerald-700 hover:border-emerald-700 hover:bg-emerald-50 shadow-sm font-semibold flex-1 sm:flex-initial"
+                                      >
+                                        Xuất Excel
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="primary"
+                                      icon={<PlusOutlined />}
+                                      disabled={!hasPermission("students.manage")}
+                                      onClick={handleStudentCreate}
+                                      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-sm font-semibold flex-1 sm:flex-initial"
+                                    >
+                                      Tạo Học sinh
+                                    </Button>
+                                  </div>
                                 </div>
 
                                 <SectionLoading loading={false} name="students">
@@ -3043,15 +3138,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={720}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3150,15 +3236,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               centered
-              width={620}
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3253,15 +3330,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={650}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3710,15 +3778,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={650}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3968,15 +4027,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={650}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -4241,15 +4291,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               centered
-              width={560}
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form

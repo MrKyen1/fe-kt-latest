@@ -155,4 +155,79 @@ export const userService = {
     );
     return unwrapData(response);
   },
+
+  async exportStudents(filters?: StudentExportFilters, signal?: AbortSignal): Promise<void> {
+    const params: Record<string, any> = {};
+    if (filters) {
+      const allowed: (keyof StudentExportFilters)[] = [
+        "search",
+        "code",
+        "phone",
+        "email",
+        "isActive",
+        "classId",
+        "centerId",
+        "specializationId",
+      ];
+      for (const key of allowed) {
+        const val = filters[key];
+        if (val !== undefined && val !== null && val !== "") {
+          params[key] = val;
+        }
+      }
+    }
+
+    try {
+      const response = await apiClient.get("/users/students/export", {
+        params,
+        responseType: "blob",
+        timeout: 11 * 60 * 1000,
+        signal,
+      });
+
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = "danh-sach-hoc-sinh.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 60_000);
+    } catch (error: any) {
+      if (error?.name === "CanceledError" || error?.name === "AbortError") {
+        throw error;
+      }
+      if (error?.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const json = JSON.parse(text);
+          const message = Array.isArray(json?.message)
+            ? json.message.join("; ")
+            : json?.message;
+          if (message) {
+            throw new Error(message);
+          }
+        } catch (e: any) {
+          if (e instanceof Error && e.message && e.message !== error.message) {
+            throw e;
+          }
+        }
+      }
+      throw error;
+    }
+  },
 };
+
+export interface StudentExportFilters {
+  search?: string;
+  code?: string;
+  phone?: string;
+  email?: string;
+  isActive?: boolean;
+  classId?: string;
+  centerId?: string;
+  specializationId?: string;
+}

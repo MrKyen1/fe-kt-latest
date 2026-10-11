@@ -5,8 +5,8 @@ import { ExamData } from "../../types";
 import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import logoImg from "../../assets/logo/logo.png";
 import { motion, AnimatePresence } from "framer-motion";
-import { Modal, Drawer, Button } from "antd";
-import { Trophy } from "lucide-react";
+import { Modal, Button } from "antd";
+import { Trophy, ChevronDown, ChevronUp } from "lucide-react";
 import { studentLearningService } from "../../services/studentLearningService";
 import { parseBackendAnswer } from "./ExamDetail";
 import { formatScore, formatPercentage, formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
@@ -240,6 +240,8 @@ interface QuestionNavigatorProps {
   userAnswers: Record<string, AnswerValue>;
   getQuestionStatus: (q: any) => string;
   onSelectQuestion: (idx: number) => void;
+  /** compact mode: hide progress/legend, tight grid — for inline mobile panel */
+  compact?: boolean;
 }
 
 const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
@@ -254,33 +256,43 @@ const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
   userAnswers,
   getQuestionStatus,
   onSelectQuestion,
+  compact = false,
 }) => {
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 sm:p-5 flex-1 overflow-y-auto">
-        <div className="mb-5 sm:mb-6">
-          <div className="flex justify-between items-end mb-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              {!isInitialExam && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
-            </span>
-            <span className="text-sm font-bold text-emerald-600">
-              {!isInitialExam && !isReviewMode
-                ? `${currentMasteredCount}/${examData.questions.length}`
-                : `${currentIndex + 1}/${totalQuestions}`}
-            </span>
+      <div className={compact ? "px-3 py-2" : "p-4 sm:p-5 flex-1 overflow-y-auto"}>
+        {/* Progress section — hidden in compact mode (shown in slim top bar instead) */}
+        {!compact && (
+          <div className="mb-5 sm:mb-6">
+            <div className="flex justify-between items-end mb-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {!isInitialExam && !isReviewMode ? "Tiến độ ôn tập" : "Tiến độ làm bài"}
+              </span>
+              <span className="text-sm font-bold text-emerald-600">
+                {!isInitialExam && !isReviewMode
+                  ? `${currentMasteredCount}/${examData.questions.length}`
+                  : `${currentIndex + 1}/${totalQuestions}`}
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-emerald-500 h-full transition-all duration-500"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
           </div>
-          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-            <div
-              className="bg-emerald-500 h-full transition-all duration-500"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        </div>
+        )}
 
-        <div className="mb-3 sm:mb-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
-          {!isInitialExam && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
-        </div>
-        <div className="grid grid-cols-5 gap-2">
+        {/* Section label — hidden in compact mode */}
+        {!compact && (
+          <div className="mb-3 sm:mb-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+            {!isInitialExam && !isReviewMode ? "Câu hỏi cần ôn tập" : "Danh sách câu hỏi"}
+          </div>
+        )}
+
+        {/* Question grid */}
+        <div className={compact ? "grid gap-1.5" : "grid grid-cols-5 gap-2"}
+          style={compact ? { gridTemplateColumns: "repeat(auto-fill, minmax(32px, 1fr))" } : undefined}>
           {activeQuestions.map((q, idx) => {
             const originalIdx = examData.questions.findIndex((item) => item.id === q.id);
             const questionNumber = originalIdx >= 0 ? originalIdx + 1 : idx + 1;
@@ -291,8 +303,10 @@ const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
                 (userAnswers[q.id] as string[]).length > 0);
             const questionStatus = getQuestionStatus(q);
 
-            let itemClass =
-              "w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg text-[13px] font-semibold border transition-all cursor-pointer select-none";
+            let itemClass = compact
+              ? "h-8 flex items-center justify-center rounded-md text-[12px] font-semibold border transition-all cursor-pointer select-none"
+              : "w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-lg text-[13px] font-semibold border transition-all cursor-pointer select-none";
+
             if (isCurrent) {
               if (questionStatus === "correct") {
                 itemClass += " bg-emerald-500 text-white border-emerald-500";
@@ -325,30 +339,56 @@ const QuestionNavigator: React.FC<QuestionNavigatorProps> = ({
             );
           })}
         </div>
+
+        {/* Compact legend — inline row, minimal */}
+        {compact && (
+          <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-slate-200 border border-gray-300 inline-block" />
+              Chưa chọn
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+              Đã chọn
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              Đúng
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+              Sai
+            </span>
+          </div>
+        )}
       </div>
-      <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 shrink-0">
-        <div className="text-[10px] text-slate-400 italic mb-2 text-center underline uppercase">
-          Chú thích:
+
+      {/* Full legend — only in non-compact (desktop sidebar) mode */}
+      {!compact && (
+        <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 shrink-0">
+          <div className="text-[10px] text-slate-400 italic mb-2 text-center underline uppercase">
+            Chú thích:
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 text-[10px]">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-200 border border-gray-300" />
+              Chưa chọn
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-blue-500" />
+              Đã chọn
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500" />
+              Đúng
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
+              <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-rose-500" />
+              Sai
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-[10px]">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
-            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-200 border border-gray-300" />
-            Chưa chọn
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
-            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-blue-500" />
-            Đã chọn
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
-            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500" />
-            Đúng
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600">
-            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-rose-500" />
-            Sai
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -359,7 +399,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   const navigate = useNavigate();
   const { courseId } = useParams();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  const [navPanelOpen, setNavPanelOpen] = useState(true);
   type AnswerValue = string | string[] | Record<string, string>;
 
   const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
@@ -1514,7 +1554,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }
 
   return (
-    <div className="text-slate-800 flex flex-col h-screen overflow-hidden font-sans bg-slate-50 transition-colors">
+    <div className="text-slate-800 flex flex-col h-screen font-sans bg-slate-50 transition-colors">
       <header className="h-14 sm:h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
@@ -1562,61 +1602,68 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         </div>
       </header>
 
-      {/* ── Slim top bar cho Mobile / Tablet (< lg) ── */}
-      <div className="lg:hidden bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[140px]">
-            <div
-              className="bg-emerald-500 h-full transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
+      {/* ── Slim top bar + Inline Question Panel cho Mobile / Tablet (< lg) ── */}
+      <div className="lg:hidden flex flex-col shrink-0 bg-white border-b border-slate-200 shadow-sm z-10">
+        {/* Top bar: progress + toggle */}
+        <div className="px-3 py-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[140px]">
+              <div
+                className="bg-emerald-500 h-full transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span className="text-xs font-bold text-slate-600 shrink-0">
+              {!isInitialExam && !isReviewMode
+                ? `${currentMasteredCount}/${examData.questions.length}`
+                : `${currentIndex + 1}/${totalQuestions}`}
+            </span>
+          </div>
+          <button
+            onClick={() => setNavPanelOpen((prev) => !prev)}
+            className="flex items-center gap-1 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full transition-colors"
+            aria-label={navPanelOpen ? "Ẩn danh sách câu" : "Hiện danh sách câu"}
+          >
+            <span>{navPanelOpen ? "Ẩn" : "Danh sách câu"}</span>
+            {navPanelOpen ? (
+              <ChevronUp size={14} />
+            ) : (
+              <ChevronDown size={14} />
+            )}
+          </button>
+        </div>
+
+        {/* Inline collapsible question navigator — compact mode */}
+        <div
+          className="overflow-hidden transition-all duration-300"
+          style={{
+            maxHeight: navPanelOpen ? "30vh" : "0px",
+            opacity: navPanelOpen ? 1 : 0,
+          }}
+        >
+          <div className="overflow-y-auto" style={{ maxHeight: "30vh" }}>
+            <QuestionNavigator
+              isInitialExam={isInitialExam}
+              isReviewMode={isReviewMode}
+              currentMasteredCount={currentMasteredCount}
+              currentIndex={currentIndex}
+              totalQuestions={totalQuestions}
+              examData={examData}
+              progressPercent={progressPercent}
+              activeQuestions={activeQuestions}
+              userAnswers={userAnswers}
+              getQuestionStatus={getQuestionStatus}
+              onSelectQuestion={(idx) => {
+                handleSelectQuestion(idx);
+                setNavPanelOpen(false);
+              }}
+              compact={true}
             />
           </div>
-          <span className="text-xs font-bold text-slate-600 shrink-0">
-            {!isInitialExam && !isReviewMode
-              ? `${currentMasteredCount}/${examData.questions.length}`
-              : `${currentIndex + 1}/${totalQuestions}`}
-          </span>
         </div>
-        <Button
-          size="small"
-          onClick={() => setNavDrawerOpen(true)}
-          className="text-xs font-medium text-slate-700 rounded-lg flex items-center gap-1.5"
-        >
-          <span>Danh sách câu</span>
-          <span className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[11px] font-bold">
-            {currentIndex + 1}/{totalQuestions}
-          </span>
-        </Button>
       </div>
 
-      {/* ── Drawer danh sách câu hỏi cho Mobile / Tablet (< lg) ── */}
-      <Drawer
-        title="Danh sách câu hỏi"
-        placement="bottom"
-        height="72vh"
-        open={navDrawerOpen}
-        onClose={() => setNavDrawerOpen(false)}
-        styles={{ body: { padding: 0 } }}
-      >
-        <QuestionNavigator
-          isInitialExam={isInitialExam}
-          isReviewMode={isReviewMode}
-          currentMasteredCount={currentMasteredCount}
-          currentIndex={currentIndex}
-          totalQuestions={totalQuestions}
-          examData={examData}
-          progressPercent={progressPercent}
-          activeQuestions={activeQuestions}
-          userAnswers={userAnswers}
-          getQuestionStatus={getQuestionStatus}
-          onSelectQuestion={(idx) => {
-            handleSelectQuestion(idx);
-            setNavDrawerOpen(false);
-          }}
-        />
-      </Drawer>
-
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex overflow-y-auto lg:overflow-hidden">
         {/* ── Aside Desktop (≥ lg) ── */}
         <aside className="hidden lg:flex w-72 bg-white border-r border-slate-200 flex-col shrink-0 transition-colors">
           <QuestionNavigator
@@ -1634,7 +1681,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           />
         </aside>
 
-        <section className="flex-1 bg-slate-50 p-2 sm:p-4 lg:p-8 pt-4 sm:pt-6 lg:pt-10 flex flex-col items-center overflow-y-auto lg:overflow-hidden relative transition-colors">
+        <section className="flex-1 bg-slate-50 p-2 sm:p-4 lg:p-8 pt-4 sm:pt-6 lg:pt-10 flex flex-col items-center overflow-y-auto relative transition-colors">
           <div
             className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} min-h-[460px] lg:h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 relative flex flex-col transition-all duration-500`}
           >

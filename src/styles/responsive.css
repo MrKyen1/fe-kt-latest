@@ -1,51 +1,246 @@
 /*
- * Responsive overrides toàn cục cho mobile / tablet.
- * Mọi rule đều nằm trong media query < 1024px → desktop không bị ảnh hưởng.
+ * Responsive overrides toàn cục cho cả PC và Mobile / Tablet.
+ * Đảm bảo:
+ * 1. Mọi Modal trên cả PC lẫn Mobile luôn căn giữa, có chiều cao giới hạn trong màn hình.
+ * 2. Header & Footer luôn hiển thị cố định ở đầu và cuối modal.
+ * 3. Khi nội dung form/dữ liệu dài quá, tự động xuất hiện thanh cuộn ở phần Body giữa.
+ * 4. Không bao giờ bị cắt top/bottom hay tràn màn hình.
  */
 
-/* ── Tablet & Mobile (< 1024px) ───────────────────────────── */
-@media (max-width: 1023.98px) {
-  /* Ant Table owns horizontal scrolling and synchronizes its header/body.
-     A second scrolling container or body-only min-width breaks that alignment. */
+/* ============================================================
+ * 1. QUY CHUẨN MODAL TOÀN HỆ THỐNG (ÁP DỤNG CẢ PC & MOBILE)
+ * ============================================================ */
 
-  /* Tabs điều hướng cuộn ngang mượt */
-  .ant-tabs-nav-wrap {
-    -webkit-overflow-scrolling: touch;
+/* Modal Wrapper: Phủ trọn viewport, căn giữa toàn bộ */
+.ant-modal-root .ant-modal-wrap,
+.ant-modal-wrap {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  padding: 24px 16px !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  z-index: 1000;
+}
+
+/* Triệt tiêu pseudo-element ::before của antd centered (nguyên nhân gây lệch tọa độ) */
+.ant-modal-root .ant-modal-wrap::before,
+.ant-modal-root .ant-modal-wrap.ant-modal-centered::before,
+.ant-modal-wrap::before,
+.ant-modal-wrap.ant-modal-centered::before {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Khi modal đóng, ẩn hoàn toàn wrapper để không chặn click trên màn hình */
+.ant-modal-wrap[style*="display: none"],
+.ant-modal-wrap[style*="display:none"] {
+  display: none !important;
+}
+
+/* Modal Box: Căn giữa, giới hạn chiều cao tối đa không vượt viewport */
+.ant-modal-root .ant-modal,
+.ant-modal-wrap .ant-modal,
+.ant-modal {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: calc(100vh - 48px) !important;
+  max-width: calc(100vw - 32px) !important;
+  margin: auto !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  padding: 0 !important;
+  position: relative !important;
+  transform: none !important;
+}
+
+.ant-modal-wrap.ant-modal-centered .ant-modal,
+.ant-modal-wrap .ant-modal.ant-modal-centered {
+  top: 0 !important;
+  margin: auto !important;
+}
+
+/* Modal Content: Thùng chứa Flexbox chuẩn, ghim header/footer và cuộn body */
+.ant-modal-root .ant-modal .ant-modal-content,
+.ant-modal-wrap .ant-modal .ant-modal-content,
+.ant-modal .ant-modal-content {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: calc(100vh - 48px) !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 20px !important;
+  padding: 20px 24px !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+
+/* Header: Luôn cố định ở trên đỉnh */
+.ant-modal-root .ant-modal .ant-modal-header,
+.ant-modal-wrap .ant-modal .ant-modal-header,
+.ant-modal .ant-modal-header {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  margin-bottom: 14px !important;
+  padding: 0 !important;
+}
+
+/* Footer: Luôn cố định ở dưới đáy, luôn thấy nút Lưu / Hủy */
+.ant-modal-root .ant-modal .ant-modal-footer,
+.ant-modal-wrap .ant-modal .ant-modal-footer,
+.ant-modal .ant-modal-footer {
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  margin-top: 14px !important;
+  padding-top: 12px !important;
+  border-top: 1px solid #f1f5f9 !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+}
+
+.ant-modal .ant-modal-footer > .ant-btn + .ant-btn {
+  margin-inline-start: 0 !important;
+}
+
+/* Body: Tự động co giãn theo khoảng trống còn lại, nếu dài quá thì hiện scrollbar */
+.ant-modal-root .ant-modal .ant-modal-body,
+.ant-modal-wrap .ant-modal .ant-modal-body,
+.ant-modal .ant-modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 210px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  padding: 4px 8px 4px 2px !important;
+}
+
+/* Form layout trong body không được đẩy chiều cao vượt container */
+.ant-modal .ant-modal-body .ant-form {
+  max-height: none !important;
+}
+
+/* ============================================================
+ * 2. TABLET OVERRIDES (< 1024px)
+ * ============================================================ */
+@media (max-width: 1023.98px) {
+  /* Khung chứa bảng không bao giờ làm tràn trang */
+  .ant-table-wrapper,
+  .app-table-viewport {
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Tabs điều hướng cuộn ngang mượt mà, vuốt qua lại dễ dàng giữa các tab */
+  .ant-tabs .ant-tabs-nav {
+    margin-bottom: 12px !important;
+  }
+  .ant-tabs .ant-tabs-nav-wrap {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .ant-tabs .ant-tabs-nav-wrap::-webkit-scrollbar {
+    display: none !important;
+  }
+  .ant-tabs .ant-tabs-nav-list {
+    min-width: max-content !important;
+    transform: none !important;
+    padding-bottom: 2px !important;
+  }
+  .ant-tabs .ant-tabs-nav-operations {
+    display: none !important;
   }
 }
 
-/* ── Mobile (< 768px) ─────────────────────────────────────── */
+/* ============================================================
+ * 3. MOBILE OVERRIDES (< 768px)
+ * ============================================================ */
 @media (max-width: 767.98px) {
-  /* Modal gần full màn hình, nội dung cuộn bên trong */
-  .ant-modal-wrap .ant-modal {
-    max-width: calc(100vw - 16px) !important;
-    margin: 8px auto !important;
-    top: 8px !important;
-    padding-bottom: 0 !important;
+  /* Chống tràn ngang 100% toàn bộ trang trên điện thoại */
+  html, body, #root {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    width: 100% !important;
   }
-  .ant-modal-wrap.ant-modal-centered .ant-modal {
-    top: 0 !important;
+
+  /* Khung chứa bảng và nội dung lớn không được đẩy phình trang */
+  .ant-table-wrapper,
+  .app-table-viewport {
+    max-width: 100% !important;
+    min-width: 0 !important;
   }
+  .ant-table {
+    max-width: 100% !important;
+  }
+
+  /* Wrapper padding gọn hơn trên mobile */
+  .ant-modal-root .ant-modal-wrap,
+  .ant-modal-wrap {
+    padding: 12px !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+
+  /* Chiều rộng full-width trên mobile, cách mép 12px */
+  .ant-modal-root .ant-modal-wrap .ant-modal,
+  .ant-modal-root .ant-modal,
+  .ant-modal-wrap .ant-modal,
+  .ant-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100dvh - 24px) !important;
+  }
+
+  .ant-modal-wrap .ant-modal.ant-modal-confirm {
+    max-width: min(380px, calc(100vw - 24px)) !important;
+  }
+
+  .ant-modal-root .ant-modal .ant-modal-content,
+  .ant-modal-wrap .ant-modal .ant-modal-content,
   .ant-modal .ant-modal-content {
+    max-height: calc(100dvh - 24px) !important;
     padding: 16px !important;
-    max-height: calc(100dvh - 16px);
-    display: flex;
-    flex-direction: column;
+    border-radius: 18px !important;
   }
-  .ant-modal .ant-modal-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    max-height: none !important;
+
+  .ant-modal-root .ant-modal .ant-modal-header,
+  .ant-modal-wrap .ant-modal .ant-modal-header,
+  .ant-modal .ant-modal-header {
+    margin-bottom: 10px !important;
   }
+
+  .ant-modal-root .ant-modal .ant-modal-footer,
+  .ant-modal-wrap .ant-modal .ant-modal-footer,
   .ant-modal .ant-modal-footer {
-    flex-wrap: wrap;
-    gap: 8px;
-    display: flex;
-    justify-content: flex-end;
+    margin-top: 10px !important;
+    padding-top: 10px !important;
   }
-  .ant-modal .ant-modal-footer > .ant-btn + .ant-btn {
-    margin-inline-start: 0 !important;
+
+  /* Giới hạn chiều cao Body trên mobile để KHÔNG BAO GIỜ đẩy rớt footer */
+  .ant-modal-root .ant-modal .ant-modal-body,
+  .ant-modal-wrap .ant-modal .ant-modal-body,
+  .ant-modal .ant-modal-body {
+    max-height: calc(100dvh - 170px) !important;
+  }
+
+  /* Form columns bên trong modal tự động xếp chồng trên mobile */
+  .ant-modal .ant-form .ant-row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
   }
 
   /* Popover không tràn màn hình */
