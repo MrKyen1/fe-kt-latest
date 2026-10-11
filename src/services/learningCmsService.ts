@@ -86,16 +86,18 @@ export const learningCmsService = {
         { headers: { "Content-Type": "multipart/form-data" } },
       ));
     },
-    async create(payload: Partial<MediaAsset>): Promise<MediaAsset> {
+    async create(payload: Partial<MediaAsset> & { specializationId?: string }): Promise<MediaAsset> {
       return unwrapData(
         await apiClient.post<ApiEnvelope<MediaAsset>>("/learning/media-assets", payload),
       );
     },
 
-    async upload(file: File, altText?: string): Promise<MediaAsset> {
+    async upload(file: File, altText?: string, specializationId?: string, category?: "question" | "curriculum" | "center" | "other"): Promise<MediaAsset> {
       const formData = new FormData();
       formData.append("file", file);
       if (altText) formData.append("altText", altText);
+      if (specializationId) formData.append("specializationId", specializationId);
+      if (category || specializationId) formData.append("category", category || "question");
 
       return unwrapData(
         await apiClient.post<ApiEnvelope<MediaAsset>>(
@@ -120,7 +122,7 @@ export const learningCmsService = {
       );
     },
 
-    async update(id: string, payload: Partial<MediaAsset>): Promise<MediaAsset> {
+    async update(id: string, payload: Partial<MediaAsset> & { specializationId?: string }): Promise<MediaAsset> {
       return unwrapData(
         await apiClient.patch<ApiEnvelope<MediaAsset>>(`/learning/media-assets/${id}`, payload),
       );

@@ -519,7 +519,7 @@ export default function CenterManagement() {
         if (file.originFileObj) {
           // This is a newly added local file, upload it now
           try {
-            const media = await learningCmsService.mediaAssets.upload(file.originFileObj, file.name);
+            const media = await learningCmsService.mediaAssets.upload(file.originFileObj, file.name, undefined, "center");
             subImgUrls.push(media.url);
           } catch (uploadErr: any) {
             message.error(`Tải ảnh ${file.name} lên thất bại: ${uploadErr.message || uploadErr}`);
