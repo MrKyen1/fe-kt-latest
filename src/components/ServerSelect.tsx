@@ -58,7 +58,7 @@ export function ServerSelect({ endpoint, query = {}, optionLabel, optionValue, o
     return () => observer.disconnect();
   }, []);
   const specializationId = useContext(LearningLookupScope);
-  const scopedQuery = /^\/learning\/(levels|skills|topics|reading-passages|curriculums|exams|questions)$/.test(endpoint)
+  const scopedQuery = /^\/learning\/(levels|skills|topics|reading-passages|curriculums|exams|questions|media-assets)$/.test(endpoint)
     ? { specializationId, ...query } : query;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");

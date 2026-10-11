@@ -1,3 +1,4 @@
+import { useSelectedMediaAsset } from "../../../../../hooks/useSelectedMediaAsset";
 import { ServerSelect } from "../../../../../components/ServerSelect";
 import { useAuth } from "../../../../../contexts/AuthContext";
 import React, { useState, useEffect } from "react";
@@ -52,7 +53,7 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
 
   const [assets, setAssets] = useState<MediaAssetItem[]>(allMedia);
   const filteredAssets = assets;
-  const selectedAsset = currentValue.mediaId ? assets.find(m => m.id === currentValue.mediaId) : undefined;
+  const selectedAsset = useSelectedMediaAsset(currentValue.file ? undefined : currentValue.mediaId, assets, currentValue.previewUrl);
   const isImg =
     currentValue.fileType === "image" ||
     selectedAsset?.type === "image" ||
@@ -265,7 +266,7 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
           </div>
         </Upload.Dragger>
       ) : (
-        <ServerSelect endpoint="/learning/media-assets" query={{ type: acceptType === "all" ? undefined : acceptType }}
+        <ServerSelect endpoint="/learning/media-assets" query={{ category: "question", type: acceptType === "all" ? undefined : acceptType }}
           optionLabel={asset => asset.altText || asset.originalName || asset.url.split("/").pop()}
           onRecords={rows => setAssets(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
           value={currentValue.mediaId} placeholder={placeholder} className="w-full" allowClear onChange={handleSelectAsset} />

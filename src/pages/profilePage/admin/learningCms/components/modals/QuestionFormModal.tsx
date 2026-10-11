@@ -1,4 +1,6 @@
-import { ServerSelect } from "../../../../../../components/ServerSelect";
+import { useSelectedMediaAsset } from "../../../../../../hooks/useSelectedMediaAsset";
+import { useContext } from "react";
+import { ServerSelect, LearningLookupScope } from "../../../../../../components/ServerSelect";
 import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
@@ -865,35 +867,9 @@ function MediaItemRow({
   const { hasPermission } = useAuth();
   const canUpload = hasPermission("learning.media.upload");
   const [filteredMedia, setFilteredMedia] = useState<MediaItem[]>(seedMedia);
-  const initialRow = form.getFieldValue(["mediaIds", name]);
-
-  const [itemState, setItemState] = useState<{
-    mediaId?: string;
-    file?: File;
-    previewUrl?: string;
-    fileName?: string;
-    fileType?: string;
-  }>({
-    mediaId: initialRow?.mediaId,
-    file: initialRow?.file,
-    previewUrl: initialRow?.previewUrl,
-    fileName: initialRow?.fileName,
-    fileType: initialRow?.fileType,
-  });
-
+  // Watch unregistered preview fields as well as IDs; the form owns media state.
+  const itemState = Form.useWatch(values => values.mediaIds?.[name], { form, preserve: true }) || {};
   const [mode, setMode] = useState<"upload" | "library">("upload");
-
-  // Sync if form changes externally (e.g. edit mode initialization)
-  useEffect(() => {
-    const row = form.getFieldValue(["mediaIds", name]);
-    setItemState({
-      mediaId: row?.mediaId,
-      file: row?.file,
-      previewUrl: row?.previewUrl,
-      fileName: row?.fileName,
-      fileType: row?.fileType,
-    });
-  }, [name, form]);
 
   const currentMediaId = itemState.mediaId;
   const currentFile = itemState.file;
@@ -903,27 +879,27 @@ function MediaItemRow({
 
   const hasItem = Boolean(currentFile || currentMediaId);
 
-  const selectedAsset = currentMediaId ? filteredMedia.find((m) => m.id === currentMediaId) : undefined;
+  const selectedAsset = useSelectedMediaAsset(currentFile ? undefined : currentMediaId, filteredMedia, currentPreviewUrl);
 
   const isImg = currentFile
     ? currentFileType === "image"
-    : selectedAsset?.type === "image" || selectedAsset?.mimeType?.startsWith("image");
+    : currentFileType === "image" || selectedAsset?.type === "image" || selectedAsset?.mimeType?.startsWith("image");
 
   const isAud = currentFile
     ? currentFileType === "audio"
-    : selectedAsset?.type === "audio" || selectedAsset?.mimeType?.startsWith("audio");
+    : currentFileType === "audio" || selectedAsset?.type === "audio" || selectedAsset?.mimeType?.startsWith("audio");
 
   const isVid = currentFile
     ? currentFileType === "video"
-    : selectedAsset?.type === "video" || selectedAsset?.mimeType?.startsWith("video");
+    : currentFileType === "video" || selectedAsset?.type === "video" || selectedAsset?.mimeType?.startsWith("video");
 
-  const previewSrc = currentFile && currentPreviewUrl
+  const previewSrc = currentPreviewUrl
     ? currentPreviewUrl
     : selectedAsset?.url || "";
 
   const displayName = currentFile
     ? (currentFileName || currentFile.name)
-    : (selectedAsset?.altText ?? selectedAsset?.url?.split("/").pop() ?? `Tệp #${currentMediaId}`);
+    : (currentFileName || selectedAsset?.altText || selectedAsset?.url?.split("/").pop() || `Tệp #${currentMediaId}`);
 
   const handleClearItem = () => {
     if (currentPreviewUrl) {
@@ -934,8 +910,6 @@ function MediaItemRow({
     form.setFieldValue(["mediaIds", name, "fileName"], undefined);
     form.setFieldValue(["mediaIds", name, "fileType"], undefined);
     form.setFieldValue(["mediaIds", name, "mediaId"], undefined);
-
-    setItemState({});
   };
 
   return (
@@ -1112,15 +1086,6 @@ function MediaItemRow({
               form.setFieldValue(["mediaIds", name, "mediaId"], undefined);
               form.setFieldValue(["mediaIds", name, "role"], defaultRole);
 
-              // Update local state -> triggers instant re-render!
-              setItemState({
-                file,
-                previewUrl,
-                fileName: file.name,
-                fileType,
-                mediaId: undefined,
-              });
-
               message.success(`Đã chọn "${file.name}"! Tệp sẽ được tải lên khi bạn nhấn "Lưu lại".`);
               return false;
             }}
@@ -1143,7 +1108,7 @@ function MediaItemRow({
             </div>
           </Upload.Dragger>
         ) : (
-          <ServerSelect endpoint="/learning/media-assets" onRecords={rows => setFilteredMedia(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} optionLabel={row => row.altText || row.originalName || row.url.split("/").pop()}
+          <ServerSelect endpoint="/learning/media-assets" query={{ category: "question" }} onRecords={rows => setFilteredMedia(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} optionLabel={row => row.altText || row.originalName || row.url.split("/").pop()}
             showSearch
             placeholder="Tìm kiếm tệp theo tên hoặc mô tả trong thư viện..."
             className="w-full"
@@ -1170,15 +1135,6 @@ function MediaItemRow({
                         : "prompt_image";
                 form.setFieldValue(["mediaIds", name, "role"], defaultRole);
               }
-
-              // Update local state -> triggers instant re-render!
-              setItemState({
-                mediaId: val,
-                file: undefined,
-                previewUrl: undefined,
-                fileName: undefined,
-                fileType: undefined,
-              });
             }}
           />
         )
@@ -1436,6 +1392,8 @@ export default function QuestionFormModal({
     }
   };
 
+  const specializationId = useContext(LearningLookupScope);
+
   const handleFormFinish = async (values: any) => {
     try {
       setSubmitting(true);
@@ -1471,7 +1429,7 @@ export default function QuestionFormModal({
           if (onUploadMedia) {
             uploaded = await onUploadMedia(file, fileName);
           } else {
-            uploaded = await learningCmsService.mediaAssets.upload(file, fileName);
+            uploaded = await learningCmsService.mediaAssets.upload(file, fileName, specializationId);
           }
 
           const uploadedId = uploaded?.id || uploaded?.data?.id;
@@ -1525,7 +1483,7 @@ export default function QuestionFormModal({
         if (mediaVal?.file) {
           const uploaded = onUploadMedia
             ? await onUploadMedia(mediaVal.file, mediaVal.fileName)
-            : await learningCmsService.mediaAssets.upload(mediaVal.file, mediaVal.fileName);
+            : await learningCmsService.mediaAssets.upload(mediaVal.file, mediaVal.fileName, specializationId);
           optMediaId = uploaded?.id || (uploaded as any)?.data?.id;
         } else if (mediaVal?.mediaId) {
           optMediaId = mediaVal.mediaId;
@@ -1547,7 +1505,7 @@ export default function QuestionFormModal({
         if (leftMediaVal?.file) {
           const uploaded = onUploadMedia
             ? await onUploadMedia(leftMediaVal.file, leftMediaVal.fileName)
-            : await learningCmsService.mediaAssets.upload(leftMediaVal.file, leftMediaVal.fileName);
+            : await learningCmsService.mediaAssets.upload(leftMediaVal.file, leftMediaVal.fileName, specializationId);
           leftMediaId = uploaded?.id || (uploaded as any)?.data?.id;
         } else if (leftMediaVal?.mediaId) {
           leftMediaId = leftMediaVal.mediaId;

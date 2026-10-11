@@ -470,7 +470,8 @@ export default function LearningCms() {
   const applyCmsFilters = (patch: CmsFilters) => setCmsFilters(previous => ({ ...previous, [filterScope]: { ...previous[filterScope], ...patch } }));
   const cmsQuery = Object.fromEntries(Object.entries(appliedCmsFilters).filter(([, value]) => value.length > 0).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : value]));
   const resourcePage = useServerPagination(`/learning/${resource}`, {
-    specializationId: resource === "tags" || resource === "media-assets" ? undefined : selectedSpecializationId,
+    specializationId: resource === "tags" ? undefined : selectedSpecializationId,
+    category: resource === "media-assets" ? "question" : undefined,
     ...cmsQuery,
     type: activeTab === "media" && mediaTypeFilter !== "all" ? mediaTypeFilter : undefined,
   }, PAGE_SIZE_DEFAULT, subjectsLoaded && !!selectedSpecializationId);
@@ -627,7 +628,7 @@ export default function LearningCms() {
     if (!uploadFile) { message.warning("Vui lòng chọn tệp để tải lên!"); return; }
     try {
       setUploadLoading(true);
-      await learningCmsService.mediaAssets.upload(uploadFile, mediaAlt);
+      await learningCmsService.mediaAssets.upload(uploadFile, mediaAlt, selectedSpecializationId);
       message.success("Tải lên tệp thành công");
       setUploadFile(null);
       setMediaAlt("");
@@ -641,7 +642,7 @@ export default function LearningCms() {
   };
 
   const handleUploadQuestionMedia = async (file: File, altText?: string) => {
-    const asset = await learningCmsService.mediaAssets.upload(file, altText);
+    const asset = await learningCmsService.mediaAssets.upload(file, altText, selectedSpecializationId);
     setMedia((prev) => [asset, ...prev]);
     return asset;
   };
@@ -789,6 +790,9 @@ export default function LearningCms() {
         mediaId: m.mediaId ?? m.media?.id,
         role: m.role,
         orderIndex: m.orderIndex,
+        previewUrl: m.media?.url,
+        fileType: m.media?.type,
+        fileName: m.media?.altText || m.media?.url?.split("/").pop(),
       }));
 
       const resolveEditablePrompt = (rec: any) => {
@@ -888,6 +892,9 @@ export default function LearningCms() {
         mediaId: m.mediaId ?? m.media?.id,
         role: m.role,
         orderIndex: m.orderIndex,
+        previewUrl: m.media?.url,
+        fileType: m.media?.type,
+        fileName: m.media?.altText || m.media?.url?.split("/").pop(),
       }));
 
       questionForm.resetFields();

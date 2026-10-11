@@ -1,4 +1,5 @@
-import { ServerSelect } from "../../../../../../components/ServerSelect";
+import { useContext } from "react";
+import { ServerSelect, LearningLookupScope } from "../../../../../../components/ServerSelect";
 import { useAuth } from "../../../../../../contexts/AuthContext";
 import { useState } from "react";
 import { Form, Input, Modal, Select, Upload, Button, message, Spin } from "antd";
@@ -30,13 +31,14 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
   const { hasPermission } = useAuth();
   const canUpload = hasPermission("learning.media.upload");
   const [isUploading, setIsUploading] = useState(false);
+  const specializationId = useContext(LearningLookupScope);
   const imageUrl = Form.useWatch("image", form);
 
   const handleUploadImage = async (file: File) => {
     if (!canUpload) return;
     try {
       setIsUploading(true);
-      const media = await learningCmsService.mediaAssets.upload(file, `Cover: ${form.getFieldValue("title") || "Curriculum"}`);
+      const media = await learningCmsService.mediaAssets.upload(file, `Cover: ${form.getFieldValue("title") || "Curriculum"}`, specializationId, "curriculum");
       form.setFieldValue("image", media.url);
       message.success("Tải ảnh bìa giáo trình thành công!");
     } catch (err: any) {
