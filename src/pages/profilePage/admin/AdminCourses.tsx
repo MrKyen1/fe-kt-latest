@@ -1,4 +1,5 @@
 import Table from "../../../components/Table";
+import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, message } from "antd";
@@ -176,7 +177,7 @@ export default function AdminCourses() {
         </Space>
       }
     >
-      <Tabs
+      <ResponsiveTabs
         activeKey={activeKey}
         onChange={(key) => setActiveKey(key as ResourceKey)}
         items={resources.map((resource) => ({

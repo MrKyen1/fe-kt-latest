@@ -1,5 +1,6 @@
 import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import Table from "../../../../../components/Table";
+import { ResponsiveTabs } from "../../../../../components/ResponsiveTabs";
 import { Button, Input, Tabs } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { Target, Sparkles, Folder, Tag as TagIcon } from "lucide-react";
@@ -107,12 +108,13 @@ export default function TaxonomyTab({
     <div className="space-y-4 pt-4">
       {/* Header row: inner tabs + search + create */}
       <div className="flex justify-between items-center flex-wrap gap-3">
-        <Tabs
+        <ResponsiveTabs
           type="card"
           activeKey={taxTab}
           onChange={onTaxTabChange}
-          className="!mb-0"
+          className="!mb-0 w-full sm:w-auto"
           items={TAX_TABS}
+          dropdownLabel="Danh mục phân loại:"
         />
 
         <div className="flex items-center gap-3 w-full sm:w-auto">

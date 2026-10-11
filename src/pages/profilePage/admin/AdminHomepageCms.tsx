@@ -2,6 +2,7 @@ import { LoadingRegion } from "../../../components/LoadingRegion";
 import { PagedCollection } from "../../../components/PagedCollection";
 import Table from "../../../components/Table";
 import { useServerPagination } from "../../../hooks/useServerPagination";
+import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -973,29 +974,29 @@ export default function AdminHomepageCms() {
       children: (
         <div className="space-y-6 pt-2">
           {/* Sub-pills Toolbar (như TaxonomyTab trong Learning CMS) */}
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-2 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/60 shadow-2xs">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/60 shadow-2xs">
               <button
                 type="button"
                 onClick={() => handleFacilitiesSubTabChange("info")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${facilitiesSubTab === "info"
+                className={`px-2.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-center ${facilitiesSubTab === "info"
                     ? "bg-white text-indigo-700 shadow-xs"
                     : "text-slate-600 hover:text-slate-900"
                   }`}
               >
-                <Building size={14} />
-                <span>Thông tin &amp; Điểm nổi bật</span>
+                <Building size={14} className="shrink-0" />
+                <span className="truncate">Thông tin cơ sở</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleFacilitiesSubTabChange("gallery")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${facilitiesSubTab === "gallery"
+                className={`px-2.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-center ${facilitiesSubTab === "gallery"
                     ? "bg-white text-indigo-700 shadow-xs"
                     : "text-slate-600 hover:text-slate-900"
                   }`}
               >
-                <ImageIcon size={14} />
-                <span>Bộ sưu tập ảnh Gallery</span>
+                <ImageIcon size={14} className="shrink-0" />
+                <span className="truncate">Bộ sưu tập ảnh</span>
                 <Badge
                   count={`${activeGalleryCount}/4`}
                   color={activeGalleryCount >= 4 ? "#ef4444" : "#059669"}
@@ -1009,7 +1010,7 @@ export default function AdminHomepageCms() {
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleOpenCreateGallery}
-                className="bg-emerald-600 hover:bg-emerald-700 h-10 px-5 rounded-xl font-semibold shadow-xs flex items-center gap-2"
+                className="bg-emerald-600 hover:bg-emerald-700 h-10 px-5 rounded-xl font-semibold shadow-xs flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 Thêm ảnh Gallery
               </Button>
@@ -1603,9 +1604,8 @@ export default function AdminHomepageCms() {
             </div>
 
             {/* ── Main Tab Card Container ────────────────────────────── */}
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-              {/* Tabs Size Large */}
-              <Tabs
+            <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm">
+              <ResponsiveTabs
                 activeKey={activeTab}
                 onChange={handleTabChange}
                 size="large"

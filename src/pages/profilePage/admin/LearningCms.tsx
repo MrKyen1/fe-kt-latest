@@ -2,6 +2,7 @@ import { CmsHeaderFilterContext, type CmsFilters } from "../../../components/Cms
 import { useLearningCmsSummary } from "../../../hooks/useLearningCmsSummary";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { ServerSelect, LearningLookupScope } from "../../../components/ServerSelect";
+import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 // ============================================================
 // LearningCms — Main Orchestrator
 // ============================================================
@@ -1834,7 +1835,7 @@ export default function LearningCms() {
                   </Badge>
                 </div>
               </div>
-              <Tabs
+              <ResponsiveTabs
                 activeKey={activeTab}
                 onChange={setActiveTab}
                 size="large"

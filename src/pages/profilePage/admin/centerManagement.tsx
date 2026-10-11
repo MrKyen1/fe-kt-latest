@@ -4,6 +4,7 @@ import { useQueryVersion } from "../../../hooks/useQueryVersion";
 import type { ReactNode } from "react";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { mapUserResponse } from "../../../services/userService";
+import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 import { ServerSelect } from "../../../components/ServerSelect";
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -2511,73 +2512,10 @@ export default function CenterManagement() {
 
                     {/* USERS ACCORDION/TAB CARD */}
                     <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-sm">
-                      <Tabs
+                      <ResponsiveTabs
                         activeKey={activeSubTab}
                         onChange={handleSubTabChange}
                         className="custom-tabs border-b-0"
-                        renderTabBar={(tabBarProps, DefaultTabBar) => {
-                          if (isMobile) {
-                            return (
-                              <div className="mb-3.5 pb-2.5 border-b border-slate-100">
-                                <div className="text-xs font-semibold text-slate-500 mb-1.5 flex items-center justify-between">
-                                  <span>Danh mục quản lý:</span>
-                                </div>
-                                <Select
-                                  value={activeSubTab}
-                                  onChange={handleSubTabChange}
-                                  className="w-full text-sm font-semibold rounded-xl"
-                                  options={[
-                                    {
-                                      value: "teachers",
-                                      label: (
-                                        <div className="flex items-center gap-2 py-0.5">
-                                          <TeamOutlined className="text-indigo-600" />
-                                          <span className="font-semibold text-slate-700">Giáo viên</span>
-                                          <span className="text-xs text-slate-400 font-normal">({visibleCenterTeachers.length})</span>
-                                        </div>
-                                      ),
-                                    },
-                                    {
-                                      value: "students",
-                                      label: (
-                                        <div className="flex items-center gap-2 py-0.5">
-                                          <UserOutlined className="text-indigo-600" />
-                                          <span className="font-semibold text-slate-700">Học sinh</span>
-                                          <span className="text-xs text-slate-400 font-normal">({centerStudents.length})</span>
-                                        </div>
-                                      ),
-                                    },
-                                    {
-                                      value: "specializations",
-                                      label: (
-                                        <div className="flex items-center gap-2 py-0.5">
-                                          <BookOutlined className="text-indigo-600" />
-                                          <span className="font-semibold text-slate-700">Chuyên môn</span>
-                                          <span className="text-xs text-slate-400 font-normal">({specializations.length})</span>
-                                        </div>
-                                      ),
-                                    },
-                                    ...(!isTeacher
-                                      ? [
-                                          {
-                                            value: "admins",
-                                            label: (
-                                              <div className="flex items-center gap-2 py-0.5">
-                                                <SafetyCertificateOutlined className="text-indigo-600" />
-                                                <span className="font-semibold text-slate-700">Quản trị viên</span>
-                                                <span className="text-xs text-slate-400 font-normal">({admins.length})</span>
-                                              </div>
-                                            ),
-                                          },
-                                        ]
-                                      : []),
-                                  ]}
-                                />
-                              </div>
-                            );
-                          }
-                          return <DefaultTabBar {...tabBarProps} />;
-                        }}
                         items={[
                           {
                             key: "teachers",
@@ -3200,15 +3138,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={720}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3307,15 +3236,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               centered
-              width={620}
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3410,15 +3330,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={650}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -3867,15 +3778,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={650}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -4125,15 +4027,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               width={650}
-              centered
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
@@ -4398,15 +4291,6 @@ export default function CenterManagement() {
               cancelText="Hủy bỏ"
               maskClosable={false}
               centered
-              width={560}
-              styles={{
-                body: {
-                  maxHeight: "72vh",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  paddingRight: "8px",
-                },
-              }}
               className="rounded-2xl"
             >
               <Form
