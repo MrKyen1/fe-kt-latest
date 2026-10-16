@@ -82,7 +82,7 @@ function buildColumns(
     {
       title: "Đề bài",
       dataIndex: "prompt",
-      width: "50%",
+      minWidth: 320,
       render: (val: string, record: Question) => {
         const fullQuestion = questionDetails?.[record.id]
           ? { ...record, ...questionDetails[record.id] }
@@ -114,7 +114,8 @@ function buildColumns(
     },
     {
       title: "Phân loại",
-      width: 190,
+      width: 200,
+      minWidth: 200,
       render: (_: unknown, record: Question) => {
         const skill = (record as any).skill || skills.find((s) => s.id === record.skillId);
         const level = (record as any).difficultyLevel || levels.find((l) => l.id === record.difficultyLevelId);
@@ -133,16 +134,18 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
-      width: 110,
+      width: 120,
+      minWidth: 120,
       align: "center" as const,
-      render: (val: string) => <StatusTag status={val} />,
+      render: (val: string) => <div className="whitespace-nowrap inline-flex justify-center"><StatusTag status={val} /></div>,
     },
     {
       title: "Thao tác",
-      width: 160,
+      width: 180,
+      minWidth: 180,
       align: "right" as const,
       render: (_: unknown, record: Question) => (
-        <Space size="small" wrap={false} className="whitespace-nowrap">
+        <Space size="small" wrap={false} className="whitespace-nowrap flex items-center justify-end">
           <Can perform="learning.write">
             <Tooltip title="Nhân bản câu hỏi">
               <Button
@@ -150,6 +153,7 @@ function buildColumns(
                 size="small"
                 icon={<CopyOutlined className="text-slate-400 hover:text-indigo-600" />}
                 onClick={() => onDuplicate(record)}
+                className="shrink-0"
               />
             </Tooltip>
             <Tooltip title="Chỉnh sửa câu hỏi">
@@ -158,12 +162,19 @@ function buildColumns(
                 size="small"
                 icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
                 onClick={() => onEdit(record)}
+                className="shrink-0"
               />
             </Tooltip>
           </Can>
           <Tooltip title="Lịch sử phiên bản">
-            <Button type="text" size="small" aria-label="Lịch sử phiên bản"
-              icon={<HistoryOutlined className="text-slate-400" />} onClick={() => onViewVersions(record)} />
+            <Button
+              type="text"
+              size="small"
+              aria-label="Lịch sử phiên bản"
+              icon={<HistoryOutlined className="text-slate-400 hover:text-amber-600" />}
+              onClick={() => onViewVersions(record)}
+              className="shrink-0"
+            />
           </Tooltip>
           <Can perform="learning.delete">
             <Tooltip title="Xóa câu hỏi">
@@ -173,6 +184,7 @@ function buildColumns(
                 danger
                 icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
                 onClick={() => onDelete(record)}
+                className="shrink-0"
               />
             </Tooltip>
           </Can>
@@ -386,7 +398,8 @@ export default function QuestionsTab({
             pageSizeOptions: ["10", "20", "50", "100"],
             showTotal: (total) => `Tổng cộng ${total} câu hỏi`,
           }}
-          scroll={{ x: 800 }}
+          tableLayout="auto"
+          scroll={{ x: 920 }}
         />
       )}
     </div>

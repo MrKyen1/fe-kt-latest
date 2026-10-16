@@ -1,15 +1,69 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { QuestionCard } from "./QuestionCard";
 import { ExamData } from "../../types";
 import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import logoImg from "../../assets/logo/logo.png";
 import { motion, AnimatePresence } from "framer-motion";
-import { Modal, Button } from "antd";
-import { Trophy, ChevronDown, ChevronUp } from "lucide-react";
+import { Modal, Button, message, Tag, Progress } from "antd";
+import {
+  Trophy,
+  ChevronDown,
+  ChevronUp,
+  History,
+  User,
+  RotateCcw,
+  BookOpen,
+  ArrowLeft,
+  ClipboardList,
+  Target,
+  Award,
+  CheckCircle2,
+} from "lucide-react";
+import AttemptHistoryModal from "../../components/AttemptHistoryModal";
 import { studentLearningService } from "../../services/studentLearningService";
+import { resolveMediaUrl } from "../../services/apiClient";
 import { parseBackendAnswer } from "./ExamDetail";
 import { formatScore, formatPercentage, formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
+
+const formatDateTime = (iso?: string | null) => {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const percentColor = (pct?: string | number) => {
+  const n = parseFloat(String(pct ?? "0"));
+  if (n >= 80) return "#10b981";
+  if (n >= 50) return "#f59e0b";
+  return "#ef4444";
+};
+
+const normalizeExplanationMediaList = (mediaList: any[]): any[] => {
+  if (!Array.isArray(mediaList)) return [];
+  return mediaList
+    .map((item: any) => {
+      const m = item?.media || item;
+      const url = m?.url || (typeof m === "string" ? m : null);
+      if (!url) return null;
+      const role = item?.role || m?.role || "explanation_image";
+      const isAudio =
+        m?.type === "audio" ||
+        role === "explanation_audio" ||
+        /\.(mp3|wav|ogg|m4a|aac)$/i.test(url);
+      return {
+        type: isAudio ? "audio" : "image",
+        url: resolveMediaUrl(url),
+        role,
+      };
+    })
+    .filter(Boolean);
+};
 
 interface ExamContainerProps {
   examData: ExamData;
@@ -397,9 +451,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   examData,
 }) => {
   const navigate = useNavigate();
-  const { courseId } = useParams();
+  const { courseId, examId: attemptIdParam } = useParams<{ courseId?: string; examId?: string }>();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navPanelOpen, setNavPanelOpen] = useState(true);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [reportAttempts, setReportAttempts] = useState<any[]>([]);
+  const [reportStudent, setReportStudent] = useState<{ id?: string; code?: string; fullName?: string } | null>(null);
+  const [isReportLoading, setIsReportLoading] = useState(false);
   type AnswerValue = string | string[] | Record<string, string>;
 
   const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
@@ -500,6 +558,16 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return initial;
   });
 
+  const [explanationMediaMap, setExplanationMediaMap] = useState<Record<string, any[]>>(() => {
+    const initial: Record<string, any[]> = {};
+    examData.questions.forEach((q) => {
+      if (Array.isArray(q.explanationMedia) && q.explanationMedia.length > 0) {
+        initial[q.id] = q.explanationMedia;
+      }
+    });
+    return initial;
+  });
+
   // Backend startAttempt filters practice questions automatically.
   // activeQuestions are directly examData.questions returned from BE.
   const activeQuestions = examData.questions;
@@ -519,8 +587,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     submitResult
       ? Boolean((submitResult as any)?.mastered) || (currentMasteredCount === examData.questions.length && examData.questions.length > 0)
       : examData.questions.length === 0 ||
-        (currentMasteredCount === examData.questions.length && examData.questions.length > 0) ||
-        Boolean(examData.mastered);
+      (currentMasteredCount === examData.questions.length && examData.questions.length > 0) ||
+      Boolean(examData.mastered);
 
   const isPracticeCompleted100 =
     !isInitialExam &&
@@ -545,12 +613,19 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
   const currentQuestion = useMemo(() => {
     if (!rawQuestion) return rawQuestion;
+    const mediaList =
+      explanationMediaMap[rawQuestion.id] ||
+      rawQuestion.explanationMedia ||
+      [];
+    const audioObj = mediaList.find((m: any) => m.type === "audio");
     return {
       ...rawQuestion,
       correctAnswer: correctAnswers[rawQuestion.id] !== undefined ? correctAnswers[rawQuestion.id] : rawQuestion.correctAnswer,
       explanation: explanations[rawQuestion.id] !== undefined ? explanations[rawQuestion.id] : rawQuestion.explanation,
+      explanationMedia: mediaList,
+      explanationAudio: audioObj?.url || rawQuestion.explanationAudio,
     };
-  }, [rawQuestion, correctAnswers, explanations]);
+  }, [rawQuestion, correctAnswers, explanations, explanationMediaMap]);
 
   const progressPercent = totalQuestions > 0 ? (currentMasteredCount / totalQuestions) * 100 : 100;
 
@@ -602,8 +677,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       const isCorr = status
         ? status === "correct"
         : ((currentQuestion as any).isCorrect !== undefined
-            ? Boolean((currentQuestion as any).isCorrect)
-            : checkIsCorrect(currentQuestion, userAns));
+          ? Boolean((currentQuestion as any).isCorrect)
+          : checkIsCorrect(currentQuestion, userAns));
       setIsCorrect(isCorr);
       return;
     }
@@ -678,12 +753,20 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         (result.feedback as any)?.explanation ||
         (result.question as any)?.feedback?.explanation ||
         (result.question as any)?.explanation;
+      const rawExplMedia =
+        (result.feedback as any)?.explanationMedia ||
+        (result.question as any)?.feedback?.explanationMedia ||
+        (result.question as any)?.media?.filter((m: any) => m.role === "explanation_image" || m.role === "explanation_audio");
 
       if (parsedCorrectAnswer !== undefined) {
         setCorrectAnswers((prev) => ({ ...prev, [currentQuestion.id]: parsedCorrectAnswer }));
       }
       if (backendExplanation) {
         setExplanations((prev) => ({ ...prev, [currentQuestion.id]: backendExplanation }));
+      }
+      if (rawExplMedia && Array.isArray(rawExplMedia) && rawExplMedia.length > 0) {
+        const normalized = normalizeExplanationMediaList(rawExplMedia);
+        setExplanationMediaMap((prev) => ({ ...prev, [currentQuestion.id]: normalized }));
       }
 
       setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
@@ -709,6 +792,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             const expl = freshAns.feedback?.explanation || freshAns.question?.feedback?.explanation || freshAns.question?.explanation;
             if (expl) {
               setExplanations((prev) => ({ ...prev, [currentQuestion.id]: expl }));
+            }
+            const rawFreshExplMedia =
+              freshAns.feedback?.explanationMedia ||
+              freshAns.question?.feedback?.explanationMedia ||
+              freshAns.question?.media?.filter((m: any) => m.role === "explanation_image" || m.role === "explanation_audio");
+            if (rawFreshExplMedia && Array.isArray(rawFreshExplMedia) && rawFreshExplMedia.length > 0) {
+              const normalized = normalizeExplanationMediaList(rawFreshExplMedia);
+              setExplanationMediaMap((prev) => ({ ...prev, [currentQuestion.id]: normalized }));
             }
             setQuestionResults((prev) => ({ ...prev, [currentQuestion.id]: status }));
             setIsCorrect(Boolean(freshAns.isCorrect));
@@ -829,9 +920,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
         const idsArray = Array.isArray(answer)
           ? answer.map((a) => {
-              const opt = options.find((o: any) => String(o.id) === String(a) || String(o.label) === String(a) || String(o.content) === String(a));
-              return opt?.id ? String(opt.id) : String(a);
-            })
+            const opt = options.find((o: any) => String(o.id) === String(a) || String(o.label) === String(a) || String(o.content) === String(a));
+            return opt?.id ? String(opt.id) : String(a);
+          })
           : [selectedId];
 
         const payload = {
@@ -1009,6 +1100,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         const rawMaxScore = freshAttempt?.maxScore ?? result?.maxScore;
         const rawPercentage = freshAttempt?.percentage ?? result?.percentage;
 
+        const newExplanationMedia: Record<string, any[]> = {};
+
         if (freshAttempt?.answers && Array.isArray(freshAttempt.answers)) {
           freshAttempt.answers.forEach((ans: any) => {
             if (ans.isCorrect !== undefined && ans.isCorrect !== null) {
@@ -1028,11 +1121,19 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             if (expl) {
               newExplanations[ans.questionId] = expl;
             }
+            const rawAnsExplMedia =
+              ans.feedback?.explanationMedia ||
+              ans.question?.feedback?.explanationMedia ||
+              ans.question?.media?.filter((m: any) => m.role === "explanation_image" || m.role === "explanation_audio");
+            if (rawAnsExplMedia && Array.isArray(rawAnsExplMedia) && rawAnsExplMedia.length > 0) {
+              newExplanationMedia[ans.questionId] = normalizeExplanationMediaList(rawAnsExplMedia);
+            }
           });
 
           setQuestionResults({ ...mergedResults });
           setCorrectAnswers((prev) => ({ ...prev, ...newCorrects }));
           setExplanations((prev) => ({ ...prev, ...newExplanations }));
+          setExplanationMediaMap((prev) => ({ ...prev, ...newExplanationMedia }));
         }
 
         const finalScoreStr = rawScore !== undefined && rawScore !== null ? String(rawScore) : "0.00";
@@ -1287,7 +1388,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         }
         throw new Error("Không thể tạo lượt làm bài mới.");
       }
-      
+
       navigate(`/exam/${attemptId}`, { replace: true });
       window.location.reload();
     } catch (err: any) {
@@ -1342,240 +1443,511 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     });
   };
 
-  if (isPracticeCompleted100 && !isReviewMode) {
-    return (
-      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center">
-        <div className="max-w-lg w-full bg-white rounded-3xl shadow-lg p-8 md:p-10 text-center border border-slate-200">
-          {/* Icon */}
-          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Trophy className="w-8 h-8 text-emerald-600 stroke-[1.75]" />
-          </div>
+  const targetAttemptId = examData.attemptId || examData.id || attemptIdParam;
 
-          {/* Title */}
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">
-            Hoàn thành 100% Đề Ôn Tập!
-          </h1>
-          <p className="text-sm text-slate-500 mb-8 leading-relaxed">
-            Tuyệt vời! Bạn đã trả lời chính xác toàn bộ{" "}
-            <span className="font-semibold text-slate-700">{examData.questions.length} / {examData.questions.length}</span>{" "}
-            câu hỏi trong đề ôn tập này.
-          </p>
+  const fallbackReportAttempts = useCallback(async () => {
+    if (!targetAttemptId) return;
+    try {
+      const singleRes: any = await studentLearningService.attempts.get(targetAttemptId);
+      const item = singleRes?.data || singleRes;
+      if (item && (item.id || item.attemptNumber)) {
+        setReportAttempts([
+          {
+            ...item,
+            attemptNumber: item.attemptNumber ?? 1,
+            percentage: item.percentage ?? examData.percentage,
+            score: item.score ?? examData.score,
+            maxScore: item.maxScore ?? examData.maxScore,
+            status: item.status || "submitted",
+          },
+        ]);
+        if (item.student) {
+          setReportStudent(item.student);
+        }
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to get single attempt fallback", e);
+    }
 
-          {/* Stats cards */}
-          <div className="grid grid-cols-2 gap-3 mb-8">
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-left">
-              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1.5">Số câu đúng</p>
-              <p className="text-2xl font-bold text-emerald-700">{examData.questions.length} / {examData.questions.length}</p>
-            </div>
-            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 text-left">
-              <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1.5">Tỷ lệ chính xác</p>
-              <p className="text-2xl font-bold text-indigo-700">100%</p>
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div className="flex flex-wrap justify-center gap-3">
-            <button
-              onClick={async () => {
-                if (examData.status === "in_progress" && !isExamComplete) {
-                  await handleFinish();
-                }
-                navigate(-1);
-              }}
-              className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
-            >
-              Quay lại bài học
-            </button>
-            <button
-              onClick={async () => {
-                await handleReview();
-              }}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
-            >
-              Xem lại tất cả đáp án
-            </button>
-            <button
-              onClick={() => handleRetryNewAttempt(true)}
-              disabled={isRetrying}
-              title="Làm lại toàn bộ đề"
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
-            >
-              {isRetrying ? "Đang tạo lượt mới..." : "Ôn tập lại"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isExamComplete && !isReviewMode) {
-    const isMastered = (submitResult as any)?.mastered;
-    const remainingCount = (submitResult as any)?.remainingQuestionCount ?? 0;
-    const isExamType = examData.examType === "exam";
-
-    // Icon & header config based on result type
-    const resultIcon = isMastered ? (
-      <Trophy className="w-8 h-8 stroke-[1.75]" />
-    ) : isExamType ? (
-      <span className="text-2xl">📋</span>
-    ) : (
-      <span className="text-2xl">📖</span>
-    );
-
-    const iconBg = isMastered ? "bg-emerald-100 text-emerald-600" : isExamType ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600";
-    const titleText = isMastered ? "Hoàn thành 100%!" : isExamType ? "Kết quả bài kiểm tra" : "Kết quả bài ôn tập";
-
-    // Stat cards
-    const stats: { label: string; value: React.ReactNode; bg: string; labelColor: string; valueColor: string }[] = [
+    setReportAttempts([
       {
-        label: isExamType ? "Điểm số (Thang 10)" : "Tiến độ ôn tập",
+        id: targetAttemptId,
+        attemptNumber: examData.attemptNumber || 1,
+        status: "submitted",
+        isRedo: (examData as any).isRedo || (examData as any).is_redo || ((examData.attemptNumber ?? 1) > 1),
+        percentage: submitResult?.percentage ?? examData.percentage ?? (isPracticeCompleted100 ? 100 : 0),
+        attemptPercentage: (submitResult as any)?.attemptPercentage ?? examData.attemptPercentage ?? submitResult?.percentage ?? examData.percentage,
+        attemptQuestionCount: (submitResult as any)?.attemptQuestionCount ?? examData.attemptQuestionCount ?? examData.questions.length,
+        attemptCorrectCount: (submitResult as any)?.attemptCorrectCount ?? examData.attemptCorrectCount ?? currentMasteredCount,
+        score: submitResult?.score ?? examData.score,
+        maxScore: submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length,
+        submittedAt: new Date().toISOString(),
+      },
+    ]);
+  }, [targetAttemptId, examData, submitResult, isPracticeCompleted100, currentMasteredCount]);
+
+  useEffect(() => {
+    if ((isPracticeCompleted100 || isExamComplete) && !isReviewMode && targetAttemptId) {
+      setIsReportLoading(true);
+      studentLearningService.attempts
+        .getReport(targetAttemptId, 1, 50)
+        .then((res: any) => {
+          const reportData = res?.data || res;
+          if (reportData && Array.isArray(reportData.attempts) && reportData.attempts.length > 0) {
+            setReportAttempts(reportData.attempts);
+            if (reportData.student) {
+              setReportStudent(reportData.student);
+            }
+          } else {
+            fallbackReportAttempts();
+          }
+        })
+        .catch(() => {
+          fallbackReportAttempts();
+        })
+        .finally(() => {
+          setIsReportLoading(false);
+        });
+    }
+  }, [isPracticeCompleted100, isExamComplete, isReviewMode, targetAttemptId, fallbackReportAttempts]);
+
+
+
+  if ((isPracticeCompleted100 || isExamComplete) && !isReviewMode) {
+    const isMastered = Boolean(
+      (submitResult as any)?.mastered ||
+      (currentMasteredCount === examData.questions.length && examData.questions.length > 0) ||
+      examData.mastered ||
+      isPracticeCompleted100
+    );
+    const remainingCount =
+      (submitResult as any)?.remainingQuestionCount ??
+      Math.max(0, examData.questions.length - currentMasteredCount);
+    const isExamType = examData.examType === "exam";
+    const displayStudent = reportStudent || examData.student;
+
+    const resultIcon = isMastered ? (
+      <Trophy className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-600 stroke-[2]" />
+    ) : isExamType ? (
+      <ClipboardList className="w-6 h-6 sm:w-7 sm:h-7 text-indigo-600 stroke-[2]" />
+    ) : (
+      <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 text-amber-600 stroke-[2]" />
+    );
+
+    const iconBg = isMastered
+      ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+      : isExamType
+        ? "bg-indigo-50 border-indigo-100 text-indigo-600"
+        : "bg-amber-50 border-amber-100 text-amber-600";
+
+    const titleText = isMastered
+      ? "Hoàn thành 100% Đề Ôn Tập!"
+      : isExamType
+        ? "Kết quả bài kiểm tra"
+        : "Kết quả bài ôn tập";
+
+    const stats = [
+      {
+        label: isExamType ? "Điểm số" : "Tiến độ đề",
         value: isExamType
           ? `${currentScoreDisplay.primaryText} / 10 đ`
-          : (isMastered ? "100% (Thành thạo)" : `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`),
-        bg: "bg-emerald-50 border-emerald-100",
-        labelColor: "text-emerald-600",
-        valueColor: "text-emerald-700",
+          : isMastered
+            ? "100%"
+            : `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`,
+        icon: Target,
+        iconColor: "text-emerald-600",
+        iconBg: "bg-emerald-50 border border-emerald-100",
       },
       {
-        label: "Tỷ lệ chính xác",
-        value: `${formatPercentage(submitResult?.percentage ?? examData.percentage)}%`,
-        bg: isMastered ? "bg-indigo-50 border-indigo-100" : "bg-amber-50 border-amber-100",
-        labelColor: isMastered ? "text-indigo-600" : "text-amber-600",
-        valueColor: isMastered ? "text-indigo-700" : "text-amber-700",
+        label: "Kết quả lượt này",
+        value: `${formatPercentage(
+          (submitResult as any)?.attemptPercentage ??
+          examData.attemptPercentage ??
+          submitResult?.percentage ??
+          examData.percentage
+        )}%`,
+        sub: (examData.attemptQuestionCount || (submitResult as any)?.attemptQuestionCount)
+          ? `(${(submitResult as any)?.attemptCorrectCount ?? examData.attemptCorrectCount ?? 0}/${(submitResult as any)?.attemptQuestionCount ?? examData.attemptQuestionCount
+          } câu)`
+          : undefined,
+        icon: CheckCircle2,
+        iconColor: "text-blue-600",
+        iconBg: "bg-blue-50 border border-blue-100",
       },
       {
-        label: isExamType ? "Số câu làm đúng" : "Số câu hoàn thành",
-        value: `${formatScore(submitResult?.score ?? examData.score)} / ${formatScore(submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length)} câu`,
-        bg: "bg-slate-50 border-slate-200",
-        labelColor: "text-slate-500",
-        valueColor: "text-slate-800",
+        label: isExamType ? "Số câu làm đúng" : "Số câu thành thạo",
+        value: `${formatScore(
+          submitResult?.score ?? examData.score ?? currentMasteredCount
+        )} / ${formatScore(
+          submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length
+        )} câu`,
+        icon: Award,
+        iconColor: "text-indigo-600",
+        iconBg: "bg-indigo-50 border border-indigo-100",
       },
       {
-        label: "Chưa trả lời",
-        value: `${totalUnanswered} câu`,
-        bg: "bg-slate-50 border-slate-200",
-        labelColor: "text-slate-500",
-        valueColor: "text-slate-800",
+        label: "Lượt làm bài",
+        value: `Lần ${examData.attemptNumber || (submitResult as any)?.attemptNumber || 1}`,
+        sub: Boolean((examData as any).isRedo || (examData as any).is_redo || ((examData.attemptNumber ?? 1) > 1))
+          ? "(Làm lại)"
+          : undefined,
+        icon: RotateCcw,
+        iconColor: "text-amber-600",
+        iconBg: "bg-amber-50 border border-amber-100",
       },
     ];
 
+    const displayAttempts =
+      reportAttempts.length > 0
+        ? reportAttempts
+        : [
+          {
+            id: targetAttemptId,
+            attemptNumber: examData.attemptNumber || 1,
+            status: "submitted",
+            isRedo:
+              (examData as any).isRedo ||
+              (examData as any).is_redo ||
+              ((examData.attemptNumber ?? 1) > 1),
+            percentage:
+              submitResult?.percentage ?? examData.percentage ?? (isMastered ? 100 : 0),
+            attemptPercentage:
+              (submitResult as any)?.attemptPercentage ??
+              examData.attemptPercentage ??
+              submitResult?.percentage ??
+              examData.percentage,
+            attemptQuestionCount:
+              (submitResult as any)?.attemptQuestionCount ??
+              examData.attemptQuestionCount ??
+              examData.questions.length,
+            attemptCorrectCount:
+              (submitResult as any)?.attemptCorrectCount ??
+              examData.attemptCorrectCount ??
+              currentMasteredCount,
+            score: submitResult?.score ?? examData.score,
+            maxScore:
+              submitResult?.maxScore ?? examData.maxScore ?? examData.questions.length,
+            submittedAt: new Date().toISOString(),
+          },
+        ];
+
+    const sortedAttempts = [...displayAttempts].sort(
+      (a, b) => (a.attemptNumber || 0) - (b.attemptNumber || 0)
+    );
+
     return (
-      <div className="min-h-screen bg-slate-50 p-6 md:p-10 flex items-center justify-center">
-        <div className="max-w-lg w-full bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden">
-          {/* Header banner */}
-          <div className={`px-8 pt-8 pb-6 text-center`}>
-            {/* Icon */}
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${iconBg}`}>
-              {resultIcon}
-            </div>
-
-            {/* Title */}
-            <h1 className="text-2xl font-bold text-slate-800 mb-1.5">
-              {titleText}
-            </h1>
-
-            {/* Subtitle */}
-            {isExamType && !isMastered && (
-              <p className="text-sm text-amber-600 font-medium leading-relaxed mt-2">
-                Điểm kiểm tra lượt đầu đã được ghi nhận. Hãy làm lại câu sai để hoàn thành 100%.
-              </p>
-            )}
-            {isMastered && (
-              <p className="text-sm text-slate-500 leading-relaxed mt-1">
-                Bạn đã trả lời đúng toàn bộ câu hỏi. Chúc mừng!
-              </p>
-            )}
-          </div>
-
-          {/* Stats grid */}
-          <div className="px-8 pb-6">
-            <div className="grid grid-cols-2 gap-3">
-              {stats.map((s, i) => (
-                <div key={i} className={`p-4 rounded-2xl border ${s.bg}`}>
-                  <p className={`text-xs font-semibold uppercase tracking-wider mb-1.5 ${s.labelColor}`}>{s.label}</p>
-                  <p className={`text-2xl font-bold ${s.valueColor}`}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div className="px-8 pb-8 flex flex-wrap justify-center gap-3">
+      <div
+        className="min-h-screen flex flex-col bg-slate-100/70 font-sans"
+        style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
+      >
+        {/* Full Page Top Header */}
+        <header className="h-13 sm:h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-10 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => navigate(-1)}
-              className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition"
+              className="p-1.5 sm:p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0"
+              title="Quay lại bài học"
             >
-              Quay lại
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
             </button>
+            <img src={logoImg} alt="Logo" className="h-7 sm:h-9 object-contain shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-xs sm:text-base text-slate-900 font-bold truncate m-0">
+                {isExamType ? "Đề kiểm tra" : "Đề ôn tập"}:{" "}
+                <span className="text-slate-900 font-bold">{examData.title || "—"}</span>
+              </h1>
+            </div>
+          </div>
+
+          {displayStudent?.fullName && (
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-700 shrink-0">
+              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
+              <span>
+                <span className="hidden sm:inline">Học sinh: </span>
+                <span className="text-slate-900 font-semibold">{displayStudent.fullName}</span>
+                {displayStudent.code && (
+                  <span className="text-slate-500 ml-1 hidden md:inline">({displayStudent.code})</span>
+                )}
+              </span>
+            </div>
+          )}
+        </header>
+
+        {/* Full Page Main Area */}
+        <main className="flex-1 w-full p-3 sm:p-5 lg:p-7 flex flex-col items-center justify-start overflow-y-auto pb-28 sm:pb-24 min-h-0">
+          {/* Result Card Container - To full phần container, chuyên nghiệp và rộng rãi */}
+          <div className="w-full max-w-7xl bg-white rounded-2xl shadow-sm border border-slate-200/90 p-4 sm:p-6 lg:p-7 flex flex-col justify-between">
+            {/* Top Card Row - Chỉ giữ tiêu đề Phiếu kết quả học tập, không lặp lại tên đề & học sinh vì đã có trên header */}
+            <div className="pb-2.5 sm:pb-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <span className="text-xs sm:text-sm text-slate-500 font-semibold uppercase tracking-wider">
+                Phiếu kết quả học tập
+              </span>
+            </div>
+
+            {/* 2-Column Dashboard on Desktop / 1-Column on Mobile */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-7 pt-3 sm:pt-4">
+              {/* Left Column: Result Header & 4 Stats Cards */}
+              <div className="lg:col-span-5 flex flex-col gap-3 sm:gap-3.5 pr-0 lg:pr-6 lg:border-r lg:border-slate-100">
+                {/* Result Header Banner - Tinh tế hiện đại, icon nổi bật */}
+                <div className="bg-slate-50/80 border border-slate-200/90 rounded-xl p-3.5 sm:p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200/80 shadow-2xs">
+                      <Trophy className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-sm sm:text-base font-bold text-slate-900 m-0">
+                        {titleText}
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-snug m-0 font-normal">
+                        {isMastered
+                          ? "Bạn đã hoàn thành chính xác toàn bộ câu hỏi trong đề."
+                          : isExamType
+                            ? "Điểm kiểm tra lượt đầu đã ghi nhận. Hãy ôn lại câu sai để nâng cao kết quả."
+                            : "Lượt làm bài đã ghi nhận. Hãy ôn lại các câu sai để đạt 100%."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 Stats Cards - Bổ sung icon màu sắc tinh tế, nội dung hiển thị flex trên 1 dòng */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
+                  {stats.map((s, idx) => {
+                    const IconComp = s.icon;
+                    return (
+                      <div
+                        key={idx}
+                        className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs hover:border-slate-300 transition flex flex-col justify-between min-h-[86px] sm:min-h-[92px]"
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="text-xs text-slate-500 font-medium leading-tight truncate">
+                            {s.label}
+                          </span>
+                          <div className={`w-6 h-6 rounded-lg ${s.iconBg} flex items-center justify-center shrink-0`}>
+                            <IconComp className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-baseline gap-1.5 flex-wrap mt-1.5">
+                          <span className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight">
+                            {s.value}
+                          </span>
+                          {s.sub && (
+                            <span className="text-xs font-normal text-slate-500 whitespace-nowrap">
+                              {s.sub}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Column: Inline Attempt History Table */}
+              <div className="lg:col-span-7 flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 m-0">
+                      Báo cáo lịch sử các lượt làm bài
+                    </h3>
+                  </div>
+                  <span className="text-xs text-slate-600 font-medium bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+                    {isReportLoading ? "Đang tải..." : `Tổng cộng: ${sortedAttempts.length} lượt`}
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-x-auto rounded-xl border border-slate-200 max-h-[260px] sm:max-h-[320px] lg:max-h-[380px]">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold text-xs border-b border-slate-200 sticky top-0 z-10 whitespace-nowrap">
+                      <tr>
+                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Lần</th>
+                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Kết quả lượt</th>
+                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Tiến độ đề</th>
+                        {isExamType && <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Điểm</th>}
+                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Thời gian</th>
+                        <th className="py-2.5 px-3 text-right font-semibold whitespace-nowrap">Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {sortedAttempts.map((att, idx) => {
+                        const isLast = idx === sortedAttempts.length - 1;
+                        const pct =
+                          att.attemptPercentage != null ? att.attemptPercentage : att.percentage;
+                        const pctNum = pct != null ? Math.round(parseFloat(String(pct))) : null;
+                        const progNum =
+                          att.percentage != null ? Math.round(parseFloat(String(att.percentage))) : null;
+
+                        return (
+                          <tr key={att.id || idx} className={`transition ${isLast ? "bg-emerald-50/25" : "hover:bg-slate-50/50"}`}>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                <span className="font-semibold text-slate-900 text-xs sm:text-sm">
+                                  #{att.attemptNumber || idx + 1}
+                                </span>
+                                {(att.isRedo || (att.attemptNumber && att.attemptNumber > 1)) && (
+                                  <span className="text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/90 font-medium whitespace-nowrap">
+                                    Làm lại
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-900 font-medium text-xs sm:text-sm whitespace-nowrap">
+                              <div className="inline-flex items-baseline gap-1 whitespace-nowrap">
+                                <span className="font-semibold text-slate-900">
+                                  {pctNum != null ? `${pctNum}%` : "—"}
+                                </span>
+                                {att.attemptQuestionCount ? (
+                                  <span className="text-slate-500 text-xs font-normal whitespace-nowrap">
+                                    ({att.attemptCorrectCount ?? 0}/{att.attemptQuestionCount})
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              {progNum != null ? (
+                                <div className="w-20 sm:w-28 flex items-center gap-2">
+                                  <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                    <div
+                                      className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                                      style={{ width: `${Math.min(100, Math.max(0, progNum))}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs font-medium text-slate-700 tabular-nums">
+                                    {progNum}%
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-normal">—</span>
+                              )}
+                            </td>
+                            {isExamType && (
+                              <td className="py-2.5 px-3 text-slate-900 font-medium whitespace-nowrap">
+                                {formatScore(att.score)}{" "}
+                                {att.maxScore && att.maxScore !== "—"
+                                  ? `/ ${formatScore(att.maxScore)}`
+                                  : ""}
+                              </td>
+                            )}
+                            <td className="py-2.5 px-3 text-slate-600 text-xs whitespace-nowrap font-normal">
+                              {formatDateTime(
+                                att.submittedAt || att.completedAt || att.startedAt || att.createdAt
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-emerald-700 bg-emerald-50 font-medium border border-emerald-200 whitespace-nowrap">
+                                Đã nộp
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Bottom Action Bar - 3 buttons cùng hiển thị 100% trên 1 hàng ngang, không bị che, không bị cắt chữ, font normal */}
+        <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 sm:py-3 sm:px-6 flex items-center justify-center shadow-xs safe-bottom">
+          <div className="w-full max-w-lg mx-auto grid grid-cols-3 gap-2">
+            <button
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 font-normal text-xs sm:text-sm active:scale-[0.98] transition text-center whitespace-nowrap"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 stroke-[2] shrink-0 text-slate-700" />
+              <span>Quay lại</span>
+            </button>
+
             <button
               onClick={handleReview}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 font-normal text-xs sm:text-sm active:scale-[0.98] transition text-center whitespace-nowrap"
             >
-              Xem lại đáp án
+              <BookOpen className="w-3.5 h-3.5 stroke-[2] shrink-0 text-slate-700" />
+              <span>Xem đáp án</span>
             </button>
+
             {isMastered ? (
               <button
                 onClick={() => handleRetryNewAttempt(true)}
                 disabled={isRetrying}
-                title="Làm lại toàn bộ đề"
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white font-normal text-xs sm:text-sm active:scale-[0.98] transition disabled:opacity-50 text-center whitespace-nowrap"
               >
-                {isRetrying ? "Đang tạo lượt mới..." : "Ôn tập lại"}
+                <RotateCcw className="w-3.5 h-3.5 stroke-[2] shrink-0 text-white" />
+                <span>{isRetrying ? "Đang tạo..." : "Ôn tập lại"}</span>
               </button>
             ) : (
-              <>
-                <button
-                  onClick={() => handleRetryNewAttempt(false)}
-                  disabled={isRetrying}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
-                >
+              <button
+                onClick={() => handleRetryNewAttempt(false)}
+                disabled={isRetrying}
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white font-normal text-xs sm:text-sm active:scale-[0.98] transition disabled:opacity-50 text-center whitespace-nowrap"
+              >
+                <RotateCcw className="w-3.5 h-3.5 stroke-[2] shrink-0 text-white" />
+                <span>
                   {isRetrying
-                    ? "Đang tạo lượt mới..."
+                    ? "Đang tạo..."
                     : remainingCount > 0
-                    ? `Làm lại câu sai (${remainingCount} câu)`
-                    : "Làm tiếp / Làm lại"}
-                </button>
-                {((examData as any).isRedo || (examData as any).is_redo) && (
-                  <button
-                    onClick={() => handleRetryNewAttempt(true)}
-                    disabled={isRetrying}
-                    title="Bắt đầu lại chu kỳ ôn tập với toàn bộ câu hỏi"
-                    className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition disabled:opacity-50"
-                  >
-                    Ôn tập lại cả đề
-                  </button>
-                )}
-              </>
+                      ? `Làm lại (${remainingCount})`
+                      : "Làm lại"}
+                </span>
+              </button>
             )}
           </div>
-        </div>
+        </footer>
+
+        <AttemptHistoryModal
+          open={historyModalOpen}
+          onClose={() => setHistoryModalOpen(false)}
+          attemptId={targetAttemptId}
+          assignmentStudentId={examData.assignmentStudentId}
+          examId={examData.id}
+          title={examData.title}
+        />
       </div>
     );
   }
 
   return (
     <div className="text-slate-800 flex flex-col h-screen font-sans bg-slate-50 transition-colors">
-      <header className="h-14 sm:h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      <header className="h-12 sm:h-14 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
             onClick={handleBackClick}
-            className="p-1.5 sm:p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0"
+            className="p-1 sm:p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0"
             title="Quay lại"
           >
-            <ArrowLeftOutlined className="text-base sm:text-lg" />
+            <ArrowLeftOutlined className="text-xs sm:text-base" />
           </button>
           <img
             src={logoImg}
             alt="Logo"
-            className="h-9 sm:h-12 md:h-14 object-contain shrink-0"
+            className="h-7 sm:h-9 md:h-11 object-contain shrink-0"
           />
-          <h1 className="font-bold text-sm sm:text-base md:text-xl truncate max-w-[150px] sm:max-w-xs md:max-w-md">
+          <h1 className="font-bold text-xs sm:text-sm md:text-base truncate max-w-[120px] sm:max-w-xs md:max-w-md">
             {examData.title}
           </h1>
         </div>
-        <div className="flex items-center gap-2 sm:gap-4 md:gap-8 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4 shrink-0">
+          {examData.student?.fullName && (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
+              <User className="w-3.5 h-3.5 text-slate-500" />
+              <span>{examData.student.fullName}</span>
+              {examData.student.code && <span className="text-slate-400 font-normal">({examData.student.code})</span>}
+            </div>
+          )}
+          <button
+            onClick={() => setHistoryModalOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition"
+            title="Lịch sử làm bài"
+          >
+            <History className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Lịch sử</span>
+          </button>
           {isReviewMode ? (
-            <div className="flex items-center gap-2 bg-emerald-50 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-emerald-200">
+            <div className="flex items-center gap-2 bg-emerald-50 px-2 sm:px-4 py-1 sm:py-2 rounded-full border border-emerald-200">
               <span className="text-xs sm:text-sm font-bold text-emerald-700">
                 {isExamType
                   ? `Điểm: ${currentScoreDisplay.primaryText} / 10 đ`
@@ -1584,7 +1956,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-slate-200">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full border border-slate-200">
                 <ClockCircleOutlined className="text-emerald-600 text-xs sm:text-base" />
                 <span className="font-mono font-bold text-emerald-700 text-xs sm:text-sm">
                   {formatTime(timeRemaining)}
@@ -1593,7 +1965,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
               <button
                 onClick={handleFinish}
                 disabled={isSubmitting}
-                className="px-2.5 sm:px-4 py-1 sm:py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-md text-[11px] sm:text-xs font-semibold hover:bg-rose-100 transition-colors"
+                className="px-2.5 sm:px-4 py-1 sm:py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-[11px] sm:text-xs font-bold hover:bg-rose-100 transition-colors shadow-2xs"
               >
                 {isSubmitting ? "ĐANG NỘP..." : "NỘP BÀI"}
               </button>
@@ -1603,8 +1975,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       </header>
 
       {/* ── Slim top bar + Inline Question Panel cho Mobile / Tablet (< lg) ── */}
-      <div className="lg:hidden flex flex-col shrink-0 bg-white border-b border-slate-200 shadow-sm z-10">
-        {/* Top bar: progress + toggle */}
+      <div className="lg:hidden flex flex-col shrink-0 bg-white border-b border-slate-200 z-10">
         <div className="px-3 py-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[140px]">
@@ -1613,7 +1984,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-xs font-bold text-slate-600 shrink-0">
+            <span className="text-xs font-bold text-slate-600 shrink-0 tabular-nums">
               {!isInitialExam && !isReviewMode
                 ? `${currentMasteredCount}/${examData.questions.length}`
                 : `${currentIndex + 1}/${totalQuestions}`}
@@ -1621,15 +1992,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           </div>
           <button
             onClick={() => setNavPanelOpen((prev) => !prev)}
-            className="flex items-center gap-1 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full transition-colors"
-            aria-label={navPanelOpen ? "Ẩn danh sách câu" : "Hiện danh sách câu"}
+            className="flex items-center gap-1 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full transition-colors shrink-0"
+            aria-label={navPanelOpen ? "Ẩn" : "Danh sách câu"}
           >
             <span>{navPanelOpen ? "Ẩn" : "Danh sách câu"}</span>
-            {navPanelOpen ? (
-              <ChevronUp size={14} />
-            ) : (
-              <ChevronDown size={14} />
-            )}
+            {navPanelOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
 
@@ -1637,11 +2004,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         <div
           className="overflow-hidden transition-all duration-300"
           style={{
-            maxHeight: navPanelOpen ? "30vh" : "0px",
+            maxHeight: navPanelOpen ? "32vh" : "0px",
             opacity: navPanelOpen ? 1 : 0,
           }}
         >
-          <div className="overflow-y-auto" style={{ maxHeight: "30vh" }}>
+          <div className="overflow-y-auto" style={{ maxHeight: "32vh" }}>
             <QuestionNavigator
               isInitialExam={isInitialExam}
               isReviewMode={isReviewMode}
@@ -1663,7 +2030,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         </div>
       </div>
 
-      <main className="flex-1 flex overflow-y-auto lg:overflow-hidden">
+      <main className="flex-1 flex overflow-hidden min-h-0">
         {/* ── Aside Desktop (≥ lg) ── */}
         <aside className="hidden lg:flex w-72 bg-white border-r border-slate-200 flex-col shrink-0 transition-colors">
           <QuestionNavigator
@@ -1681,15 +2048,25 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           />
         </aside>
 
-        <section className="flex-1 bg-slate-50 p-2 sm:p-4 lg:p-8 pt-4 sm:pt-6 lg:pt-10 flex flex-col items-center overflow-y-auto relative transition-colors">
+        {/* ── Section chứa card câu hỏi: mobile = scroll bên trong section, desktop = cố định viewport ── */}
+        <section className="flex-1 bg-slate-50 flex flex-col items-center overflow-y-auto min-h-0 p-2.5 sm:p-4 lg:p-8 pt-6 sm:pt-7 lg:pt-9 pb-10 sm:pb-12 lg:pb-8 lg:overflow-hidden">
           <div
-            className={`w-full ${currentQuestion.passage || (currentQuestion.media && (Array.isArray(currentQuestion.media) ? currentQuestion.media.some((m) => m.type === "image") : currentQuestion.media.type === "image")) ? "max-w-6xl" : "max-w-3xl"} min-h-[460px] lg:h-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/80 relative flex flex-col transition-all duration-500`}
+            className={`w-full ${
+              currentQuestion.passage ||
+              (currentQuestion.media &&
+                (Array.isArray(currentQuestion.media)
+                  ? currentQuestion.media.some((m) => m.type === "image")
+                  : currentQuestion.media.type === "image"))
+                ? "max-w-6xl"
+                : "max-w-3xl"
+            } bg-white rounded-2xl shadow-md border border-slate-200/80 relative flex flex-col lg:flex-1 lg:h-full lg:max-h-full transition-all duration-300`}
           >
-            <div className="absolute -top-3.5 left-6 bg-emerald-600 text-white px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider z-20 shadow-md">
+            {/* Badge câu hỏi - hiển thị nổi bật trên đỉnh card với z-30, không bị cắt bởi overflow-hidden */}
+            <div className="absolute -top-3.5 left-4 sm:left-6 bg-emerald-600 text-white px-4 py-1 sm:py-1.5 rounded-full text-xs font-bold uppercase tracking-wider z-30 shadow-md select-none pointer-events-none">
               CÂU HỎI {currentIndex + 1}
             </div>
 
-            <div className="flex-1 w-full h-full rounded-2xl overflow-hidden flex flex-col">
+            <div className="w-full h-full rounded-2xl flex flex-col flex-1 lg:overflow-hidden">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentQuestion.id}
@@ -1697,7 +2074,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.25 }}
-                  className="flex flex-col flex-1 h-full w-full overflow-hidden"
+                  className="flex flex-col w-full lg:flex-1 lg:h-full lg:overflow-hidden"
                 >
                   <QuestionCard
                     question={currentQuestion}
@@ -1718,6 +2095,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           </div>
         </section>
       </main>
+      <AttemptHistoryModal
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        attemptId={examData.attemptId || attemptIdParam}
+        examId={examData.id}
+        title={examData.title}
+      />
     </div>
   );
 };

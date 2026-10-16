@@ -8,6 +8,7 @@ import { FileTextOutlined, UploadOutlined, DeleteOutlined } from "@ant-design/ic
 import { Info, Image as ImageIcon } from "lucide-react";
 import { AppImage } from "../../../../../../components/AppImagePreview";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
+import { handleClipboardImagePaste } from "../../../../../../utils/clipboardUtils";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -52,6 +53,12 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
     form.setFieldValue("image", null);
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    handleClipboardImagePaste(e, (file) => {
+      handleUploadImage(file);
+    });
+  };
+
   return (
     <Modal
       title={
@@ -94,7 +101,11 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
         <Form.Item label="Ảnh bìa giáo trình" className="mb-4">
           <div className="space-y-3">
             {imageUrl ? (
-              <div className="relative group w-full h-44 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shadow-sm">
+              <div
+                tabIndex={0}
+                onPaste={handlePaste}
+                className="relative group w-full h-44 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 transition-all"
+              >
                 <AppImage
                   src={imageUrl}
                   alt="Curriculum Cover"
@@ -133,7 +144,11 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                 </div>
               </div>
             ) : (
-              <div className="border-2 border-dashed border-slate-200 hover:border-purple-400 rounded-2xl p-6 text-center transition-colors bg-slate-50/50">
+              <div
+                tabIndex={0}
+                onPaste={handlePaste}
+                className="border-2 border-dashed border-slate-200 hover:border-purple-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 rounded-2xl p-6 text-center transition-all bg-slate-50/50"
+              >
                 {isUploading ? (
                   <div className="py-4 flex flex-col items-center gap-2 text-purple-600">
                     <Spin size="default" />
@@ -145,10 +160,12 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                       <ImageIcon size={20} />
                     </div>
                     <div className="text-sm font-medium text-slate-700">Tải lên ảnh bìa cho giáo trình</div>
-                    <div className="text-xs text-slate-400 max-w-xs">Định dạng PNG, JPG, WEBP. Ảnh hiển thị ở tỉ lệ khung chữ nhật đẹp mắt.</div>
+                    <div className="text-xs text-slate-400 max-w-xs">
+                      Định dạng PNG, JPG, WEBP • Hoặc nhấn <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px] text-purple-600">Ctrl+V</kbd> để dán ảnh trực tiếp
+                    </div>
                     <div className="mt-2">
                       <Upload
-                    disabled={!canUpload}
+                        disabled={!canUpload}
                         beforeUpload={(file) => {
                           handleUploadImage(file);
                           return false;
@@ -159,7 +176,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                         <Button
                           type="dashed"
                           disabled={!canUpload}
-                      icon={<UploadOutlined />}
+                          icon={<UploadOutlined />}
                           className="rounded-xl border-purple-300 text-purple-600 hover:border-purple-500"
                         >
                           Chọn tệp ảnh

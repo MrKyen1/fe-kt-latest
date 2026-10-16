@@ -8,6 +8,8 @@ import { Image as LucideImage, Volume2, Video, Eye } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../services/apiClient";
 import { AppImage } from "../../../../../components/AppImagePreview";
 
+import { handleClipboardImagePaste } from "../../../../../utils/clipboardUtils";
+
 export interface MediaAssetItem {
   id: string;
   url: string;
@@ -114,6 +116,15 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
     return false;
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (acceptType === "audio") return;
+    handleClipboardImagePaste(e, (pastedFile) => {
+      setMode("upload");
+      handleFileChosen(pastedFile);
+      message.success("Đã dán ảnh từ clipboard (Ctrl+V)!");
+    });
+  };
+
   const handleSelectAsset = (assetId?: string) => {
     if (!assetId) {
       handleClear();
@@ -134,7 +145,11 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
   // If item is selected, render Preview Card
   if (hasItem) {
     return (
-      <div className={`flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl ${className}`}>
+      <div
+        tabIndex={0}
+        onPaste={handlePaste}
+        className={`flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400/30 transition-all ${className}`}
+      >
         {/* Media Thumbnail / Preview */}
         {isImg ? (
           <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-white flex items-center justify-center">
@@ -218,7 +233,11 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
       : "image/*,audio/*";
 
   return (
-    <div className={`space-y-1.5 ${className}`}>
+    <div
+      tabIndex={0}
+      onPaste={handlePaste}
+      className={`space-y-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400/30 rounded-xl p-0.5 transition-all ${className}`}
+    >
       <div className="flex items-center justify-between">
         <Segmented
           size="small"
@@ -247,6 +266,11 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
             },
           ]}
         />
+        {acceptType !== "audio" && (
+          <span className="text-[10px] text-slate-400">
+            Hỗ trợ <kbd className="px-1 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[9px] text-slate-600">Ctrl+V</kbd> dán ảnh
+          </span>
+        )}
       </div>
 
       {mode === "upload" ? (
@@ -259,7 +283,11 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
         >
           <div className="py-1 flex items-center justify-center gap-2 text-slate-500 text-xs">
             <UploadOutlined className="text-indigo-600 text-sm" />
-            <span className="font-medium text-slate-700">Chọn hoặc kéo tệp vào đây</span>
+            <span className="font-medium text-slate-700">
+              {acceptType === "audio"
+                ? "Chọn hoặc kéo tệp âm thanh vào đây"
+                : "Chọn, kéo thả hoặc dán (Ctrl+V) ảnh vào đây"}
+            </span>
             <span className="text-[10px] text-slate-400">
               {acceptType === "image" ? "(PNG, JPG, WEBP ≤ 20MB)" : acceptType === "audio" ? "(MP3, WAV ≤ 20MB)" : "(≤ 20MB)"}
             </span>

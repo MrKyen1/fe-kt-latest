@@ -75,8 +75,9 @@ type AttemptAnswer = {
 };
 
 function getMediaType(type?: string): ExamMedia["type"] {
-  if (type === "video") return "video";
-  if (type === "audio") return "audio";
+  const t = (type || "").toLowerCase();
+  if (t.includes("video") || t.endsWith(".mp4") || t.endsWith(".webm")) return "video";
+  if (t.includes("audio") || t.endsWith(".mp3") || t.endsWith(".wav") || t.endsWith(".ogg") || t.endsWith(".m4a") || t.endsWith(".aac")) return "audio";
   return "image";
 }
 
@@ -179,13 +180,39 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     .map<ExamQuestion>((answer) => {
       const snapshot = answer.question || {};
       const detail = snapshot.detail || {};
-      const media = (snapshot.media || [])
-        .map((item) => {
+      const rawMediaList = snapshot.media || [];
+      const allMedia = rawMediaList
+        .map((item: any) => {
           const url = item.url || item.media?.url;
           if (!url) return null;
           return {
             type: getMediaType(item.type || item.media?.type),
             url: resolveMediaUrl(url),
+            role: item.role || item.media?.role,
+          };
+        })
+        .filter(Boolean) as ExamMedia[];
+
+      // Tách biệt media đề bài và media giải thích
+      const promptMedia = allMedia.filter(
+        (m) => m.role !== "explanation_image" && m.role !== "explanation_audio"
+      );
+
+      const rawExplanationMedia =
+        (answer.feedback as any)?.explanationMedia ||
+        (snapshot as any)?.feedback?.explanationMedia ||
+        rawMediaList.filter((m: any) => m.role === "explanation_image" || m.role === "explanation_audio");
+
+      const explanationMedia = (rawExplanationMedia || [])
+        .map((item: any) => {
+          const m = item.media || item;
+          const url = m.url || (typeof m === "string" ? m : null);
+          if (!url) return null;
+          const role = item.role || m.role;
+          return {
+            type: getMediaType(m.type || (role === "explanation_audio" ? "audio" : "image")),
+            url: resolveMediaUrl(url),
+            role,
           };
         })
         .filter(Boolean) as ExamMedia[];
@@ -226,7 +253,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
               ((detail.tokens as string[] | undefined) || (detail.correctTokens as string[] | undefined) || []),
               String((answer as any).id || answer.questionId || "word_ord")
             )
-          : snapshot.options?.map((option) => {
+          : snapshot.options?.map((option: any) => {
               const optionId = option.id || option.content;
               const backendCorrArr = Array.isArray(backendCorrectAnswer)
                 ? backendCorrectAnswer.map(String)
@@ -235,13 +262,15 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
                 : [];
 
               const isOptCorrect =
-                (option as any).isCorrect === true ||
-                String((option as any).isCorrect) === "true" ||
+                option.isCorrect === true ||
+                String(option.isCorrect) === "true" ||
                 (detail as any).correctOptionId === optionId ||
                 (Array.isArray((detail as any).correctOptionIds) && (detail as any).correctOptionIds.includes(optionId)) ||
                 backendCorrArr.includes(String(optionId)) ||
                 (option.label && backendCorrArr.includes(String(option.label)));
-              const hasMedia = !!(option as any).media;
+              const optMedia = option.media;
+              const optMediaUrl = optMedia?.url || option.imageUrl || option.mediaUrl;
+              const hasMedia = !!optMediaUrl;
               const rawContent = option.content ?? "";
               const content = hasMedia && isUuidOrId(rawContent, option.id) ? "" : normalizeLineBreaks(rawContent);
               return {
@@ -250,11 +279,11 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
                 content,
                 orderIndex: option.orderIndex,
                 isCorrect: isOptCorrect,
-                mediaId: (option as any).mediaId,
-                media: (option as any).media
+                mediaId: option.mediaId,
+                media: optMediaUrl
                   ? {
-                      type: getMediaType((option as any).media.type),
-                      url: resolveMediaUrl((option as any).media.url),
+                      type: getMediaType(optMedia?.type || (String(optMediaUrl).match(/\.(mp3|wav|ogg|m4a)$/i) ? "audio" : "image")),
+                      url: resolveMediaUrl(optMediaUrl),
                     }
                   : undefined,
               };
@@ -332,6 +361,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
 
 
       const backendExplanation = answer.feedback?.explanation || answer.question?.feedback?.explanation || answer.question?.explanation;
+      const explanationAudioObj = explanationMedia.find((m) => m.type === "audio");
 
       return {
         id: answer.questionId,
@@ -342,12 +372,14 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         passageText: detail.passageText || (snapshot as any).passageText,
         blanks: detail.blanks || (snapshot as any).blanks,
         detail,
-        media,
+        media: promptMedia,
         options,
         leftItems,
         rightItems,
         correctAnswer: backendCorrectAnswer,
         explanation: normalizeLineBreaks(backendExplanation || ""),
+        explanationMedia,
+        explanationAudio: explanationAudioObj?.url,
         userAnswer: parseBackendAnswer(answer.questionType, answer.answer),
         isCorrect: answer.isCorrect,
         answeredAt: (answer as any).answeredAt,
@@ -359,6 +391,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
 
   return {
     id: attempt.id,
+    attemptId: attempt.id,
     title: attempt.exam?.title || "Bai thi",
     timeLimit: attempt.timeLimitSecondsSnapshot || attempt.exam?.timeLimitSeconds || 0,
     examType: (attempt as any).examType || (attempt as any).examTypeSnapshot || attempt.exam?.examType || "practice",
@@ -386,6 +419,10 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
     requiresRemediation: attempt.requiresRemediation,
     remainingQuestionCount: attempt.remainingQuestionCount,
     firstAttemptResult: attempt.firstAttemptResult,
+    student: (attempt as any).student,
+    attemptPercentage: (attempt as any).attemptPercentage,
+    attemptCorrectCount: (attempt as any).attemptCorrectCount,
+    attemptQuestionCount: (attempt as any).attemptQuestionCount,
   } as any;
 }
 

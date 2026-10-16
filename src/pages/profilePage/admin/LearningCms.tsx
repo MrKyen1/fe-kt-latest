@@ -390,13 +390,18 @@ export default function LearningCms() {
   };
 
   const getAvailableRoles = () => {
+    if (currentQuestionType === "multiple_choice")
+      return [
+        { value: "prompt_image", label: "Hình ảnh đề bài" },
+        { value: "prompt_audio", label: "Âm thanh đề bài" },
+      ];
     if (currentQuestionType === "image_choice")
       return [{ value: "prompt_image", label: "Hình ảnh đề bài" }];
     if (currentQuestionType === "audio_choice" || currentQuestionType === "audio_image_choice" || currentQuestionType === "audio_fill_blanks")
       return [{ value: "prompt_audio", label: "Âm thanh đề bài" }];
     return [
-      { value: "prompt_audio", label: "Âm thanh đề bài" },
       { value: "prompt_image", label: "Hình ảnh đề bài" },
+      { value: "prompt_audio", label: "Âm thanh đề bài" },
     ];
   };
 
@@ -786,7 +791,7 @@ export default function LearningCms() {
         }
       }
 
-      const mediaIds = (fullRecord.media ?? []).map((m: any) => ({
+      const allQuestionMedia = (fullRecord.media ?? []).map((m: any) => ({
         mediaId: m.mediaId ?? m.media?.id,
         role: m.role,
         orderIndex: m.orderIndex,
@@ -794,6 +799,13 @@ export default function LearningCms() {
         fileType: m.media?.type,
         fileName: m.media?.altText || m.media?.url?.split("/").pop(),
       }));
+
+      const promptMediaList = allQuestionMedia.filter(
+        (m: any) => m.role !== "explanation_image" && m.role !== "explanation_audio"
+      );
+      const explanationMediaList = allQuestionMedia.filter(
+        (m: any) => m.role === "explanation_image" || m.role === "explanation_audio"
+      );
 
       const resolveEditablePrompt = (rec: any) => {
         if (rec.type === "error_correction" && rec.detail?.incorrectSentence) {
@@ -831,7 +843,8 @@ export default function LearningCms() {
             fileType: "image",
           } : undefined,
         })),
-        mediaIds,
+        mediaIds: promptMediaList,
+        explanationMedia: explanationMediaList,
         ...detailFields,
       });
     } catch (error: any) {
@@ -888,7 +901,7 @@ export default function LearningCms() {
         }
       }
 
-      const mediaIds = (cloneData.mediaIds ?? []).map((m: any) => ({
+      const allCloneMedia = (cloneData.mediaIds ?? []).map((m: any) => ({
         mediaId: m.mediaId ?? m.media?.id,
         role: m.role,
         orderIndex: m.orderIndex,
@@ -896,6 +909,13 @@ export default function LearningCms() {
         fileType: m.media?.type,
         fileName: m.media?.altText || m.media?.url?.split("/").pop(),
       }));
+
+      const promptMediaList = allCloneMedia.filter(
+        (m: any) => m.role !== "explanation_image" && m.role !== "explanation_audio"
+      );
+      const explanationMediaList = allCloneMedia.filter(
+        (m: any) => m.role === "explanation_image" || m.role === "explanation_audio"
+      );
 
       questionForm.resetFields();
       const clonePrompt = (() => {
@@ -932,7 +952,8 @@ export default function LearningCms() {
             fileType: "image",
           } : undefined,
         })),
-        mediaIds,
+        mediaIds: promptMediaList,
+        explanationMedia: explanationMediaList,
         ...detailFields,
       });
 
@@ -951,6 +972,12 @@ export default function LearningCms() {
       onOk: async () => {
         try {
           await learningCmsService.questions.remove(record.id);
+          invalidateQuestionDetailCache(record.id);
+          setQuestionDetails((prev) => {
+            const next = { ...prev };
+            delete next[record.id];
+            return next;
+          });
           message.success("Xóa thành công");
           loadAllData();
         } catch (error: any) {
@@ -1069,24 +1096,15 @@ export default function LearningCms() {
           .filter((m: any) => m?.mediaId)
           .map((m: any, idx: number) => ({
             mediaId: m.mediaId,
-            role: m.role || (qType === "image_choice" ? "prompt_image" : (qType === "audio_choice" || qType === "audio_image_choice" || qType === "audio_fill_blanks") ? "prompt_audio" : "prompt_image"),
+            role: m.role || "prompt_image",
             orderIndex: m.orderIndex !== undefined ? m.orderIndex : idx,
           })),
       };
 
-      // Đảm bảo loại câu hỏi hình ảnh / âm thanh luôn chuẩn hóa vai trò media
-      if (qType === "image_choice" && payload.mediaIds.length > 0) {
-        if (!payload.mediaIds.some((m: any) => m.role === "prompt_image")) {
-          payload.mediaIds[0].role = "prompt_image";
-        }
-      }
-      if ((qType === "audio_choice" || qType === "audio_image_choice" || qType === "audio_fill_blanks") && payload.mediaIds.length > 0) {
-        if (!payload.mediaIds.some((m: any) => m.role === "prompt_audio")) {
+      if (qType === "audio_fill_blanks") {
+        if (payload.mediaIds.length > 0 && !payload.mediaIds.some((m: any) => m.role === "prompt_audio")) {
           payload.mediaIds[0].role = "prompt_audio";
         }
-      }
-
-      if (qType === "audio_fill_blanks") {
         const hasAudio = payload.mediaIds.some((m: any) => m.role === "prompt_audio");
         if (!hasAudio) {
           message.error({

@@ -2,6 +2,7 @@ import { PagedCollection } from "../../../components/PagedCollection";
 import Table from "../../../components/Table";
 import { useServerPagination } from "../../../hooks/useServerPagination";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useResponsive } from "../../../hooks/useResponsive";
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -198,6 +199,7 @@ function AttemptHistoryModal({
 // ==================== MAIN COMPONENT ====================
 export default function StudentMyExams() {
   const { hasPermission } = useAuth();
+  const { isMobile } = useResponsive();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("exam-assignments");
   const [loading, setLoading] = useState(false);
@@ -349,12 +351,12 @@ export default function StudentMyExams() {
     }
 
     return (
-      <div className="space-y-5">
+      <div className="space-y-4 sm:space-y-5">
         {/* Top Filter and Search Bar */}
         <Card className="rounded-2xl border border-slate-200/80 shadow-sm bg-white p-2">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
             {/* Search Box */}
-            <div className="flex-1 min-w-[240px]">
+            <div className="flex-1 min-w-[200px]">
               <Input
                 placeholder="Tìm kiếm theo tên bài thi, mã đề hoặc lớp học..."
                 prefix={<SearchOutlined className="text-slate-400 mr-1" />}
@@ -366,24 +368,24 @@ export default function StudentMyExams() {
             </div>
 
             {/* Filter controls */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
               {/* Type Filter */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
                 <button
                   onClick={() => setFilterType("all")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "all" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "all" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
                 >
-                  Tất cả loại ({totalAssignedCount})
+                  Tất cả ({totalAssignedCount})
                 </button>
                 <button
                   onClick={() => setFilterType("exam")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "exam" ? "bg-white text-purple-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "exam" ? "bg-white text-purple-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
                 >
                   Kiểm tra
                 </button>
                 <button
                   onClick={() => setFilterType("practice")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "practice" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterType === "practice" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
                 >
                   Ôn tập
                 </button>
@@ -393,7 +395,7 @@ export default function StudentMyExams() {
               <Select
                 value={filterStatus}
                 onChange={(val) => setFilterStatus(val)}
-                className="w-40 h-10 font-semibold"
+                className="w-full sm:w-40 h-10 font-semibold"
                 dropdownClassName="rounded-xl"
                 options={[
                   { value: "all", label: "Tất cả trạng thái" },
@@ -405,18 +407,18 @@ export default function StudentMyExams() {
           </div>
 
           {/* Quick Summary Bar */}
-          <div className="flex items-center gap-6 mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-              Tổng số bài: <strong className="text-slate-800 font-bold">{totalAssignedCount}</strong>
+              Tổng: <strong className="text-slate-800 font-bold">{totalAssignedCount}</strong>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Đã hoàn thành: <strong className="text-emerald-600 font-bold">{completedAssignedCount}</strong>
+              Hoàn thành: <strong className="text-emerald-600 font-bold">{completedAssignedCount}</strong>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              Cần ôn tập / Chưa làm: <strong className="text-amber-600 font-bold">{pendingAssignedCount}</strong>
+              Cần ôn tập: <strong className="text-amber-600 font-bold">{pendingAssignedCount}</strong>
             </span>
           </div>
         </Card>
@@ -426,7 +428,175 @@ export default function StudentMyExams() {
           <div className="py-12 bg-white rounded-2xl border border-slate-100 text-center">
             <Empty description={<span className="text-slate-400 font-medium">Không tìm thấy bài thi nào phù hợp với bộ lọc.</span>} />
           </div>
+        ) : isMobile ? (
+          /* Mobile Card List View */
+          <div className="space-y-3 mt-3">
+            {paginatedAssignedExams.map((item: any) => {
+              const isStarting = startingId === `${item.assignmentStudentId}:${item.examId}`;
+              const statusInfo = getAssignedExamStatus(item);
+              const actionInfo = getAssignedExamAction(item);
+              const scoreInfo = item.attemptsCount > 0 ? formatStudentExamScoreDisplay({
+                isExamType: item.isExamType,
+                score: item.bestScore,
+                maxScore: item.maxScore,
+                percentage: item.bestPctVal,
+              }) : null;
+
+              return (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3"
+                >
+                  {/* Top Row: Tags (Status + Type + Class) */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Tag
+                        color={item.isExamType ? "purple" : "blue"}
+                        className="rounded-full border-none text-[10px] font-bold px-2 py-0.5 m-0"
+                      >
+                        {item.isExamType ? "Kiểm tra" : "Ôn tập"}
+                      </Tag>
+                      {item.className && (
+                        <Tag
+                          color="cyan"
+                          className="rounded-full border-none text-[10px] font-semibold px-2 py-0.5 m-0 max-w-[150px] truncate"
+                        >
+                          Lớp: {item.className}
+                        </Tag>
+                      )}
+                    </div>
+                    <Tag
+                      color={statusInfo.color}
+                      className="rounded-full border-none text-[11px] px-2.5 py-0.5 font-bold m-0"
+                    >
+                      {statusInfo.label}
+                    </Tag>
+                  </div>
+
+                  {/* Exam Title & Assignment Name */}
+                  <div>
+                    <div
+                      className="font-bold text-slate-800 text-sm hover:text-indigo-600 transition cursor-pointer leading-snug"
+                      onClick={() => {
+                        if (actionInfo.actionType === "review") {
+                          if (item.lastAttemptId) {
+                            navigate(`/exam/${item.lastAttemptId}`);
+                          } else {
+                            setHistoryAssignmentStudentId(item.assignmentStudentId);
+                            setHistoryExamId(item.examId);
+                            setHistoryTitle(item.examTitle);
+                          }
+                        } else {
+                          handleStartExam(item.assignmentStudentId, item.examId);
+                        }
+                      }}
+                    >
+                      {item.examTitle}
+                    </div>
+                    {item.assignmentTitle && (
+                      <div className="text-xs text-slate-400 font-medium truncate mt-0.5">
+                        {item.assignmentTitle}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info & Score Section */}
+                  <div className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between gap-3 text-xs">
+                    <div className="space-y-0.5 text-slate-500">
+                      <div className="flex items-center gap-1 font-medium">
+                        <ClockCircleOutlined className="text-slate-400" />
+                        <span>{item.timeLimitSeconds ? `${Math.ceil(item.timeLimitSeconds / 60)} phút` : "Tự do"}</span>
+                      </div>
+                      <div className="text-slate-400 text-[11px]">
+                        {item.attemptsCount > 0 ? `${item.attemptsCount} lần đã làm` : "Chưa làm"}
+                      </div>
+                    </div>
+
+                    {item.attemptsCount > 0 && scoreInfo ? (
+                      <div className="text-right min-w-[100px]">
+                        <div className="flex items-center justify-end gap-1.5 text-xs font-bold mb-1">
+                          <span className={item.isCompleted ? "text-emerald-600" : "text-slate-700"}>
+                            {item.bestPctVal.toFixed(0)}%
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-normal">
+                            ({scoreInfo.primaryText})
+                          </span>
+                        </div>
+                        <Progress
+                          percent={Math.round(item.bestPctVal)}
+                          size="small"
+                          showInfo={false}
+                          strokeColor={item.isCompleted ? "#10b981" : item.bestPctVal >= 50 ? "#f59e0b" : "#ef4444"}
+                          className="m-0"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-slate-300 text-xs italic">—</span>
+                    )}
+                  </div>
+
+                  {/* Bottom Actions Row */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                    {(item.attemptsCount > 0 || item.totalAttemptsCount > 0) && (
+                      <Button
+                        size="middle"
+                        icon={<HistoryOutlined />}
+                        onClick={() => {
+                          setHistoryAssignmentStudentId(item.assignmentStudentId);
+                          setHistoryExamId(item.examId);
+                          setHistoryTitle(item.examTitle);
+                        }}
+                        className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 text-xs h-9 px-3 font-semibold shrink-0"
+                      >
+                        Lịch sử
+                      </Button>
+                    )}
+
+                    {actionInfo.actionType === "review" && (
+                      <Button
+                        size="middle"
+                        icon={<RotateCcw size={13} />}
+                        loading={isStarting}
+                        onClick={() => handleStartExam(item.assignmentStudentId, item.examId, true)}
+                        className="rounded-xl font-bold text-xs h-9 px-3 border-blue-200 text-blue-600 hover:bg-blue-50 shrink-0"
+                      >
+                        Ôn lại
+                      </Button>
+                    )}
+
+                    <Button
+                      size="middle"
+                      type={actionInfo.isPrimary ? "primary" : "default"}
+                      icon={actionInfo.actionType === "review" ? <HistoryOutlined /> : <PlayCircleOutlined />}
+                      loading={isStarting}
+                      onClick={() => {
+                        if (actionInfo.actionType === "review") {
+                          if (item.lastAttemptId) {
+                            navigate(`/exam/${item.lastAttemptId}`);
+                          } else {
+                            setHistoryAssignmentStudentId(item.assignmentStudentId);
+                            setHistoryExamId(item.examId);
+                            setHistoryTitle(item.examTitle);
+                          }
+                        } else {
+                          handleStartExam(item.assignmentStudentId, item.examId);
+                        }
+                      }}
+                      className={`rounded-xl font-bold text-xs h-9 flex-1 flex items-center justify-center gap-1.5 ${
+                        actionInfo.actionType === "review"
+                          ? "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                          : "bg-indigo-600 hover:bg-indigo-700 shadow-sm text-white"
+                      }`}
+                    >
+                      {actionInfo.label}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          /* Desktop Table List View */
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden mt-5">
             <div className="overflow-x-auto">
               <div className="min-w-[980px]">
@@ -670,14 +840,14 @@ export default function StudentMyExams() {
     if (!selectedCurriculumId) {
       return (
         <div>
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-4 sm:mb-6">
             <div>
-              <h3 className="text-xl font-bold text-slate-800 m-0">Lộ trình học của bạn</h3>
-              <p className="text-sm text-slate-500 mt-1 m-0">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-800 m-0">Lộ trình học của bạn</h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1 m-0">
                 Các giáo trình được phân công trực tiếp hoặc qua lớp học. Chọn giáo trình để xem danh sách bài thi.
               </p>
             </div>
-            <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3.5 py-1 rounded-full shadow-xs">
+            <span className="self-start sm:self-auto text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-full shadow-xs">
               {curriculumList.total} giáo trình
             </span>
           </div>
@@ -838,10 +1008,10 @@ export default function StudentMyExams() {
         </div>
 
         {/* Curriculum Banner */}
-        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-3xl p-6 md:p-8 text-white shadow-md">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 text-white shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
             <div className="max-w-2xl">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-2 flex-wrap">
                 <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-semibold">
                   Lộ trình học
                 </span>
@@ -865,24 +1035,26 @@ export default function StudentMyExams() {
                   </span>
                 )}
               </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">
                 {title}
               </h2>
               {description && (
-                <p className="text-white/80 text-sm leading-relaxed m-0 max-w-xl">
+                <p className="text-white/80 text-xs sm:text-sm leading-relaxed m-0 max-w-xl">
                   {description}
                 </p>
               )}
             </div>
 
-            <div className="flex md:flex-col items-center justify-center bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-center min-w-[140px] shrink-0">
-              <div className="text-3xl font-black text-white">
-                {Math.round(progressPct)}%
+            <div className="flex flex-row md:flex-col items-center justify-between md:justify-center bg-white/10 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-white/20 text-center min-w-[130px] shrink-0">
+              <div>
+                <div className="text-2xl sm:text-3xl font-black text-white">
+                  {Math.round(progressPct)}%
+                </div>
+                <div className="text-[11px] sm:text-xs text-white/80 mt-0.5">
+                  Hoàn thành
+                </div>
               </div>
-              <div className="text-xs text-white/80 mt-0.5">
-                Hoàn thành
-              </div>
-              <div className="text-[11px] text-white/70 mt-1">
+              <div className="text-[11px] text-white/75 mt-0 md:mt-1 font-medium">
                 {completedCount}/{totalRequired || exams.length} bài bắt buộc
               </div>
             </div>
@@ -952,29 +1124,29 @@ export default function StudentMyExams() {
                       className="bg-white rounded-2xl p-4 md:p-5 border border-slate-100 shadow-xs hover:shadow-md transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group"
                     >
                       {/* Left + Middle: Index + Title + Meta row */}
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-base shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm sm:text-base shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors mt-0.5 sm:mt-0">
                           {idx + 1}
                         </div>
                         <div className="min-w-0 flex-1">
                           <Tooltip title={examTitle} placement="topLeft">
-                            <h4 className="font-bold text-slate-800 text-base leading-snug truncate mb-1">
+                            <h4 className="font-bold text-slate-800 text-sm sm:text-base leading-snug truncate mb-1">
                               {examTitle}
                             </h4>
                           </Tooltip>
-                          <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                          <div className="flex items-center gap-1.5 sm:gap-3 text-xs text-slate-500 flex-wrap">
                             <span className="flex items-center gap-1 font-medium">
-                              <Clock size={13} className="text-slate-400" />
+                              <Clock size={12} className="text-slate-400" />
                               {timeLimitMinutes ? `${timeLimitMinutes} phút` : "Tự do"}
                             </span>
                             {questionCount != null && questionCount > 0 && (
                               <span className="flex items-center gap-1 font-medium">
-                                <FileText size={13} className="text-slate-400" />
+                                <FileText size={12} className="text-slate-400" />
                                 {questionCount} câu hỏi
                               </span>
                             )}
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                              className={`px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold ${
                                 isRequired
                                   ? "bg-rose-50 text-rose-600"
                                   : "bg-slate-100 text-slate-600"
@@ -1018,14 +1190,14 @@ export default function StudentMyExams() {
                                     : `Tiến độ: ${bestPctVal.toFixed(0)}%`
                                 }
                               >
-                                <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
                                   {isExamType ? `${(bestPctVal / 10).toFixed(1)} đ` : `${bestPctVal.toFixed(0)}%`}
                                 </span>
                               </Tooltip>
                             )}
                             {attemptsCount > 0 && (
-                              <span className="text-slate-400 text-xs">
-                                ({attemptsCount} lần làm)
+                              <span className="text-slate-400 text-[11px]">
+                                ({attemptsCount} lần)
                               </span>
                             )}
                           </div>
@@ -1033,7 +1205,7 @@ export default function StudentMyExams() {
                       </div>
 
                       {/* Right: Actions */}
-                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                      <div className="w-full sm:w-auto flex items-center justify-end sm:justify-start gap-2 pt-2 sm:pt-0 border-t border-slate-50 sm:border-0 shrink-0">
                         {attemptsCount > 0 && (
                           <Tooltip title={ep.lastAttemptId ? "Xem bài làm gần nhất" : "Lịch sử làm bài"}>
                             <Button
@@ -1046,8 +1218,10 @@ export default function StudentMyExams() {
                                   message.info(`Đã làm ${attemptsCount} lượt, điểm cao nhất: ${bestPctVal.toFixed(0)}%`);
                                 }
                               }}
-                              className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 h-9 px-3"
-                            />
+                              className="rounded-xl border-slate-200 text-slate-600 hover:text-indigo-600 h-9 px-3 shrink-0"
+                            >
+                              <span className="sm:hidden text-xs font-semibold">Lịch sử</span>
+                            </Button>
                           </Tooltip>
                         )}
                         {isCompleted && (
@@ -1057,7 +1231,7 @@ export default function StudentMyExams() {
                               icon={<RotateCcw size={14} />}
                               loading={isStarting}
                               onClick={() => handleStartCurriculumExam(curriculumId, examId, true)}
-                              className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50 h-9 px-3"
+                              className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50 h-9 px-3 shrink-0 font-semibold text-xs"
                             >
                               Ôn tập lại
                             </Button>
@@ -1074,7 +1248,7 @@ export default function StudentMyExams() {
                               handleStartCurriculumExam(curriculumId, examId);
                             }
                           }}
-                          className={`rounded-xl font-semibold text-xs md:text-sm h-9 px-4 flex items-center gap-1.5 ${
+                          className={`rounded-xl font-semibold text-xs sm:text-sm h-9 px-4 flex-1 sm:flex-initial flex items-center justify-center gap-1.5 ${
                             isCompleted
                               ? "bg-emerald-600 hover:bg-emerald-500"
                               : "bg-indigo-600 hover:bg-indigo-500"
@@ -1106,126 +1280,202 @@ export default function StudentMyExams() {
         token: { borderRadius: 12, colorPrimary: "#4f46e5", fontFamily: "Inter, system-ui, -apple-system, sans-serif" },
       }}
     >
-      <div className="min-h-screen bg-slate-50/50 py-6 px-4 sm:px-6">
+      <div className="min-h-screen bg-slate-50/50 py-4 sm:py-6 px-2.5 sm:px-6">
         <Spin spinning={false} size="large">
-          <div className="max-w-[1100px] mx-auto space-y-6">
+          <div className="max-w-[1100px] mx-auto space-y-4 sm:space-y-6">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-100 p-6 rounded-3xl shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 bg-white border border-slate-100 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-sm">
               <div>
-                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight flex items-center gap-2">
-                  <BookOpen size={24} className="text-indigo-600" />
+                <Title level={2} className="!mb-0.5 !text-slate-800 font-extrabold tracking-tight flex items-center gap-2 !text-xl sm:!text-2xl">
+                  <BookOpen size={22} className="text-indigo-600 shrink-0" />
                   <span>Bài học của tôi</span>
                 </Title>
-                <Text className="text-slate-500 text-sm">
+                <Text className="text-slate-500 text-xs sm:text-sm">
                   Bài thi được giao và lộ trình học từ giáo viên / lớp học
                 </Text>
               </div>
               <Button icon={<ReloadOutlined />} onClick={loadAll}
-                className="rounded-xl border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600">
+                className="self-end sm:self-auto rounded-xl border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 text-xs sm:text-sm">
                 Làm mới
               </Button>
             </div>
 
             {/* Summary stats */}
-            <Row gutter={[16, 16]}>
+            <Row gutter={[12, 12]}>
               <Col xs={12} md={6}>
-                <Card className="rounded-2xl border-slate-100 bg-indigo-50 text-center" bodyStyle={{ padding: "16px 12px" }}>
+                <Card className="rounded-2xl border-slate-100 bg-indigo-50 text-center" bodyStyle={{ padding: "14px 10px" }}>
                   <Statistic
                     title={<span className="text-indigo-600 text-xs font-semibold">Bài thi được giao</span>}
                     value={allAssignedExamItems.length}
-                    valueStyle={{ color: "#4f46e5", fontSize: 28, fontWeight: 700 }}
+                    valueStyle={{ color: "#4f46e5", fontSize: 24, fontWeight: 700 }}
                   />
                 </Card>
               </Col>
               <Col xs={12} md={6}>
-                <Card className="rounded-2xl border-slate-100 bg-purple-50 text-center" bodyStyle={{ padding: "16px 12px" }}>
+                <Card className="rounded-2xl border-slate-100 bg-purple-50 text-center" bodyStyle={{ padding: "14px 10px" }}>
                   <Statistic
                     title={<span className="text-purple-600 text-xs font-semibold">Lộ trình học</span>}
                     value={curriculumItems.length}
-                    valueStyle={{ color: "#7c3aed", fontSize: 28, fontWeight: 700 }}
+                    valueStyle={{ color: "#7c3aed", fontSize: 24, fontWeight: 700 }}
                   />
                 </Card>
               </Col>
               <Col xs={12} md={6}>
-                <Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center" bodyStyle={{ padding: "16px 12px" }}>
+                <Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center" bodyStyle={{ padding: "14px 10px" }}>
                   <Statistic
                     title={<span className="text-emerald-600 text-xs font-semibold">Tổng lượt làm</span>}
                     value={examAssignments.reduce((sum: number, r: any) => sum + (r.attempts?.length ?? r.summary?.attemptsCount ?? 0), 0)}
-                    valueStyle={{ color: "#10b981", fontSize: 28, fontWeight: 700 }}
+                    valueStyle={{ color: "#10b981", fontSize: 24, fontWeight: 700 }}
                   />
                 </Card>
               </Col>
               <Col xs={12} md={6}>
-                <Card className="rounded-2xl border-slate-100 bg-amber-50 text-center" bodyStyle={{ padding: "16px 12px" }}>
+                <Card className="rounded-2xl border-slate-100 bg-amber-50 text-center" bodyStyle={{ padding: "14px 10px" }}>
                   <Statistic
                     title={<span className="text-amber-600 text-xs font-semibold">Giáo trình hoàn thành</span>}
                     value={curriculumItems.filter((r: any) => parseFloat(r.progressPercentage ?? "0") >= 100).length}
-                    valueStyle={{ color: "#f59e0b", fontSize: 28, fontWeight: 700 }}
+                    valueStyle={{ color: "#f59e0b", fontSize: 24, fontWeight: 700 }}
                   />
                 </Card>
               </Col>
             </Row>
 
-            {/* Tabs */}
-            <Tabs
-              activeKey={activeTab}
-              onChange={(key) => {
-                setActiveTab(key);
-                if (key !== "curriculums") {
-                  setSelectedCurriculumId(null);
-                }
-              }}
-              type="card"
-              size="large"
-              className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
-              tabBarStyle={{ padding: "16px 16px 0", background: "white", marginBottom: 0 }}
-              items={[
-                {
-                  key: "exam-assignments",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
+            {/* Responsive Tabs: On mobile use 2-column switcher, on desktop use antd Tabs */}
+            {isMobile ? (
+              <div className="space-y-3">
+                <div className="bg-white rounded-2xl border border-slate-100 p-1.5 shadow-xs">
+                  <div className="grid grid-cols-2 p-1 bg-slate-100/90 rounded-xl gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("exam-assignments");
+                        setSelectedCurriculumId(null);
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-bold transition-all ${
+                        activeTab === "exam-assignments"
+                          ? "bg-white text-indigo-600 shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
                       <FileTextOutlined />
                       <span>Bài thi được giao</span>
                       <Badge count={allAssignedExamItems.length} style={{ backgroundColor: "#4f46e5" }} />
-                    </span>
-                  ),
-                  children: <div className="p-6"><PagedCollection loading={examList.loading} hasData={allAssignedExamItems.length > 0} variant="list" footer={filteredAssignedExams.length > 0 && (
-              <div className="px-5 py-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-50/50">
-                <span className="text-xs text-slate-500 font-medium">
-                  Hiển thị{" "}
-                  <strong>
-                    {Math.min((examList.pagination.current - 1) * pageSize + 1, examList.total)}
-                  </strong>{" "}
-                  -{" "}
-                  <strong>
-                    {Math.min(examList.pagination.current * pageSize, examList.total)}
-                  </strong>{" "}
-                  trên <strong>{examList.total}</strong> bài thi
-                </span>
-                <Pagination
-                  current={examList.pagination.current}
-                  pageSize={pageSize}
-                  total={examList.total}
-                  onChange={examList.pagination.onChange}
-                  showSizeChanger={false}
-                  size="small"
-                />
-              </div>
-            )}>{renderExamAssignments()}</PagedCollection></div>,
-                },
-                {
-                  key: "curriculums",
-                  label: (
-                    <span className="flex items-center gap-2 px-2">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("curriculums")}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-bold transition-all ${
+                        activeTab === "curriculums"
+                          ? "bg-white text-purple-600 shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
                       <BookOutlined />
                       <span>Lộ trình học</span>
                       <Badge count={curriculumItems.length} style={{ backgroundColor: "#7c3aed" }} />
-                    </span>
-                  ),
-                  children: <div className="p-6"><PagedCollection loading={curriculumList.loading} hasData={curriculumItems.length > 0} variant="list" footer={!selectedCurriculumId && curriculumList.total > 8 && <Pagination {...curriculumList.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{renderCurriculums()}</PagedCollection></div>,
-                },
-              ]}
-            />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden p-3 sm:p-6">
+                  {activeTab === "exam-assignments" ? (
+                    <PagedCollection
+                      loading={examList.loading}
+                      hasData={allAssignedExamItems.length > 0}
+                      variant="list"
+                      footer={filteredAssignedExams.length > 0 && (
+                        <div className="px-3 sm:px-5 py-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-50/50">
+                          <span className="text-xs text-slate-500 font-medium">
+                            Hiển thị <strong>{Math.min((examList.pagination.current - 1) * pageSize + 1, examList.total)}</strong> - <strong>{Math.min(examList.pagination.current * pageSize, examList.total)}</strong> trên <strong>{examList.total}</strong> bài thi
+                          </span>
+                          <Pagination
+                            current={examList.pagination.current}
+                            pageSize={pageSize}
+                            total={examList.total}
+                            onChange={examList.pagination.onChange}
+                            showSizeChanger={false}
+                            size="small"
+                          />
+                        </div>
+                      )}
+                    >
+                      {renderExamAssignments()}
+                    </PagedCollection>
+                  ) : (
+                    <PagedCollection
+                      loading={curriculumList.loading}
+                      hasData={curriculumItems.length > 0}
+                      variant="list"
+                      footer={!selectedCurriculumId && curriculumList.total > 8 && (
+                        <Pagination {...curriculumList.pagination} showSizeChanger={false} className="mt-6 text-center" />
+                      )}
+                    >
+                      {renderCurriculums()}
+                    </PagedCollection>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Tabs
+                activeKey={activeTab}
+                onChange={(key) => {
+                  setActiveTab(key);
+                  if (key !== "curriculums") {
+                    setSelectedCurriculumId(null);
+                  }
+                }}
+                type="card"
+                size="large"
+                className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
+                tabBarStyle={{ padding: "16px 16px 0", background: "white", marginBottom: 0 }}
+                items={[
+                  {
+                    key: "exam-assignments",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <FileTextOutlined />
+                        <span>Bài thi được giao</span>
+                        <Badge count={allAssignedExamItems.length} style={{ backgroundColor: "#4f46e5" }} />
+                      </span>
+                    ),
+                    children: <div className="p-6"><PagedCollection loading={examList.loading} hasData={allAssignedExamItems.length > 0} variant="list" footer={filteredAssignedExams.length > 0 && (
+                      <div className="px-5 py-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-50/50">
+                        <span className="text-xs text-slate-500 font-medium">
+                          Hiển thị{" "}
+                          <strong>
+                            {Math.min((examList.pagination.current - 1) * pageSize + 1, examList.total)}
+                          </strong>{" "}
+                          -{" "}
+                          <strong>
+                            {Math.min(examList.pagination.current * pageSize, examList.total)}
+                          </strong>{" "}
+                          trên <strong>{examList.total}</strong> bài thi
+                        </span>
+                        <Pagination
+                          current={examList.pagination.current}
+                          pageSize={pageSize}
+                          total={examList.total}
+                          onChange={examList.pagination.onChange}
+                          showSizeChanger={false}
+                          size="small"
+                        />
+                      </div>
+                    )}>{renderExamAssignments()}</PagedCollection></div>,
+                  },
+                  {
+                    key: "curriculums",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <BookOutlined />
+                        <span>Lộ trình học</span>
+                        <Badge count={curriculumItems.length} style={{ backgroundColor: "#7c3aed" }} />
+                      </span>
+                    ),
+                    children: <div className="p-6"><PagedCollection loading={curriculumList.loading} hasData={curriculumItems.length > 0} variant="list" footer={!selectedCurriculumId && curriculumList.total > 8 && <Pagination {...curriculumList.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{renderCurriculums()}</PagedCollection></div>,
+                  },
+                ]}
+              />
+            )}
           </div>
         </Spin>
       </div>

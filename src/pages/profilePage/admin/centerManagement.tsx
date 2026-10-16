@@ -37,6 +37,7 @@ import {
   Pagination} from "antd";
 import type { UploadFile } from "antd";
 import { SafeSelect } from "../../../components/SafeSelect";
+import { handleClipboardImagePaste } from "../../../utils/clipboardUtils";
 
 import {
   BookOutlined,
@@ -1454,8 +1455,8 @@ export default function CenterManagement() {
           : specializations.filter((s) => specIds.includes(s.id));
         return (
           <div className="flex flex-wrap gap-1">
-            {specs.map((s) => (
-              <Tag key={s.id} color="cyan" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-cyan-50 text-cyan-600 font-medium">
+            {specs.map((s: any, idx: number) => (
+              <Tag key={s.id || idx} color="cyan" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-cyan-50 text-cyan-600 font-medium">
                 {s.name}
               </Tag>
             ))}
@@ -1473,12 +1474,12 @@ export default function CenterManagement() {
         const tClasses = record.teacherProfile?.classes || classes.filter((c) => classIds.includes(c.id));
         return (
           <div className="flex flex-wrap gap-1">
-            {tClasses.map((c) => {
+            {tClasses.map((c: any, idx: number) => {
               const isCurrentCenter = c.centerId === selectedCenterId;
               const centerObj = (c as any).center || centers.find((cen) => cen.id === c.centerId);
               return (
                 <Tooltip
-                  key={c.id}
+                  key={c.id || idx}
                   title={centerObj ? `Cơ sở: ${centerObj.name}` : undefined}
                 >
                   <Tag
@@ -1687,8 +1688,8 @@ export default function CenterManagement() {
         const sClasses = record.studentProfile?.classes || classes.filter((c) => classIds.includes(c.id));
         return (
           <div className="flex flex-wrap gap-1">
-            {sClasses.map((c) => (
-              <Tag key={c.id} color="blue" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-blue-50 text-blue-600 font-medium">
+            {sClasses.map((c: any, idx: number) => (
+              <Tag key={c.id || idx} color="blue" className="border-none rounded-full px-2.5 py-0.5 text-xs bg-blue-50 text-blue-600 font-medium">
                 {c.name}
               </Tag>
             ))}
@@ -2083,11 +2084,11 @@ export default function CenterManagement() {
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
                     <PagedCollection region="center-list" loading={centerPage.loading} hasData={centers.length > 0} variant="centers" footer={centerPage.total > 10 && <Pagination {...centerPage.pagination} size="small" showSizeChanger={false} />}>
-                    {filteredCenters.map((center) => {
+                    {filteredCenters.map((center, idx) => {
                       const isSelected = center.id === selectedCenterId;
                       return (
                         <div
-                          key={center.id}
+                          key={center.id || idx}
                           onClick={() => setSelectedCenterId(center.id)}
                           className={`group cursor-pointer rounded-2xl p-3.5 transition-all duration-200 border text-left flex items-center justify-between ${isSelected
                             ? "bg-indigo-50/50 border-indigo-200 text-indigo-900 shadow-xs"
@@ -2400,12 +2401,12 @@ export default function CenterManagement() {
                         </div>
                       )}>
                       <Row gutter={[16, 16]} style={{ marginInline: 0 }}>
-                        {paginatedCenterClasses.map((cls) => {
+                        {paginatedCenterClasses.map((cls, idx) => {
                           const classStudentsCount = (cls as any).studentCount ?? 0;
                           const mapped = ((cls as any).curriculums ?? []).map((curriculum: any) => ({ curriculumId: curriculum.id, curriculum }));
 
                           return (
-                            <Col xs={24} sm={12} md={8} key={cls.id}>
+                            <Col xs={24} sm={12} md={8} key={cls.id || idx}>
                               <div className="group border border-slate-100 rounded-2xl p-5 bg-slate-50/20 hover:bg-white hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 relative flex flex-col justify-between min-h-[120px]">
                                 <div>
                                   <div className="flex items-start justify-between gap-2">
@@ -2444,11 +2445,11 @@ export default function CenterManagement() {
                                   )}
                                   {mapped.length > 0 && (
                                     <div className="mt-1 flex flex-wrap gap-1">
-                                      {mapped.map((m) => {
+                                      {mapped.map((m, mIdx) => {
                                         const name = m.curriculum?.title || m.curriculum?.code;
                                         if (!name) return null;
                                         return (
-                                          <Tooltip key={m.id} title={name}>
+                                          <Tooltip key={m.curriculumId || m.curriculum?.id || mIdx} title={name}>
                                             <span className="text-[10px] text-indigo-500 bg-indigo-50 font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 max-w-full truncate">
                                               <LucideBookOpen size={10} className="shrink-0" />
                                               <span className="truncate">{name}</span>
@@ -2591,7 +2592,7 @@ export default function CenterManagement() {
                                     ) : (
                                       filteredTeachers
 
-                                        .map((record) => {
+                                        .map((record, idx) => {
                                           const active = isUserActive(record);
                                           const tClassIds = record.teacherProfile?.classIds || record.teacherProfile?.classes?.map((c: any) => c.id) || [];
                                           const tClasses = record.teacherProfile?.classes || classes.filter((c) => tClassIds.includes(c.id));
@@ -2601,7 +2602,7 @@ export default function CenterManagement() {
                                             : specializations.filter((s) => specIds.includes(s.id));
 
                                           return (
-                                            <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
+                                            <div key={record.id || idx} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
                                               <div className="flex items-start justify-between gap-2">
                                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                                   <Avatar className="bg-gradient-to-r from-indigo-500 to-indigo-600 font-semibold uppercase text-xs shrink-0">
@@ -2625,8 +2626,8 @@ export default function CenterManagement() {
                                                 <div className="space-y-1">
                                                   {tSpecs.length > 0 && (
                                                     <div className="flex flex-wrap gap-1">
-                                                      {tSpecs.map((s) => (
-                                                        <Tag key={s.id} color="purple" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-purple-50 text-purple-600 font-medium">
+                                                      {tSpecs.map((s, sIdx) => (
+                                                        <Tag key={s.id || sIdx} color="purple" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-purple-50 text-purple-600 font-medium">
                                                           {s.name}
                                                         </Tag>
                                                       ))}
@@ -2634,8 +2635,8 @@ export default function CenterManagement() {
                                                   )}
                                                   {tClasses.length > 0 && (
                                                     <div className="flex flex-wrap gap-1">
-                                                      {tClasses.map((c) => (
-                                                        <Tag key={c.id} color="cyan" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-cyan-50 text-cyan-700 font-medium">
+                                                      {tClasses.map((c, cIdx) => (
+                                                        <Tag key={c.id || cIdx} color="cyan" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-cyan-50 text-cyan-700 font-medium">
                                                           {c.name}
                                                         </Tag>
                                                       ))}
@@ -2799,7 +2800,7 @@ export default function CenterManagement() {
                                     ) : (
                                       filteredStudents
 
-                                        .map((record) => {
+                                        .map((record, idx) => {
                                           const active = isUserActive(record);
                                           const classIds = record.studentProfile?.classIds || record.studentProfile?.classes?.map((c: any) => c.id) || [];
                                           const sClasses = record.studentProfile?.classes || classes.filter((c) => classIds.includes(c.id));
@@ -2808,7 +2809,7 @@ export default function CenterManagement() {
                                           const end = record.endDate ? dayjs(record.endDate).format("DD/MM/YYYY") : null;
 
                                           return (
-                                            <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
+                                            <div key={record.id || idx} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
                                               <div className="flex items-start justify-between gap-2">
                                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                                   <Avatar className="bg-gradient-to-r from-teal-500 to-teal-600 font-semibold uppercase text-xs shrink-0">
@@ -2830,8 +2831,8 @@ export default function CenterManagement() {
 
                                               {sClasses.length > 0 && (
                                                 <div className="flex flex-wrap gap-1">
-                                                  {sClasses.map((c) => (
-                                                    <Tag key={c.id} color="blue" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-blue-50 text-blue-600 font-medium">
+                                                  {sClasses.map((c, cIdx) => (
+                                                    <Tag key={c.id || cIdx} color="blue" className="border-none rounded-full px-2 py-0.5 text-[10px] bg-blue-50 text-blue-600 font-medium">
                                                       {c.name}
                                                     </Tag>
                                                   ))}
@@ -2955,8 +2956,8 @@ export default function CenterManagement() {
                                     ) : (
                                       specializations
 
-                                        .map((record) => (
-                                          <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-2">
+                                        .map((record, idx) => (
+                                          <div key={record.id || idx} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-2">
                                             <div className="flex items-start justify-between gap-2">
                                               <div className="font-bold text-slate-800 text-sm">{record.name}</div>
                                               {record.code && (
@@ -3068,8 +3069,8 @@ export default function CenterManagement() {
                                           ) : (
                                             filteredAdmins
 
-                                              .map((record) => (
-                                                <div key={record.id} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
+                                              .map((record, idx) => (
+                                                <div key={record.id || idx} className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs space-y-3">
                                                   <div className="flex items-center gap-2.5">
                                                     <Avatar className="bg-indigo-600 text-white font-semibold uppercase text-xs shrink-0">
                                                       {record.fullName?.charAt(0) || "A"}
@@ -3193,27 +3194,44 @@ export default function CenterManagement() {
                   </Col>
                 </Row>
 
-                <Form.Item label="Hình ảnh trung tâm (Tối đa 20 ảnh)" tooltip="Hỗ trợ tải lên nhiều hình ảnh cùng lúc để giới thiệu trung tâm">
-                  <Upload
-                    listType="picture-card"
-                    fileList={subImagesFileList}
-                    beforeUpload={() => false}
-                    onChange={handleUploadChange}
-                    accept="image/*"
-                    multiple
-                    maxCount={20}
-                    onPreview={(file) => {
-                      const url = file.url || file.thumbUrl || file.response?.url;
-                      if (url) showPreview(url);
+                <Form.Item label="Hình ảnh trung tâm (Tối đa 20 ảnh)" tooltip="Hỗ trợ tải lên nhiều hình ảnh cùng lúc hoặc nhấn Ctrl+V để dán ảnh trực tiếp">
+                  <div
+                    tabIndex={0}
+                    onPaste={(e) => {
+                      handleClipboardImagePaste(e, (pastedFile) => {
+                        const newUploadFile: UploadFile = {
+                          uid: `paste-${Date.now()}`,
+                          name: pastedFile.name,
+                          status: 'done',
+                          originFileObj: pastedFile as any,
+                        };
+                        setSubImagesFileList((prev) => [...prev, newUploadFile]);
+                        message.success("Đã dán ảnh trung tâm từ clipboard (Ctrl+V)!");
+                      });
                     }}
+                    className="focus:outline-none focus:ring-2 focus:ring-indigo-300 rounded-xl p-1 transition-all"
                   >
-                    {subImagesFileList.length < 20 && (
-                      <div>
-                        <PlusOutlined />
-                        <div style={{ marginTop: 8 }}>Tải ảnh lên</div>
-                      </div>
-                    )}
-                  </Upload>
+                    <Upload
+                      listType="picture-card"
+                      fileList={subImagesFileList}
+                      beforeUpload={() => false}
+                      onChange={handleUploadChange}
+                      accept="image/*"
+                      multiple
+                      maxCount={20}
+                      onPreview={(file) => {
+                        const url = file.url || file.thumbUrl || file.response?.url;
+                        if (url) showPreview(url);
+                      }}
+                    >
+                      {subImagesFileList.length < 20 && (
+                        <div>
+                          <PlusOutlined />
+                          <div style={{ marginTop: 8 }} className="text-xs">Tải ảnh / Ctrl+V</div>
+                        </div>
+                      )}
+                    </Upload>
+                  </div>
                 </Form.Item>
 
                 <Form.Item name="mapEmbedUrl" label="Link bản đồ nhúng (Google Map Embed URL)">
@@ -3280,8 +3298,8 @@ export default function CenterManagement() {
                 {editingClass ? <div className="mb-4">
                   <div className="font-medium mb-2">Giáo trình của lớp</div>
                   <Table size="small" rowKey="id" dataSource={mappingPage.data} loading={mappingPage.loading} pagination={mappingPage.pagination}
-                    columns={[{ title: "Giáo trình", render: (_, row: any) => row.curriculum?.title },
-                      { title: "", render: (_, row: any) => <Button danger type="link" onClick={async () => {
+                    columns={[{ title: "Giáo trình", key: "curriculum", render: (_, row: any) => row.curriculum?.title },
+                      { title: "", key: "action", render: (_, row: any) => <Button danger type="link" onClick={async () => {
                         try { await teacherLearningService.classCurriculums.remove(row.id); mappingPage.reload(); classList.reload(); }
                         catch (error) { message.error(getErrorMessage(error)); }
                       }}>Gỡ</Button> }]} />

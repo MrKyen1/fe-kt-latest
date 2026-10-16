@@ -69,7 +69,7 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
     ans.question?.detail?.passage;
 
   // Media
-  const mediaList: any[] = (() => {
+  const rawMediaList: any[] = (() => {
     const m =
       ans.questionSnapshot?.media ||
       ans.question?.media ||
@@ -79,6 +79,18 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
     if (!m) return [];
     if (Array.isArray(m)) return m;
     return [m];
+  })();
+
+  const promptMediaList = rawMediaList.filter(
+    (m: any) => m?.role !== "explanation_image" && m?.role !== "explanation_audio"
+  );
+
+  const explanationMediaList: any[] = (() => {
+    const fromFeedback = ans.feedback?.explanationMedia;
+    if (Array.isArray(fromFeedback) && fromFeedback.length > 0) return fromFeedback;
+    return rawMediaList.filter(
+      (m: any) => m?.role === "explanation_image" || m?.role === "explanation_audio"
+    );
   })();
 
   // Explanation
@@ -979,9 +991,9 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
       )}
 
       {/* Media elements if available */}
-      {mediaList.length > 0 && (
+      {promptMediaList.length > 0 && (
         <div className="my-2.5 flex flex-wrap gap-3 items-center">
-          {mediaList.map((mItem: any, mIdx: number) => {
+          {promptMediaList.map((mItem: any, mIdx: number) => {
             const mUrl =
               mItem?.url ||
               mItem?.path ||
@@ -1040,15 +1052,54 @@ export function QuestionAnswerCard({ ans, idx }: { ans: any; idx: number }) {
         : renderGeneric()}
 
       {/* Detailed Explanation */}
-      {explanation && (
+      {(explanation || explanationMediaList.length > 0) && (
         <div className="mt-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 text-xs sm:text-sm text-amber-950">
           <div className="flex items-center gap-1.5 font-bold text-amber-800 mb-1">
             <BulbOutlined />
             <span>Giải thích chi tiết:</span>
           </div>
-          <div className="whitespace-pre-line text-slate-700 font-medium leading-relaxed pl-3.5 border-l-2 border-amber-300">
-            {explanation}
-          </div>
+          {explanation && (
+            <div className="whitespace-pre-line text-slate-700 font-medium leading-relaxed pl-3.5 border-l-2 border-amber-300">
+              {explanation}
+            </div>
+          )}
+          {explanationMediaList.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-2.5 pl-3.5">
+              {explanationMediaList.map((mItem: any, mIdx: number) => {
+                const mUrl =
+                  mItem?.url ||
+                  mItem?.path ||
+                  mItem?.media?.url ||
+                  mItem?.media?.path ||
+                  (typeof mItem === "string" ? mItem : null);
+                const rawType = String(mItem?.type || mItem?.media?.type || mItem?.role || "").toLowerCase();
+                const isAudio =
+                  rawType.includes("audio") ||
+                  (mUrl &&
+                    (mUrl.endsWith(".mp3") ||
+                      mUrl.endsWith(".wav") ||
+                      mUrl.endsWith(".ogg") ||
+                      mUrl.endsWith(".m4a")));
+                if (!mUrl) return null;
+                if (isAudio) {
+                  return (
+                    <div key={mIdx} className="w-full max-w-sm bg-white p-1.5 rounded-lg border border-amber-200">
+                      <audio controls src={resolveMediaUrl(mUrl)} className="w-full h-8" />
+                    </div>
+                  );
+                }
+                return (
+                  <div key={mIdx} className="max-w-[220px] max-h-[150px] rounded-lg overflow-hidden border border-amber-200 bg-white">
+                    <AppImage
+                      src={resolveMediaUrl(mUrl)}
+                      alt="Ảnh giải thích"
+                      className="max-h-[140px] w-auto object-contain"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

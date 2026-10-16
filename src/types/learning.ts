@@ -295,3 +295,27 @@ export interface LeaderboardSummaryQuery {
   period?: LeaderboardPeriod;
   source?: LeaderboardSource;
 }
+
+export interface AttemptReportItem {
+  attemptNumber: number;
+  isRedo: boolean;
+  attemptQuestionCount: number;
+  attemptCorrectCount: number;
+  attemptPercentage: string;
+  percentage: string;
+  score?: string;
+  maxScore?: string;
+  submittedAt?: string;
+}
+
+export interface AttemptReportData {
+  student: {
+    id: string;
+    code: string;
+    fullName: string;
+  };
+  examId: string;
+  assignmentStudentId?: string | null;
+  curriculumAssignmentStudentId?: string | null;
+  attempts: AttemptReportItem[];
+}

@@ -77,6 +77,7 @@ function buildColumns(
     {
       title: "Giáo trình",
       dataIndex: "title",
+      minWidth: 260,
       render: (val: string, record: Curriculum) => (
         <div className="flex items-center gap-3">
           {record.image ? (
@@ -95,7 +96,7 @@ function buildColumns(
           )}
           <div>
             <div className="font-bold text-slate-800">{val}</div>
-            <div className="text-xs text-slate-400 font-mono mt-0.5">
+            <div className="text-xs text-slate-400 font-mono mt-0.5 whitespace-nowrap">
               {record.code}
               {record.level && ` • Level: ${record.level.name}`}
             </div>
@@ -106,7 +107,8 @@ function buildColumns(
     {
       title: "Đề thi",
       align: "center" as const,
-      width: 120,
+      width: 100,
+      minWidth: 100,
       render: (_: unknown, record: Curriculum) => {
         const examList = record.exams ?? [];
         const count = record.examCount ?? examList.length;
@@ -148,7 +150,7 @@ function buildColumns(
               </div>
             }
           >
-            <div className="inline-flex items-center justify-center cursor-pointer group">
+            <div className="inline-flex items-center justify-center cursor-pointer group whitespace-nowrap">
               <span className="font-bold text-sm text-slate-700 group-hover:text-purple-600 transition-colors">
                 {count}
               </span>
@@ -160,26 +162,33 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
+      width: 140,
+      minWidth: 140,
+      align: "center" as const,
       render: (val: string) => (
-        <Tag
-          color={val === "published" ? "success" : "default"}
-          className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
-        >
-          {CONTENT_STATUS_LABELS[val] || val}
-        </Tag>
+        <span className="whitespace-nowrap">
+          <Tag
+            color={val === "published" ? "success" : "default"}
+            className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold m-0"
+          >
+            {CONTENT_STATUS_LABELS[val] || val}
+          </Tag>
+        </span>
       ),
     },
     {
       title: "Thao tác",
       align: "right" as const,
+      width: 280,
+      minWidth: 280,
       render: (_: unknown, record: Curriculum) => (
-        <Space size="small">
+        <Space size="small" wrap={false} className="whitespace-nowrap flex items-center justify-end">
           <Can perform="learning.write">
             <Button
               type="dashed"
               size="small"
               onClick={() => onConfigExams(record)}
-              className="text-xs font-semibold border-purple-200 text-purple-600 rounded-lg hover:border-purple-500"
+              className="text-xs font-semibold border-purple-200 text-purple-600 rounded-lg hover:border-purple-500 shrink-0"
             >
               Cấu hình đề thi
             </Button>
@@ -201,6 +210,7 @@ function buildColumns(
                     : <CheckCircleOutlined className="text-emerald-500" />
                 }
                 onClick={() => onToggle(record)}
+                className="shrink-0"
               />
             </Tooltip>
           </Can>
@@ -210,6 +220,7 @@ function buildColumns(
               size="small"
               icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
               onClick={() => onEdit(record)}
+              className="shrink-0"
             />
           </Can>
           <Can perform="learning.delete">
@@ -219,6 +230,7 @@ function buildColumns(
               danger
               icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
               onClick={() => onDelete(record)}
+              className="shrink-0"
             />
           </Can>
         </Space>
@@ -429,7 +441,8 @@ export default function CurriculumsTab({
           loading={loading}
           dataSource={curriculums}
           columns={headerColumns}
-          scroll={{ x: 800 }}
+          tableLayout="auto"
+          scroll={{ x: 960 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

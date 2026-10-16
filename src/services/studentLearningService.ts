@@ -154,6 +154,22 @@ export const studentLearningService = {
     },
 
     /**
+     * Báo cáo đầy đủ các lượt làm lại (API ngày 2026-10-11)
+     * GET /api/v1/learning/student/attempts/:attemptId/report?page=1&limit=20
+     */
+    async getReport(attemptId: string, page = 1, limit = 20) {
+      const response = await apiClient.get<any>(
+        `/learning/student/attempts/${attemptId}/report`,
+        { params: { page, limit } },
+      );
+      const data = unwrapData(response);
+      return {
+        data,
+        meta: (response.data as any)?.meta || (data as any)?.meta,
+      };
+    },
+
+    /**
      * Nộp toàn bộ attempt (finish).
      * Body có thể rỗng {} hoặc gửi thêm answers[] cho câu chưa submit.
      */

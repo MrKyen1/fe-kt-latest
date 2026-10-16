@@ -164,23 +164,25 @@ function buildColumns(
     {
       title: "Loại đề",
       dataIndex: "examType",
-      minWidth: 130,
+      minWidth: 120,
       render: (val?: string) => (
-        <Tag
-          color={val === "exam" ? "purple" : "blue"}
-          className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold"
-        >
-          {val === "exam" ? "Đề kiểm tra" : "Đề ôn tập"}
-        </Tag>
+        <span className="whitespace-nowrap">
+          <Tag
+            color={val === "exam" ? "purple" : "blue"}
+            className="rounded-full px-2.5 py-0.5 border-none text-xs font-semibold m-0"
+          >
+            {val === "exam" ? "Đề kiểm tra" : "Đề ôn tập"}
+          </Tag>
+        </span>
       ),
     },
     {
       title: <span className="whitespace-nowrap">Câu hỏi</span>,
-      minWidth: 110,
+      minWidth: 90,
       render: (_: unknown, record: Exam) => {
         const count = record.questionCount ?? record.questions?.length ?? 0;
         return (
-          <div className="text-center">
+          <div className="text-center whitespace-nowrap">
             <div className="font-bold text-lg text-slate-700">{count}</div>
             <div className="text-xs text-slate-400">câu</div>
           </div>
@@ -190,24 +192,27 @@ function buildColumns(
     {
       title: "Trạng thái",
       dataIndex: "status",
-      minWidth: 220,
+      minWidth: 200,
       align: "center" as const,
       render: (_: string, record: Exam) => (
-        <ExamStatusCell exam={record} onToggle={onToggle} onRepublish={onRepublish} />
+        <div className="whitespace-nowrap inline-flex justify-center">
+          <ExamStatusCell exam={record} onToggle={onToggle} onRepublish={onRepublish} />
+        </div>
       ),
     },
     {
       title: "Thao tác",
-      minWidth: 240,
+      minWidth: 380,
+      width: 380,
       align: "right" as const,
       render: (_: unknown, record: Exam) => (
-        <Space size="small" wrap>
+        <Space size="small" wrap={false} className="whitespace-nowrap flex items-center justify-end">
           <Can perform="learning.write">
             <Button
               type="dashed"
               size="small"
               onClick={() => onConfigQuestions(record)}
-              className="text-xs font-semibold border-indigo-200 text-indigo-600 rounded-lg hover:border-indigo-500"
+              className="text-xs font-semibold border-indigo-200 text-indigo-600 rounded-lg hover:border-indigo-500 shrink-0"
             >
               Cấu hình câu hỏi
             </Button>
@@ -216,7 +221,7 @@ function buildColumns(
             type="dashed"
             size="small"
             onClick={() => onViewVersions(record)}
-            className="text-xs font-semibold border-amber-200 text-amber-600 rounded-lg hover:border-amber-500"
+            className="text-xs font-semibold border-amber-200 text-amber-600 rounded-lg hover:border-amber-500 shrink-0"
           >
             Lịch sử phiên bản
           </Button>
@@ -231,6 +236,7 @@ function buildColumns(
                     : <CheckCircleOutlined className="text-emerald-500" />
                 }
                 onClick={() => onToggle(record)}
+                className="shrink-0"
               />
             </Tooltip>
           </Can>
@@ -240,6 +246,7 @@ function buildColumns(
               size="small"
               icon={<EditOutlined className="text-slate-400 hover:text-indigo-600" />}
               onClick={() => onEdit(record)}
+              className="shrink-0"
             />
           </Can>
           <Can perform="learning.delete">
@@ -249,6 +256,7 @@ function buildColumns(
               danger
               icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
               onClick={() => onDelete(record)}
+              className="shrink-0"
             />
           </Can>
         </Space>
@@ -504,7 +512,7 @@ export default function ExamsTab({
           dataSource={exams}
           columns={headerColumns}
           tableLayout="auto"
-          scroll={{ x: 980 }}
+          scroll={{ x: 1080 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

@@ -22,6 +22,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { authService } from "../../services/authService";
 import { resolveMediaUrl } from "../../services/apiClient";
 import { learningCmsService } from "../../services/learningCmsService";
+import { handleClipboardImagePaste } from "../../utils/clipboardUtils";
 
 const { Title, Text } = Typography;
 
@@ -130,7 +131,17 @@ export default function UserProfile() {
 
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <div className="flex flex-col items-center mb-8">
-            <div className="relative">
+            <div
+              tabIndex={0}
+              onPaste={(e) => {
+                handleClipboardImagePaste(e, (file) => {
+                  handlePreview({ file });
+                  message.success("Đã dán ảnh đại diện từ clipboard (Ctrl+V)!");
+                });
+              }}
+              className="relative group focus:outline-none focus:ring-4 focus:ring-indigo-300 rounded-full p-1 transition-all"
+              title="Nhấp vào máy ảnh hoặc nhấn Ctrl+V để dán ảnh đại diện"
+            >
               <Avatar
                 size={120}
                 src={avatarSrc}
@@ -147,13 +158,17 @@ export default function UserProfile() {
                 <Button
                   shape="circle"
                   icon={<CameraOutlined />}
-                  className="absolute bottom-0 right-0"
+                  className="absolute bottom-0 right-0 shadow-md"
                 />
               </Upload>
             </div>
 
+            <Text type="secondary" className="mt-1.5 text-xs">
+              Nhấp vào icon hoặc nhấn <kbd className="px-1 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">Ctrl+V</kbd> để dán ảnh
+            </Text>
+
             {previewAvatar && (
-              <Text className="mt-2 text-orange-500 text-sm">
+              <Text className="mt-1 text-orange-500 text-sm font-medium">
                 Ảnh mới chưa được lưu
               </Text>
             )}

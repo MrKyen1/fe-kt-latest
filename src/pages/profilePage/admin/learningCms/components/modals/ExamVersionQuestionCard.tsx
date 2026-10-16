@@ -28,7 +28,7 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
   const passage = snapshot.passage || detail.passage;
 
   // Media ở cấp độ câu hỏi (bao gồm prompt_audio, prompt_image, v.v.)
-  const mediaList: any[] = (() => {
+  const rawMediaList: any[] = (() => {
     const m = snapshot.media || detail.media || (q as any).media;
     if (m && Array.isArray(m) && m.length > 0) return m;
     if (m && !Array.isArray(m)) return [m];
@@ -52,17 +52,30 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
     return fallbackList;
   })();
 
+  const promptMediaList = rawMediaList.filter(
+    (m: any) => m?.role !== "explanation_image" && m?.role !== "explanation_audio"
+  );
+
+  const explanationMediaList: any[] = (() => {
+    const fromFeedback = q.feedback?.explanationMedia || snapshot.feedback?.explanationMedia;
+    if (Array.isArray(fromFeedback) && fromFeedback.length > 0) return fromFeedback;
+    return rawMediaList.filter(
+      (m: any) => m?.role === "explanation_image" || m?.role === "explanation_audio"
+    );
+  })();
+
   // Giải thích / Feedback
   const explanation =
     q.feedback?.explanation ||
     snapshot.explanation ||
     snapshot.feedback?.explanation ||
     detail.explanation;
-  const hasExplanation = Boolean(
+  const hasTextExplanation = Boolean(
     explanation &&
       String(explanation).trim().length > 0 &&
       String(explanation).trim() !== "null"
   );
+  const hasExplanation = hasTextExplanation || explanationMediaList.length > 0;
 
   // Options trắc nghiệm
   const options: any[] = snapshot.options || detail.options || [];
@@ -608,9 +621,9 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
       </div>
 
       {/* ── MEDIA CÂU HỎI (AUDIO / IMAGE / VIDEO) ── */}
-      {mediaList.length > 0 && (
+      {promptMediaList.length > 0 && (
         <div className="flex flex-wrap gap-2.5 pt-1">
-          {mediaList.map((m, idx) => renderMediaItem(m, idx))}
+          {promptMediaList.map((m, idx) => renderMediaItem(m, idx))}
         </div>
       )}
 
@@ -625,13 +638,18 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
         renderTextBasedAnswer()
       )}
 
-      {/* ── GIẢI THÍCH (CHỈ HIỂN THỊ KHI CÓ GIẢI THÍCH) ── */}
+      {/* ── GIẢI THÍCH (CHỈ HIỂN THỊ KHI CÓ GIẢI THÍCH HOẶC MEDIA GIẢI THÍCH) ── */}
       {hasExplanation && (
         <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200 text-amber-900 text-xs flex items-start gap-2 mt-2">
           <Lightbulb size={16} className="text-amber-600 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
+          <div className="space-y-1 w-full">
             <span className="font-bold text-amber-800">Giải thích chi tiết:</span>
-            <div className="text-amber-900 leading-relaxed">{String(explanation)}</div>
+            {hasTextExplanation && <div className="text-amber-900 leading-relaxed whitespace-pre-line">{String(explanation)}</div>}
+            {explanationMediaList.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {explanationMediaList.map((m, idx) => renderMediaItem(m, idx))}
+              </div>
+            )}
           </div>
         </div>
       )}

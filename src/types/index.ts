@@ -21,6 +21,7 @@ export type QuestionType =
 export interface ExamMedia {
   type: "image" | "audio" | "video";
   url: string;
+  role?: string;
 }
 
 export interface ExamOption {
@@ -41,8 +42,6 @@ export interface ExamQuestion {
   media?: ExamMedia | ExamMedia[];
   options?: Array<string | ExamOption>; // For choice, true/false, word ordering
 
-
-  
   leftItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
   rightItems?: Array<string | { id: string; text: string; media?: ExamMedia }>;
 
@@ -53,6 +52,8 @@ export interface ExamQuestion {
   correctAnswer?: string | string[] | Record<string, string>;
 
   explanation?: string;
+  explanationMedia?: ExamMedia[];
+  explanationAudio?: string | ExamMedia;
   sourceSentence?: string;
   incorrectSentence?: string;
   hintWord?: string;
@@ -61,6 +62,7 @@ export interface ExamQuestion {
 
 export interface ExamData {
   id: string;
+  attemptId?: string;
   examId?: string;
   assignmentStudentId?: string;
   curriculumAssignmentStudentId?: string;
@@ -82,6 +84,15 @@ export interface ExamData {
   requiresRemediation?: boolean;
   remainingQuestionCount?: number;
   firstAttemptResult?: { score?: string; percentage?: string; displayResult?: string; submittedAt?: string } | null;
+  student?: {
+    id: string;
+    code?: string;
+    fullName: string;
+  };
+  attemptPercentage?: string | number;
+  attemptCorrectCount?: number;
+  attemptQuestionCount?: number;
+  isRedo?: boolean;
 }
 
 export interface ExamState {

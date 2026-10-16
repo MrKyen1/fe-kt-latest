@@ -12,11 +12,8 @@ export interface QuestionTypeOption {
 }
 
 export const QUESTION_TYPES: QuestionTypeOption[] = [
-  { value: "multiple_choice",       label: "Trắc nghiệm (Multiple Choice)" },
-  { value: "audio_choice",          label: "Nghe & Chọn (Audio Choice)" },
+  { value: "multiple_choice",       label: "Trắc nghiệm tổng hợp (Multiple Choice)" },
   { value: "audio_fill_blanks",     label: "Nghe & Điền từ (Audio Fill in Blanks)" },
-  { value: "image_choice",          label: "Ảnh & Chọn (Image Choice)" },
-  { value: "audio_image_choice",    label: "Nghe & Chọn ảnh (Audio Image Choice)" },
   { value: "true_false",            label: "Đúng / Sai (True / False)" },
   { value: "word_ordering",         label: "Sắp xếp từ (Word Ordering)" },
   { value: "reading_comprehension", label: "Đọc hiểu (Reading Comprehension)" },
@@ -27,11 +24,11 @@ export const QUESTION_TYPES: QuestionTypeOption[] = [
 ];
 
 export const QUESTION_TYPE_LABELS: Record<string, string> = {
-  multiple_choice:       "Trắc nghiệm",
-  audio_choice:          "Nghe & Chọn",
+  multiple_choice:       "Trắc nghiệm tổng hợp",
+  audio_choice:          "Nghe & Chọn (Cũ)",
   audio_fill_blanks:     "Nghe & Điền từ",
-  image_choice:          "Ảnh & Chọn",
-  audio_image_choice:    "Nghe & Chọn ảnh",
+  image_choice:          "Ảnh & Chọn (Cũ)",
+  audio_image_choice:    "Nghe & Chọn ảnh (Cũ)",
   true_false:            "Đúng / Sai",
   word_ordering:         "Sắp xếp từ",
   reading_comprehension: "Đọc hiểu",

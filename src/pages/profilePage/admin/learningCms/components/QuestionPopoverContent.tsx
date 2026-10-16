@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Popover, Spin, Tag } from "antd";
 import type { TooltipPlacement } from "antd/es/tooltip";
 import { Check } from "lucide-react";
@@ -8,7 +8,15 @@ import { resolveMediaUrl } from "../../../../../services/apiClient";
 import { normalizeLineBreaks } from "../../../../../utils/textFormatters";
 
 // ── Shared In-Memory Detail Cache ────────────────────────────
-const questionDetailCache: Record<string, any> = {};
+interface CachedQuestionDetail {
+  data: any;
+  updatedAt?: string;
+}
+
+const questionDetailCache: Record<string, CachedQuestionDetail> = {};
+
+type CacheInvalidationListener = (questionId?: string) => void;
+const cacheInvalidationListeners = new Set<CacheInvalidationListener>();
 
 export function invalidateQuestionDetailCache(questionId?: string) {
   if (questionId) {
@@ -16,6 +24,20 @@ export function invalidateQuestionDetailCache(questionId?: string) {
   } else {
     Object.keys(questionDetailCache).forEach((k) => delete questionDetailCache[k]);
   }
+  cacheInvalidationListeners.forEach((listener) => {
+    try {
+      listener(questionId);
+    } catch (e) {
+      console.error("[QuestionPopover] Listener error:", e);
+    }
+  });
+}
+
+export function subscribeQuestionDetailInvalidation(listener: CacheInvalidationListener) {
+  cacheInvalidationListeners.add(listener);
+  return () => {
+    cacheInvalidationListeners.delete(listener);
+  };
 }
 
 // ── Types ────────────────────────────────────────────────────
@@ -134,6 +156,48 @@ function extractPromptMedia(question: Question): Array<{ url: string; type: "ima
   return results;
 }
 
+function extractExplanationMedia(question: Question): Array<{ url: string; type: "image" | "audio" }> {
+  const rawList: any[] = [];
+  if (Array.isArray(question.media) && question.media.length > 0) {
+    rawList.push(...question.media);
+  } else if (Array.isArray(question.mediaIds) && question.mediaIds.length > 0) {
+    rawList.push(...question.mediaIds);
+  }
+
+  const results: Array<{ url: string; type: "image" | "audio" }> = [];
+  const seenUrls = new Set<string>();
+
+  for (const item of rawList) {
+    if (!item) continue;
+    const role = item.role;
+    if (role !== "explanation_audio" && role !== "explanation_image") {
+      continue;
+    }
+
+    const asset = item.media ?? item;
+    const url = asset?.url || asset?.previewUrl || asset?.path || (typeof asset === "string" ? asset : "");
+    if (!url || seenUrls.has(url)) continue;
+    seenUrls.add(url);
+
+    const rawType = String(asset?.type || asset?.fileType || asset?.mimeType || role || "").toLowerCase();
+    const lowerUrl = url.toLowerCase();
+    const isAudio =
+      rawType.includes("audio") ||
+      role === "explanation_audio" ||
+      lowerUrl.endsWith(".mp3") ||
+      lowerUrl.endsWith(".wav") ||
+      lowerUrl.endsWith(".ogg") ||
+      lowerUrl.endsWith(".m4a");
+
+    results.push({
+      url,
+      type: isAudio ? "audio" : "image",
+    });
+  }
+
+  return results;
+}
+
 function getCorrectAnswerText(question: Question): string | null {
   const { type, detail } = question;
   if (!detail) return null;
@@ -212,6 +276,7 @@ export default function QuestionPopoverContent({
     .filter(Boolean) as TaxonomyItem[];
 
   const promptMedia = extractPromptMedia(question);
+  const explanationMedia = extractExplanationMedia(question);
   const correctAnswer = getCorrectAnswerText(question);
   const matchingPairs =
     question.type === "matching" && Array.isArray(question.detail?.pairs)
@@ -324,11 +389,15 @@ export default function QuestionPopoverContent({
                   {opt.label ?? String.fromCharCode(65 + idx)}.
                 </span>
                 {opt.media?.url && (
-                  <img
-                    src={resolveMediaUrl(opt.media.url)}
-                    alt={opt.content || "Option"}
-                    className="w-9 h-9 rounded object-cover border border-slate-200 shrink-0 bg-white"
-                  />
+                  opt.media.type === "audio" || /\.(mp3|wav|ogg|m4a)$/i.test(opt.media.url) ? (
+                    <audio controls src={resolveMediaUrl(opt.media.url)} className="h-6 w-32 shrink-0" />
+                  ) : (
+                    <img
+                      src={resolveMediaUrl(opt.media.url)}
+                      alt={opt.content || "Option"}
+                      className="w-9 h-9 rounded object-cover border border-slate-200 shrink-0 bg-white"
+                    />
+                  )
                 )}
                 {(!opt.media?.url || (opt.content && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opt.content.trim()) && !/^[0-9a-f]{24}$/i.test(opt.content.trim()))) && (
                   <span className="flex-1 whitespace-pre-line">{normalizeLineBreaks(opt.content)}</span>
@@ -428,13 +497,29 @@ export default function QuestionPopoverContent({
       )}
 
       {/* ── Giải thích ──────────────────────────────────── */}
-      {question.explanation && (
+      {(question.explanation || explanationMedia.length > 0) && (
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
             Giải thích
           </div>
-          <div className="bg-indigo-50 border border-indigo-100 rounded-md px-2 py-1.5 text-[11px] text-indigo-700 leading-relaxed whitespace-pre-line">
-            {normalizeLineBreaks(question.explanation)}
+          <div className="bg-indigo-50 border border-indigo-100 rounded-md px-2 py-1.5 text-[11px] text-indigo-700 leading-relaxed space-y-1">
+            {question.explanation && <div className="whitespace-pre-line">{normalizeLineBreaks(question.explanation)}</div>}
+            {explanationMedia.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {explanationMedia.map((m, idx) =>
+                  m.type === "audio" ? (
+                    <audio key={idx} controls src={resolveMediaUrl(m.url)} className="h-6 w-36" />
+                  ) : (
+                    <img
+                      key={idx}
+                      src={resolveMediaUrl(m.url)}
+                      alt="Ảnh giải thích"
+                      className="max-h-16 rounded border border-indigo-200 object-contain bg-white"
+                    />
+                  )
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -469,19 +554,72 @@ export function QuestionPopover({
   overlayStyle = { maxWidth: 380 },
   children,
 }: QuestionPopoverProps) {
-  const [fetchedDetail, setFetchedDetail] = useState<any>(() =>
-    question?.id ? questionDetailCache[question.id] : undefined
-  );
+  const [fetchedDetail, setFetchedDetail] = useState<any>(() => {
+    if (!question?.id) return undefined;
+    const entry = questionDetailCache[question.id];
+    if (!entry) return undefined;
+    if (question.updatedAt && entry.updatedAt && new Date(question.updatedAt) > new Date(entry.updatedAt)) {
+      return undefined;
+    }
+    return entry.data;
+  });
   const [loading, setLoading] = useState(false);
+
+  // 1. Subscribe to invalidation broadcast (e.g. when question is saved/edited)
+  useEffect(() => {
+    return subscribeQuestionDetailInvalidation((invalidatedId) => {
+      if (!invalidatedId || invalidatedId === question?.id) {
+        setFetchedDetail(undefined);
+      }
+    });
+  }, [question?.id]);
+
+  // 2. Invalidate state if question.updatedAt is newer than fetchedDetail
+  useEffect(() => {
+    if (question?.id && question?.updatedAt) {
+      if (fetchedDetail?.updatedAt && new Date(question.updatedAt) > new Date(fetchedDetail.updatedAt)) {
+        delete questionDetailCache[question.id];
+        setFetchedDetail(undefined);
+      }
+    }
+  }, [question?.id, question?.updatedAt, fetchedDetail?.updatedAt]);
 
   if (!question) return <>{children}</>;
 
-  const cached = question.id ? questionDetailCache[question.id] : undefined;
-  const mergedQuestion = fetchedDetail
-    ? { ...question, ...fetchedDetail }
-    : cached
-      ? { ...question, ...cached }
-      : question;
+  const cachedEntry = question.id ? questionDetailCache[question.id] : undefined;
+  const isCacheStale = Boolean(
+    cachedEntry &&
+    question.updatedAt &&
+    cachedEntry.updatedAt &&
+    new Date(question.updatedAt) > new Date(cachedEntry.updatedAt)
+  );
+  if (isCacheStale && question.id) {
+    delete questionDetailCache[question.id];
+  }
+  const validCached = isCacheStale ? undefined : cachedEntry?.data;
+
+  const currentDetail = fetchedDetail || validCached;
+
+  // Prioritize latest fields from question prop (prompt, status, type, updatedAt)
+  // while keeping rich detail structures (options, detail, media) from currentDetail
+  const mergedQuestion = currentDetail
+    ? {
+        ...currentDetail,
+        ...question,
+        options: (currentDetail.options && currentDetail.options.length > 0)
+          ? currentDetail.options
+          : (question.options || []),
+        detail: (currentDetail.detail && Object.keys(currentDetail.detail).length > 0)
+          ? currentDetail.detail
+          : (question.detail || {}),
+        media: (currentDetail.media && currentDetail.media.length > 0)
+          ? currentDetail.media
+          : (question.media || []),
+        mediaIds: (currentDetail.mediaIds && currentDetail.mediaIds.length > 0)
+          ? currentDetail.mediaIds
+          : (question.mediaIds || []),
+      }
+    : question;
 
   const hasAnswerDetails =
     (Array.isArray(mergedQuestion.options) && mergedQuestion.options.length > 0) ||
@@ -495,27 +633,40 @@ export function QuestionPopover({
       mergedQuestion.options.some((o: any) => Boolean(o?.media?.url)));
 
   const hasFullDetails =
-    Boolean(fetchedDetail || cached) ||
+    Boolean(currentDetail) &&
     (hasAnswerDetails && (!needsPromptMedia || hasPromptMedia) && hasOptionImages);
 
   const handleOpenChange = async (open: boolean) => {
-    if (open && !hasFullDetails && question.id && !loading) {
-      if (questionDetailCache[question.id]) {
-        setFetchedDetail(questionDetailCache[question.id]);
-        return;
+    if (!open || !question.id || loading) return;
+
+    const isStale = Boolean(
+      question.updatedAt &&
+      currentDetail?.updatedAt &&
+      new Date(question.updatedAt) > new Date(currentDetail.updatedAt)
+    );
+
+    const needsFetch = !hasFullDetails || isStale;
+    if (!needsFetch) return;
+
+    if (!isStale && validCached) {
+      setFetchedDetail(validCached);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const full = await learningCmsService.questions.get(question.id);
+      if (full) {
+        questionDetailCache[question.id] = {
+          data: full,
+          updatedAt: full.updatedAt || question.updatedAt,
+        };
+        setFetchedDetail(full);
       }
-      try {
-        setLoading(true);
-        const full = await learningCmsService.questions.get(question.id);
-        if (full) {
-          questionDetailCache[question.id] = full;
-          setFetchedDetail(full);
-        }
-      } catch {
-        // Ignore error and show basic info
-      } finally {
-        setLoading(false);
-      }
+    } catch {
+      // Ignore error and show basic info
+    } finally {
+      setLoading(false);
     }
   };
 

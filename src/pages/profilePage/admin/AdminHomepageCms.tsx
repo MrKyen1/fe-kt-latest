@@ -5,6 +5,7 @@ import { useServerPagination } from "../../../hooks/useServerPagination";
 import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { handleClipboardImagePaste } from "../../../utils/clipboardUtils";
 import {
   Card,
   Tabs,
@@ -1465,13 +1466,24 @@ export default function AdminHomepageCms() {
           </div>
 
           {/* Quick Upload Banner */}
-          <div className="bg-slate-50/70 border border-dashed border-slate-300 rounded-3xl p-6 text-center space-y-4 max-w-2xl mx-auto shadow-2xs">
+          <div
+            tabIndex={0}
+            onPaste={(e) => {
+              handleClipboardImagePaste(e, (pastedFile) => {
+                handleUploadMediaFile(pastedFile);
+                message.success("Đã dán ảnh từ clipboard (Ctrl+V)!");
+              });
+            }}
+            className="bg-slate-50/70 border border-dashed border-slate-300 hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 rounded-3xl p-6 text-center space-y-4 max-w-2xl mx-auto shadow-2xs transition-all"
+          >
             <div className="space-y-1">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2 shadow-xs">
                 <UploadOutlined className="text-xl" />
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Tải ảnh mới lên máy chủ</h4>
-              <p className="text-xs text-slate-500">Chấp nhận các file định dạng JPG, PNG, WEBP, GIF (tối đa 10MB)</p>
+              <p className="text-xs text-slate-500">
+                Chấp nhận các file định dạng JPG, PNG, WEBP, GIF (tối đa 10MB) • Hoặc nhấn <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px] text-indigo-600">Ctrl+V</kbd> để dán ảnh trực tiếp
+              </p>
             </div>
 
             <div className="max-w-md mx-auto !flex !flex-col !items-center !gap-3.5 pt-1">
@@ -1998,10 +2010,24 @@ export default function AdminHomepageCms() {
               zIndex={1100}
               className="rounded-2xl"
             >
-              <div className="space-y-4 pt-2">
+              <div
+                tabIndex={0}
+                onPaste={(e) => {
+                  handleClipboardImagePaste(e, (pastedFile) => {
+                    handleUploadMediaFile(pastedFile).then((newMedia) => {
+                      if (newMedia && mediaPickerCallback) {
+                        mediaPickerCallback(newMedia);
+                        setMediaPickerOpen(false);
+                      }
+                      message.success("Đã dán ảnh từ clipboard (Ctrl+V)!");
+                    });
+                  });
+                }}
+                className="space-y-4 pt-2 focus:outline-none"
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-500">
-                    Nhấp vào một ảnh để chọn cho đối tượng đang cấu hình.
+                    Nhấp vào một ảnh để chọn hoặc nhấn <kbd className="px-1 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px] text-indigo-600">Ctrl+V</kbd> để dán ảnh mới.
                   </span>
                   <Upload
                     beforeUpload={(file) => {

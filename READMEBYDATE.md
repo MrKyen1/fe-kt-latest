@@ -14,6 +14,70 @@ Mọi response đều bọc trong envelope chuẩn:
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
 
+## 2026-10-15
+
+### Bổ sung thông tin version bài thi và thông tin học sinh trong danh sách giao bài thi (Teacher Exam Assignments)
+
+Cập nhật API:
+
+```http
+GET /api/v1/learning/teacher/exam-assignments
+GET /api/v1/learning/teacher/exam-assignments/:id
+```
+
+#### 1. Trả về phiên bản bài thi (`versionNumber`, `examVersion`) trong mảng `exams[]`
+* **Vấn đề trước đây:** Bảng `exam_assignment_exams` có lưu `exam_version_id` khi giao bài thi, nhưng hàm `mapAssignment` trong `teacher-exam-assignments.service.ts` trước đó chỉ trả về `examId` và `exam` (thông tin chung của exam), không trả về thông tin `examVersion`. Do đó Frontend không nhận được số phiên bản đã giao (ví dụ v6) và bị rơi vào fallback `v1`.
+* **Thay đổi:** Mỗi phần tử trong mảng `exams[]` của assignment hiện trả về thêm `versionNumber` và `examVersion`:
+
+```jsonc
+{
+  "examId": "<examId>",
+  "versionNumber": 6,
+  "examVersion": {
+    "id": "<examVersionId>",
+    "versionNumber": 6,
+    "title": "21"
+  },
+  "exam": {
+    "id": "<examId>",
+    "code": "7842",
+    "title": "21",
+    "examType": "exam"
+  }
+}
+```
+
+#### 2. Nạp quan hệ `student.user` khi query với query param `includeStudents=true`
+* **Vấn đề trước đây:** Khi client gọi `includeStudents=true`, service chỉ nạp quan hệ `relations: { student: true }`. Vì không nạp lồng quan hệ `user` (`student.user`), các trường như `user.fullName`, `user.code` bị thiếu trong payload trả về, dẫn tới tooltip danh sách học sinh trên FE không hiển thị được tên học sinh.
+* **Thay đổi:** Trong `findAll` và `findOne` của `teacher-exam-assignments.service.ts`, khi truy vấn `assignmentStudentRepo`, quan hệ được cập nhật thành:
+
+```ts
+relations: {
+  student: {
+    user: true,
+  },
+}
+```
+
+Nhờ đó, mỗi phần tử trong mảng `students[]` có đầy đủ thông tin:
+
+```jsonc
+{
+  "id": "<assignmentStudentId>",
+  "assignmentId": "<assignmentId>",
+  "studentId": "<studentProfileId>",
+  "status": "not_started",
+  "student": {
+    "id": "<studentProfileId>",
+    "user": {
+      "id": "<userId>",
+      "fullName": "Demo Student",
+      "code": "student.demo"
+    }
+  }
+}
+```
+
 ## 2026-10-01
 
 ### Xem chi tiết snapshot câu hỏi của một phiên bản exam

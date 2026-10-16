@@ -369,11 +369,11 @@ export default function TeacherAssignments() {
   }, [user, allClasses, teacherClassIds]);
 
   const examPage = useServerPagination("/learning/teacher/exam-assignments", {
-    centerId: assignmentScope === "all" || selectedCenterId === "all" ? undefined : selectedCenterId, includeStudents: false,
+    centerId: assignmentScope === "all" || selectedCenterId === "all" ? undefined : selectedCenterId, includeStudents: true,
     search: searchKeyword.trim() || undefined,
   }, 10, activeTab === "exam");
   const curriculumPage = useServerPagination("/learning/teacher/curriculum-assignments", {
-    centerId: assignmentScope === "all" || selectedCenterId === "all" ? undefined : selectedCenterId, includeStudents: false,
+    centerId: assignmentScope === "all" || selectedCenterId === "all" ? undefined : selectedCenterId, includeStudents: true,
     search: searchKeyword.trim() || undefined,
   }, 10, activeTab === "curriculum");
   const remember = (setter: any) => (records: any[]) => setter((previous: any[]) =>
@@ -917,6 +917,50 @@ export default function TeacherAssignments() {
       },
     },
     {
+      title: "Phiên bản",
+      width: 100,
+      align: "center" as const,
+      render: (_: any, record: any) => {
+        const examItems = record.exams || [];
+        if (examItems.length === 0) return <span className="text-slate-400">—</span>;
+
+        return (
+          <div className="flex flex-col items-center justify-center gap-1.5 py-0.5">
+            {examItems.map((item: any, idx: number) => {
+              const ver =
+                item.examVersion?.versionNumber ??
+                item.versionNumber ??
+                item.exam?.versionNumber ??
+                item.exam?.currentVersion?.versionNumber;
+              return (
+                <div key={item.id || item.examId || idx} className="flex items-center justify-center">
+                  {ver !== undefined && ver !== null ? (
+                    <Tooltip title={`Phiên bản bài thi: v${ver}`}>
+                      <Tag
+                        color="indigo"
+                        className="font-bold font-mono text-xs px-2.5 py-0.5 rounded-full border-none m-0 shadow-2xs cursor-default"
+                      >
+                        v{ver}
+                      </Tag>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Phiên bản mặc định / Chưa cắt phiên bản">
+                      <Tag
+                        color="default"
+                        className="font-mono text-xs px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 m-0"
+                      >
+                        v1
+                      </Tag>
+                    </Tooltip>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      },
+    },
+    {
       title: "Lớp học",
       width: 140,
       render: (_: any, record: any) => {
@@ -971,18 +1015,20 @@ export default function TeacherAssignments() {
         const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
         const cnt = record.studentCount ?? record.studentIds?.length ?? studentList.length;
         if (cnt) {
-          const tooltipContent = (
+          const tooltipContent = studentList.length > 0 ? (
             <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
               {studentList.map((s: any, idx: number) => {
                 const name = resolveStudentName(s);
                 const statusText = s.status === "finished" ? "Đã hoàn thành" : s.status === "in_progress" ? "Đang làm" : "Chưa bắt đầu";
                 return (
                   <div key={s.id || idx} className="truncate">
-                    <span className="font-medium">{name}</span>: <span className="font-semibold text-emerald-300">{statusText}</span>
+                    <span className="font-medium text-white">{name}</span>: <span className="font-semibold text-emerald-300">{statusText}</span>
                   </div>
                 );
               })}
             </div>
+          ) : (
+            <span className="text-xs">{cnt} học sinh được giao bài</span>
           );
           const content = (
             <span className="text-sm text-slate-600 truncate inline-block cursor-pointer">
@@ -1137,18 +1183,20 @@ export default function TeacherAssignments() {
         const studentList = students.length > 0 ? students : (record.studentIds || []).map((id: string) => ({ studentId: id }));
         const cnt = record.studentCount ?? record.studentIds?.length ?? studentList.length;
         if (cnt) {
-          const tooltipContent = (
+          const tooltipContent = studentList.length > 0 ? (
             <div className="space-y-1 text-xs max-h-48 overflow-y-auto pr-1">
               {studentList.map((s: any, idx: number) => {
                 const name = resolveStudentName(s);
                 const statusText = s.status === "finished" ? "Đã hoàn thành" : s.status === "in_progress" ? "Đang làm" : "Chưa bắt đầu";
                 return (
                   <div key={s.id || idx} className="truncate">
-                    <span className="font-medium">{name}</span>: <span className="font-semibold text-purple-300">{statusText}</span>
+                    <span className="font-medium text-white">{name}</span>: <span className="font-semibold text-purple-300">{statusText}</span>
                   </div>
                 );
               })}
             </div>
+          ) : (
+            <span className="text-xs">{cnt} học sinh được giao bài</span>
           );
           const content = (
             <span className="text-sm text-slate-600 truncate inline-block cursor-pointer">
@@ -1425,7 +1473,7 @@ export default function TeacherAssignments() {
                             rowKey="id"
                             pagination={examPage.pagination}
                             bordered={false}
-                            scroll={{ x: 1000 }}
+                            scroll={{ x: 1100 }}
                             className="rounded-2xl overflow-hidden"
                           />
                         )}
