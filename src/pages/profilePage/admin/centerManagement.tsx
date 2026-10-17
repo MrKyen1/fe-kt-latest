@@ -1301,6 +1301,10 @@ export default function CenterManagement() {
 
   // ================= PASSWORD RESET HANDLER =================
   const handleResetPassword = (record: any) => {
+    if (record.code === "admin-dev") {
+      message.warning("Không được phép reset mật khẩu tài khoản admin-dev");
+      return;
+    }
     setResetPasswordUser(record);
     setResetPasswordResult(null);
     setResetPasswordModalOpen(true);
@@ -1993,7 +1997,8 @@ export default function CenterManagement() {
               type="text"
               size="small"
               icon={<KeyOutlined className="text-slate-400 hover:text-amber-600" />}
-              disabled={!hasPermission(isTeacher ? "students.reset-password" : "users.manage")}
+              disabled={record.code === "admin-dev" || !hasPermission("users.manage")}
+              title={record.code === "admin-dev" ? "Không được phép reset mật khẩu tài khoản admin-dev" : "Reset mật khẩu"}
               onClick={() => handleResetPassword(record)}
             />
           ) : (
