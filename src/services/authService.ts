@@ -1,4 +1,4 @@
-import { unwrapData, apiClient, normalizeUser } from "./apiClient";
+import { unwrapData, apiClient, normalizeUser, refreshAuthSession, waitForAuthRefresh } from "./apiClient";
 import { tokenStorage, isTokenExpired } from "./tokenStorage";
 import {
   AuthResponse,
@@ -33,39 +33,33 @@ export const authService = {
   },
 
   async refresh(refreshToken: string): Promise<AuthResponse> {
-    const data = unwrapData(
-      await apiClient.post<import("../types/api").ApiEnvelope<BackendAuthResponse>>(
-        "/auth/refresh",
-        { refreshToken },
-      ),
-    );
+    const data = await refreshAuthSession(refreshToken);
     const session = {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
       user: normalizeUser(data.user),
     };
-    tokenStorage.setSession(session);
     return session;
   },
 
   async logout(refreshToken?: string | null, accessToken?: string | null) {
-    const refresh = refreshToken ?? tokenStorage.getRefreshToken();
-    const access = accessToken ?? tokenStorage.getAccessToken();
+    let refresh = refreshToken ?? tokenStorage.getRefreshToken();
+    let access = accessToken ?? tokenStorage.getAccessToken();
     if (!refresh) return;
-
-    const headers: Record<string, string> = {};
-    // Chỉ đính kèm Authorization header nếu access token vẫn còn hạn
-    // Tránh việc gửi token hết hạn khiến JwtAuthGuard ném lỗi 401 không đáng có
-    if (access && !isTokenExpired(access)) {
-      headers.Authorization = `Bearer ${access}`;
-    }
-
     try {
+      const pending = waitForAuthRefresh(true);
+      if (pending || isTokenExpired(access)) {
+        const session = await (pending ?? refreshAuthSession(refresh, true));
+        access = session.accessToken;
+        refresh = session.refreshToken;
+      }
+      // Revoke the captured session even if local logout timed out or a new
+      // account signed in meanwhile. Explicit headers never use the new session.
       await apiClient.post(
         "/auth/logout",
         { refreshToken: refresh },
         {
-          headers,
+          headers: { Authorization: `Bearer ${access}` },
           timeout: 2000,
           _skipAuthRefresh: true,
         } as any,
@@ -91,20 +85,23 @@ export const authService = {
   },
 
   async updateMe(payload: UpdateMeRequest) {
+    const version = tokenStorage.getSessionVersion();
     const user = unwrapData(
       await apiClient.patch<import("../types/api").ApiEnvelope<BackendAuthResponse["user"]>>(
         "/auth/me",
         payload,
       ),
     );
-    // If backend doesn't return role info, merge the existing role from tokenStorage
-    if (!user.role) {
-      const existingUser = tokenStorage.getUser();
-      if (existingUser && existingUser.role) {
-        user.role = existingUser.role;
-      }
+    if (version !== tokenStorage.getSessionVersion()) {
+      throw new Error("Phiên đăng nhập đã thay đổi");
     }
-    const normalized = normalizeUser(user);
+    // PATCH returns basic User fields; preserve the scoped relations from /auth/me.
+    const existingUser = tokenStorage.getUser();
+    const normalized = normalizeUser({
+      ...(existingUser?.id === user.id ? existingUser : {}),
+      ...user,
+      role: user.role ?? (existingUser?.id === user.id ? existingUser.role : undefined),
+    } as BackendAuthResponse["user"]);
     tokenStorage.setUser(normalized);
     return normalized;
   },

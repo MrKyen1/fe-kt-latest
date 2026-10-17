@@ -367,6 +367,7 @@ function mapAttemptToExamData(attempt: AttemptPayload): ExamData {
         id: answer.questionId,
         type: answer.questionType,
         questionVersionId: answer.questionVersionId,
+        selectionMode: detail.selectionMode,
         questionContent: attemptContent,
         passage: detail.passage?.content || (typeof detail.passageContent === "string" ? detail.passageContent : undefined),
         passageText: detail.passageText || (snapshot as any).passageText,

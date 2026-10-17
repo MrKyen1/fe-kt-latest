@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { AppImage } from "../../../components/AppImagePreview";
+import { officialExamPercentage } from "../../../utils/officialExamResult";
 
 import {
   BookOutlined,
@@ -1105,6 +1106,7 @@ export default function StudentMyExams() {
                   const bestPctVal = parseFloat(
                     ep.bestPercentage ?? ep.bestScorePct ?? ep.bestScore ?? "0"
                   );
+                  const officialPct = officialExamPercentage(ep);
                   const attemptsCount =
                     ep.attemptsCount ?? ep.attemptCount ?? ep.attempts?.length ?? 0;
                   const isMastered = Boolean(ep.mastered ?? (bestPctVal >= 100));
@@ -1186,12 +1188,12 @@ export default function StudentMyExams() {
                               <Tooltip
                                 title={
                                   isExamType
-                                    ? `Điểm: ${(bestPctVal / 10).toFixed(1)} / 10 đ (Đạt ${bestPctVal.toFixed(0)}%)`
+                                    ? officialPct == null ? "Chưa có điểm lượt thi đầu" : `Điểm lượt thi đầu: ${(officialPct / 10).toFixed(1)} / 10 đ (Đạt ${officialPct.toFixed(0)}%)`
                                     : `Tiến độ: ${bestPctVal.toFixed(0)}%`
                                 }
                               >
                                 <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                                  {isExamType ? `${(bestPctVal / 10).toFixed(1)} đ` : `${bestPctVal.toFixed(0)}%`}
+                                  {isExamType ? officialPct == null ? "Chưa có điểm" : `${(officialPct / 10).toFixed(1)} đ` : `${bestPctVal.toFixed(0)}%`}
                                 </span>
                               </Tooltip>
                             )}

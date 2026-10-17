@@ -818,6 +818,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         ).length;
 
         const isMulti =
+          question.selectionMode === "multiple" || question.detail?.selectionMode === "multiple" ||
           correctCount > 1 ||
           (Array.isArray(question.correctAnswer) && question.correctAnswer.length > 1) ||
           (typeof question.correctAnswer === "object" && question.correctAnswer !== null && (

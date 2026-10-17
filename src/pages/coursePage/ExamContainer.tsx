@@ -25,6 +25,7 @@ import { studentLearningService } from "../../services/studentLearningService";
 import { resolveMediaUrl } from "../../services/apiClient";
 import { parseBackendAnswer } from "./ExamDetail";
 import { formatScore, formatPercentage, formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
+import { createAttemptDraftSaver, type DraftSaveState } from "../../utils/attemptDraftSaver";
 
 const formatDateTime = (iso?: string | null) => {
   if (!iso) return "—";
@@ -485,7 +486,6 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return initial;
   });
 
-  const isPracticeMode = examData.examType !== "exam";
   // Theo đúng nghiệp vụ Backend (student-exam-attempts.service.ts):
   // isInitialExam: Chỉ khi examType === "exam" VÀ là lượt đầu tiên (attemptNumber === 1 hoặc attemptPhase === "initial")
   // Bất kỳ bài thi nào là "practice" HOẶC là lượt làm lại (attemptNumber > 1, remedial) đều thuộc luồng immediate feedback (chấm và khóa từng câu).
@@ -537,6 +537,30 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     return null;
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draftState, setDraftState] = useState<DraftSaveState | null>(null);
+  const draftSaverRef = useRef<ReturnType<typeof createAttemptDraftSaver> | null>(null);
+  const finishRef = useRef<() => Promise<void>>(async () => {});
+  const submittingRef = useRef(false);
+  const draftAllowedRef = useRef(false);
+  draftAllowedRef.current = isInitialExam && !isReviewMode && !isExamComplete && examData.status !== "submitted"
+    && (!examData.expiresAt || Date.now() < new Date(examData.expiresAt).getTime())
+    && (!(examData.timeLimit > 0) || timeRemaining > 0);
+
+  useEffect(() => {
+    if (!isInitialExam || examData.status === "submitted") return;
+    let mounted = true;
+    const saver = createAttemptDraftSaver(async (questionId, answer) => {
+      if (!draftAllowedRef.current || (examData.expiresAt && Date.now() >= new Date(examData.expiresAt).getTime())) return;
+      await studentLearningService.attempts.saveAnswer(examData.id, questionId, { answer });
+    }, () => {}, 600, state => { if (mounted) setDraftState(state); });
+    draftSaverRef.current = saver;
+    return () => {
+      mounted = false;
+      if (draftAllowedRef.current) void saver.flush().catch(() => {});
+      saver.dispose();
+      if (draftSaverRef.current === saver) draftSaverRef.current = null;
+    };
+  }, [examData.id, examData.status, isInitialExam]);
 
   const [correctAnswers, setCorrectAnswers] = useState<Record<string, any>>(() => {
     const initial: Record<string, any> = {};
@@ -635,7 +659,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     if (examData.timeLimit <= 0 && !examData.expiresAt) return;
 
     if (timeRemaining <= 0) {
-      handleFinish();
+      void finishRef.current();
       return;
     }
 
@@ -645,14 +669,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           const diffSec = Math.floor((new Date(examData.expiresAt).getTime() - Date.now()) / 1000);
           if (diffSec <= 0) {
             clearInterval(timer);
-            handleFinish();
+            void finishRef.current();
             return 0;
           }
           return diffSec;
         }
         if (prev <= 1) {
           clearInterval(timer);
-          handleFinish();
+          void finishRef.current();
           return 0;
         }
         return prev - 1;
@@ -704,12 +728,14 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }, [currentQuestion, questionResults, lockedQuestions, userAnswers, isInitialExam, isReviewMode]);
 
   const handleAnswerChange = (answer: AnswerValue) => {
-    if (isReviewMode) return;
+    if (isReviewMode || isExamComplete || isSubmitting || examData.status === "submitted") return;
+    if (isInitialExam && !draftAllowedRef.current) return;
     if (!isInitialExam && lockedQuestions[currentQuestion.id]) return;
     setUserAnswers((prev) => ({
       ...prev,
       [currentQuestion.id]: answer,
     }));
+    if (isInitialExam) draftSaverRef.current?.schedule(currentQuestion.id, toBackendAnswer(currentQuestion, answer));
   };
 
   const handleSubmit = useCallback(async () => {
@@ -829,19 +855,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     }
 
     if (isInitialExam) {
-      const currentAns = userAnswers[currentQuestion.id];
-      if (isAnswerProvided(currentAns)) {
-        try {
-          const backendPayload = toBackendAnswer(currentQuestion, currentAns);
-          await studentLearningService.attempts.saveAnswer(
-            examData.id,
-            currentQuestion.id,
-            { answer: backendPayload }
-          );
-        } catch (err) {
-          console.warn("Failed to auto-save answer on select question", err);
-        }
-      }
+      try { await draftSaverRef.current?.flush(); } catch { /* Retained for retry; navigation remains available. */ }
     }
 
     setShowFeedback(false);
@@ -865,21 +879,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       return;
     }
 
-    // Trong đề kiểm tra lượt đầu, lưu nháp đáp án lên backend khi chuyển câu
     if (isInitialExam) {
-      const currentAns = userAnswers[currentQuestion.id];
-      if (isAnswerProvided(currentAns)) {
-        try {
-          const backendPayload = toBackendAnswer(currentQuestion, currentAns);
-          await studentLearningService.attempts.saveAnswer(
-            examData.id,
-            currentQuestion.id,
-            { answer: backendPayload }
-          );
-        } catch (err) {
-          console.warn("Failed to auto-save answer on next", err);
-        }
-      }
+      try { await draftSaverRef.current?.flush(); } catch { /* Final submission still carries local answers. */ }
     }
 
     setShowFeedback(false);
@@ -1020,12 +1021,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   };
 
   const handleFinish = async () => {
-    if (isSubmitting) return;
+    if (submittingRef.current || isExamComplete || examData.status === "submitted") return;
+    submittingRef.current = true;
 
     try {
       setIsSubmitting(true);
-
-      const isInitialExam = !isPracticeMode && ((examData as any).attemptNumber === 1 || !(examData as any).attemptNumber);
 
       const newResults: Record<string, "correct" | "wrong"> = {};
       const newCorrects: Record<string, any> = {};
@@ -1034,7 +1034,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       const formattedAnswersPayload = examData.questions
         .map((q) => {
           const userAns = userAnswers[q.id];
-          if (!isAnswerProvided(userAns)) return null;
+          if (!Object.prototype.hasOwnProperty.call(userAnswers, q.id)) return null;
           return {
             questionId: q.id,
             answer: toBackendAnswer(q, userAns),
@@ -1047,6 +1047,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       let result: any = null;
 
       if (isInitialExam) {
+        // The final payload already contains the latest edits and clears. A slow
+        // draft request must not delay submission past the server deadline.
         // Cho lượt thi kiểm tra lần đầu, gọi submitAttempt duy nhất 1 lần với full answers payload
         try {
           result = await studentLearningService.attempts.submit(examData.id, {
@@ -1176,9 +1178,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         content: error instanceof Error ? error.message : "Vui lòng thử lại sau.",
       });
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
+  finishRef.current = handleFinish;
 
   // Tự động nộp bài lên backend nếu đề ôn tập/làm lại đã hoàn thành 100% câu hỏi nhưng attempt vẫn ở trạng thái in_progress
   useEffect(() => {
@@ -1973,6 +1977,13 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           )}
         </div>
       </header>
+
+      {isInitialExam && !isReviewMode && !isExamComplete && draftState && (
+        <div role="status" className={`px-4 py-1 text-xs ${draftState === "error" ? "text-rose-700 bg-rose-50" : "text-slate-500 bg-white"}`}>
+          {draftState === "saving" ? "Đang lưu đáp án…" : draftState === "saved" ? "Đã lưu đáp án" : "Chưa lưu được đáp án. Kiểm tra kết nối và thử lại."}
+          {draftState === "error" && <Button size="small" type="link" disabled={!draftAllowedRef.current || isSubmitting} onClick={() => { void draftSaverRef.current?.flush().catch(() => {}); }}>Thử lưu lại</Button>}
+        </div>
+      )}
 
       {/* ── Slim top bar + Inline Question Panel cho Mobile / Tablet (< lg) ── */}
       <div className="lg:hidden flex flex-col shrink-0 bg-white border-b border-slate-200 z-10">

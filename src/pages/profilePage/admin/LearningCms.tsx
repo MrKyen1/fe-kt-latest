@@ -1214,9 +1214,9 @@ export default function LearningCms() {
     setEditingItem(record);
 
     const matches = await learningCmsService.curriculums.list({ examId: record.id, limit: 1 });
-    const currId = matches[0]?.id;
+    const currId = matches.data[0]?.id;
     setEditingExamInitialCurriculumId(currId);
-    if (matches[0]) setCurriculums(previous => [...previous.filter(row => row.id !== currId), matches[0]]);
+    if (matches.data[0]) setCurriculums(previous => [...previous.filter(row => row.id !== currId), matches.data[0]]);
 
     examForm.setFieldsValue({
       code: record.code,
@@ -1272,7 +1272,12 @@ export default function LearningCms() {
             try {
               await learningCmsService.curriculums.removeExam(editingExamInitialCurriculumId, editingItem.id);
             } catch (removeErr: any) {
-              console.error("Lỗi khi gỡ đề thi khỏi giáo trình cũ:", removeErr);
+              Modal.warning({
+                title: "Đã cập nhật đề thi, chưa đổi giáo trình",
+                content: `Thông tin đề thi đã được lưu, nhưng chưa xác nhận gỡ khỏi giáo trình cũ (Lý do: ${extractErrorMsg(removeErr)}). Chưa thực hiện gắn vào giáo trình mới. Vui lòng kiểm tra lại quan hệ trong tab Giáo trình.`,
+              });
+              loadAllData();
+              return;
             }
           }
 
@@ -1297,7 +1302,7 @@ export default function LearningCms() {
               console.error("Lỗi khi gắn đề thi vào giáo trình mới:", attachErr);
               Modal.warning({
                 title: "Đã cập nhật đề thi",
-                content: `Đề thi "${values.title || editingItem.title}" đã được lưu, nhưng chưa thể gắn vào giáo trình mới (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình lại.`,
+                content: `Đề thi "${values.title || editingItem.title}" đã được lưu.${editingExamInitialCurriculumId ? " Đã gỡ khỏi giáo trình cũ." : ""} Chưa thể gắn vào giáo trình mới (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình lại.`,
               });
             }
           } else {

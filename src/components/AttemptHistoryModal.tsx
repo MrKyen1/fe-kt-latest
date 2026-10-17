@@ -6,6 +6,7 @@ import { Modal, Spin, Empty, Tag, Progress, Button, message } from "antd";
 import { History, User } from "lucide-react";
 import { studentLearningService } from "../services/studentLearningService";
 import { formatScore } from "../utils/studentExamUtils";
+import { attemptReportMeta } from "../utils/attemptReportMeta";
 
 const formatDate = (iso?: string | null) => {
   if (!iso) return "—";
@@ -60,7 +61,17 @@ export function AttemptHistoryModal({
   const [loading, setLoading] = useState(false);
   const [studentInfo, setStudentInfo] = useState<{ id?: string; code?: string; fullName?: string } | null>(null);
   const [paginationMeta, setPaginationMeta] = useState<{ total: number; page: number; limit: number; totalPages: number } | null>(null);
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const historyScope = JSON.stringify([open, assignmentStudentId, examId, attemptId, curriculumExamProgress?.lastAttemptId]);
+  const [paging, setPaging] = useState({ scope: historyScope, page: 1 });
+  const currentPage = paging.scope === historyScope ? paging.page : 1;
+  const setCurrentPage = (page: number) => setPaging({ scope: historyScope, page });
+
+  useEffect(() => {
+    setPaging({ scope: historyScope, page: 1 });
+    setPaginationMeta(null);
+    setStudentInfo(null);
+    setAttempts([]);
+  }, [historyScope]);
 
   const resolvedId = attemptId || curriculumExamProgress?.lastAttemptId;
   const historyEnabled = open && !!assignmentStudentId && !resolvedId && !initialAttempts?.length;
@@ -77,6 +88,7 @@ export function AttemptHistoryModal({
 
   useEffect(() => {
     if (!open) return;
+    let active = true;
 
     // 1. If explicit initial attempts provided, use them
     if (initialAttempts && initialAttempts.length > 0) {
@@ -88,6 +100,7 @@ export function AttemptHistoryModal({
     const resolvedAttemptId = attemptId || curriculumExamProgress?.lastAttemptId;
 
     const fallbackToProgress = () => {
+      if (!active) return;
       if (curriculumExamProgress?.lastAttemptId || (curriculumExamProgress?.attemptsCount ?? 0) > 0) {
         setAttempts([
           {
@@ -114,20 +127,20 @@ export function AttemptHistoryModal({
       studentLearningService.attempts
         .getReport(resolvedAttemptId, currentPage, 10)
         .then((res: any) => {
+          if (!active) return;
           const reportData = res?.data || res;
           if (reportData && Array.isArray(reportData.attempts)) {
             setAttempts(reportData.attempts);
             if (reportData.student) {
               setStudentInfo(reportData.student);
             }
-            if (reportData.meta) {
-              setPaginationMeta(reportData.meta);
-            }
+            setPaginationMeta(attemptReportMeta(res));
           } else {
             // Fallback to single attempt get
-            studentLearningService.attempts
+            return studentLearningService.attempts
               .get(resolvedAttemptId)
               .then((singleRes: any) => {
+                if (!active) return;
                 const item = singleRes?.data || singleRes;
                 if (item && (item.id || item.attemptNumber)) {
                   setAttempts([
@@ -146,9 +159,11 @@ export function AttemptHistoryModal({
           }
         })
         .catch(() => {
-          studentLearningService.attempts
+          if (!active) return;
+          return studentLearningService.attempts
             .get(resolvedAttemptId)
             .then((res: any) => {
+              if (!active) return;
               const item = res?.data || res;
               if (item && (item.id || item.attemptNumber)) {
                 setAttempts([
@@ -165,8 +180,8 @@ export function AttemptHistoryModal({
             })
             .catch(() => fallbackToProgress());
         })
-        .finally(() => setLoading(false));
-      return;
+        .finally(() => { if (active) setLoading(false); });
+      return () => { active = false; };
     }
 
     // If neither, fallback to progress or empty
