@@ -49,6 +49,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { handleClipboardImagePaste } from "../../../../../../utils/clipboardUtils";
+import { AUDIO_ACCEPT, IMAGE_ACCEPT, VIDEO_ACCEPT } from "../../../../../../utils/uploadAccept";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1095,8 +1096,8 @@ function MediaItemRow({
             showUploadList={false}
             accept={
               currentType === "audio_fill_blanks"
-                ? "audio/*,.mp3,.wav,.m4a,.ogg,.aac"
-                : "audio/*,image/*,video/*,.png,.jpg,.jpeg,.webp,.svg,.mp3,.wav,.m4a,.ogg,.aac"
+                ? AUDIO_ACCEPT
+                : `${AUDIO_ACCEPT},${IMAGE_ACCEPT},${VIDEO_ACCEPT}`
             }
             beforeUpload={(file) => {
               if (handleApplyFile(file)) {

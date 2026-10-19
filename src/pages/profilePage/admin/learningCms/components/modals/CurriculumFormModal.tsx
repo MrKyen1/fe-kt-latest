@@ -9,6 +9,7 @@ import { Info, Image as ImageIcon } from "lucide-react";
 import { AppImage } from "../../../../../../components/AppImagePreview";
 import { learningCmsService } from "../../../../../../services/learningCmsService";
 import { handleClipboardImagePaste } from "../../../../../../utils/clipboardUtils";
+import { IMAGE_ACCEPT } from "../../../../../../utils/uploadAccept";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                       return false;
                     }}
                     showUploadList={false}
-                    accept="image/*"
+                    accept={IMAGE_ACCEPT}
                   >
                     <Button
                       size="small"
@@ -171,7 +172,7 @@ export default function CurriculumFormModal({ open, onCancel, form, onFinish, is
                           return false;
                         }}
                         showUploadList={false}
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT}
                       >
                         <Button
                           type="dashed"

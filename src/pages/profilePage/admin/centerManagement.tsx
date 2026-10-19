@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { useResponsive } from "../../../hooks/useResponsive";
 import dayjs from "dayjs";
+import { IMAGE_ACCEPT } from "../../../utils/uploadAccept";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -3221,7 +3222,7 @@ export default function CenterManagement() {
                       fileList={subImagesFileList}
                       beforeUpload={() => false}
                       onChange={handleUploadChange}
-                      accept="image/*"
+                      accept={IMAGE_ACCEPT}
                       multiple
                       maxCount={20}
                       onPreview={(file) => {
@@ -3738,7 +3739,7 @@ export default function CenterManagement() {
                                 }}
                                 listType="picture-card"
                                 multiple
-                                accept="image/*"
+                                accept={IMAGE_ACCEPT}
                                 itemRender={(originNode, file, fileList, actions) => {
                                   const url = file.url || file.response?.url;
                                   if (!url) return originNode;
