@@ -62,6 +62,7 @@ import {
 import { Center } from "../../../types/backend";
 import { AppImage, useAppImagePreview } from "../../../components/AppImagePreview";
 import { resolveMediaUrl } from "../../../services/apiClient";
+import { IMAGE_ACCEPT } from "../../../utils/uploadAccept";
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
@@ -1499,7 +1500,7 @@ export default function AdminHomepageCms() {
                   return false;
                 }}
                 showUploadList={false}
-                accept="image/*"
+                accept={IMAGE_ACCEPT}
                 className="!flex !justify-center"
               >
                 <Button
@@ -2040,7 +2041,7 @@ export default function AdminHomepageCms() {
                       return false;
                     }}
                     showUploadList={false}
-                    accept="image/*"
+                    accept={IMAGE_ACCEPT}
                   >
                     <Button size="small" type="primary" icon={<UploadOutlined />} loading={mediaUploading} className="bg-indigo-600 rounded-lg font-medium">
                       Tải ảnh mới ngay

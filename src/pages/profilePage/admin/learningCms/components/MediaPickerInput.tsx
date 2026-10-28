@@ -9,6 +9,7 @@ import { resolveMediaUrl } from "../../../../../services/apiClient";
 import { AppImage } from "../../../../../components/AppImagePreview";
 
 import { handleClipboardImagePaste } from "../../../../../utils/clipboardUtils";
+import { AUDIO_ACCEPT, IMAGE_ACCEPT } from "../../../../../utils/uploadAccept";
 
 export interface MediaAssetItem {
   id: string;
@@ -227,10 +228,10 @@ export const MediaPickerInput: React.FC<MediaPickerInputProps> = ({
   // Not selected yet -> Selector mode
   const uploadAccept =
     acceptType === "image"
-      ? "image/*,.png,.jpg,.jpeg,.webp,.svg"
+      ? IMAGE_ACCEPT
       : acceptType === "audio"
-      ? "audio/*,.mp3,.wav,.m4a,.ogg,.aac"
-      : "image/*,audio/*";
+      ? AUDIO_ACCEPT
+      : `${IMAGE_ACCEPT},${AUDIO_ACCEPT}`;
 
   return (
     <div

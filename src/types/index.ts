@@ -58,6 +58,7 @@ export interface ExamQuestion {
   incorrectSentence?: string;
   hintWord?: string;
   questionVersionId?: string;
+  selectionMode?: "single" | "multiple";
 }
 
 export interface ExamData {

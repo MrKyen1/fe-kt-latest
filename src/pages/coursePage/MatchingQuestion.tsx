@@ -26,12 +26,14 @@ type MatchingQuestionProps = {
 type DraggableItemProps = {
   id: string;
   label: string;
+  media?: ExamMedia;
   disabled?: boolean;
 };
 
 const DraggableItem: React.FC<DraggableItemProps> = ({
   id,
   label,
+  media,
   disabled = false,
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
@@ -56,7 +58,9 @@ const DraggableItem: React.FC<DraggableItemProps> = ({
         disabled ? "cursor-not-allowed opacity-70" : "cursor-grab active:cursor-grabbing"
       }`}
     >
-      {label}
+      {media?.type === "image" && <AppImage src={media.url} alt={label || "Lựa chọn ghép đôi"} className="w-16 h-16 object-contain" />}
+      {media?.type === "audio" && <audio src={media.url} controls className="h-8 max-w-[200px]" onPointerDown={(event) => event.stopPropagation()} />}
+      {label && <span>{label}</span>}
     </motion.div>
   );
 };
@@ -74,9 +78,10 @@ const DropZone: React.FC<{
   media?: ExamMedia;
   matchedId?: string;
   matchedLabel?: string;
+  matchedMedia?: ExamMedia;
   isCorrect?: boolean;
   showFeedback?: boolean;
-}> = ({ id, label, media, matchedId, matchedLabel, isCorrect, showFeedback }) => {
+}> = ({ id, label, media, matchedId, matchedLabel, matchedMedia, isCorrect, showFeedback }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   const displayLabel = media && isUuidOrId(label, id) ? "" : label;
 
@@ -117,8 +122,8 @@ const DropZone: React.FC<{
       </div>
 
       <div className="flex items-center gap-3 min-w-[120px] justify-end shrink-0">
-        {matchedId && matchedLabel ? (
-          <DraggableItem id={matchedId} label={matchedLabel} disabled={showFeedback} />
+        {matchedId ? (
+          <DraggableItem id={matchedId} label={matchedLabel || ""} media={matchedMedia} disabled={showFeedback} />
         ) : (
           <span className="text-slate-400 text-sm">
             Thả đáp án vào đây
@@ -150,11 +155,11 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
   const rightItemsList = useMemo(() => {
     return (question.rightItems || []).map((item) => {
       if (typeof item === "string") {
-        return { id: item, text: item };
+        return { id: item, text: item, media: undefined };
       }
       const rawText = item.text || "";
       const text = (item as any).media && isUuidOrId(rawText, item.id) ? "" : rawText;
-      return { id: item.id, text };
+      return { id: item.id, text, media: item.media };
     });
   }, [question.rightItems]);
 
@@ -239,6 +244,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
                   media={item.media}
                   matchedId={matched}
                   matchedLabel={matchedItem?.text}
+                  matchedMedia={matchedItem?.media}
                   isCorrect={isCorrect}
                   showFeedback={showFeedback}
                 />
@@ -265,6 +271,7 @@ export const MatchingQuestion: React.FC<MatchingQuestionProps> = ({
                     key={item.id}
                     id={item.id}
                     label={item.text}
+                    media={item.media}
                     disabled={showFeedback}
                   />
                 );

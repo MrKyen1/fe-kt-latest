@@ -23,6 +23,7 @@ import { authService } from "../../services/authService";
 import { resolveMediaUrl } from "../../services/apiClient";
 import { learningCmsService } from "../../services/learningCmsService";
 import { handleClipboardImagePaste } from "../../utils/clipboardUtils";
+import { IMAGE_ACCEPT } from "../../utils/uploadAccept";
 
 const { Title, Text } = Typography;
 
@@ -153,7 +154,7 @@ export default function UserProfile() {
                 showUploadList={false}
                 beforeUpload={beforeUpload}
                 onChange={handlePreview}
-                accept="image/*"
+                accept={IMAGE_ACCEPT}
               >
                 <Button
                   shape="circle"

@@ -3,6 +3,7 @@ import { Button, Input, Modal, Upload, message } from "antd";
 import { UploadOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Paperclip, Image as ImageIcon } from "lucide-react";
 import { handleClipboardImagePaste } from "../../../../../../utils/clipboardUtils";
+import { AUDIO_ACCEPT, IMAGE_ACCEPT, VIDEO_ACCEPT } from "../../../../../../utils/uploadAccept";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ export default function MediaUploadModal({
           }}
           maxCount={1}
           showUploadList={false}
-          accept="image/*,audio/*,video/*"
+          accept={`${IMAGE_ACCEPT},${AUDIO_ACCEPT},${VIDEO_ACCEPT}`}
           className="p-3 rounded-2xl border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/20"
         >
           <div className="py-2 flex flex-col items-center justify-center gap-1.5 text-slate-500">

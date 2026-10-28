@@ -199,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    const version = tokenStorage.getSessionVersion();
     const refreshToken = tokenStorage.getRefreshToken();
     const accessToken = tokenStorage.getAccessToken();
 
@@ -215,8 +216,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Bỏ qua lỗi server/mạng để đảm bảo client luôn logout thành công
     } finally {
       // 2. Dọn dẹp sạch sẽ toàn bộ local state và credentials
-      tokenStorage.clear();
-      setUser(null);
+      if (version === tokenStorage.getSessionVersion()) {
+        tokenStorage.clear();
+        setUser(null);
+      }
     }
   };
 

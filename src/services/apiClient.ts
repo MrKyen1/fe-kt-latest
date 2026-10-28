@@ -24,6 +24,7 @@ export const API_ORIGIN = (() => {
 interface RetryConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
   _skipAuthRefresh?: boolean;
+  _sessionVersion?: number;
 }
 
 const refreshClient = axios.create({
@@ -37,8 +38,9 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+  (config as RetryConfig)._sessionVersion = tokenStorage.getSessionVersion();
   const token = tokenStorage.getAccessToken();
-  if (token) {
+  if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -59,6 +61,51 @@ const notifyAuthFailure = () => {
   authFailureListeners.forEach((listener) => listener());
 };
 
+let pendingRefresh: { version: number; promise: Promise<AuthRefreshResponse>; rawPromise: Promise<AuthRefreshResponse> } | null = null;
+
+export function waitForAuthRefresh(forLogout = false) {
+  return pendingRefresh?.version === tokenStorage.getSessionVersion()
+    ? (forLogout ? pendingRefresh.rawPromise : pendingRefresh.promise) : null;
+}
+
+/** One rotation per session; late responses may never replace a newer session. */
+export function refreshAuthSession(refreshToken = tokenStorage.getRefreshToken(), forLogout = false) {
+  const version = tokenStorage.getSessionVersion();
+  const pending = waitForAuthRefresh(forLogout);
+  if (pending) return pending;
+  if (!refreshToken || refreshToken !== tokenStorage.getRefreshToken()) {
+    return Promise.reject(new ApiError("Phiên đăng nhập không còn hợp lệ"));
+  }
+  const stillCurrent = () => tokenStorage.getSessionVersion() === version &&
+    tokenStorage.getRefreshToken() === refreshToken;
+  const rawPromise = refreshClient.post<ApiEnvelope<AuthRefreshResponse>>("/auth/refresh", { refreshToken })
+    .then(response => response.data.data);
+  const promise = rawPromise.then(session => {
+      if (!stillCurrent()) throw new ApiError("Phiên đăng nhập đã thay đổi");
+      tokenStorage.setTokens(session.accessToken, session.refreshToken);
+      tokenStorage.setUser(normalizeUser(session.user));
+      return session;
+    })
+    .catch(error => {
+      if (stillCurrent()) {
+        tokenStorage.clear();
+        notifyAuthFailure();
+      }
+      throw normalizeApiError(error);
+    })
+    .finally(() => {
+      if (pendingRefresh?.promise === promise) pendingRefresh = null;
+    });
+  pendingRefresh = { version, promise, rawPromise };
+  if (forLogout) {
+    // The local logout timeout may expire before rotation returns. Only the
+    // revocation path may use this response without restoring stored credentials.
+    void promise.catch(() => {});
+    return rawPromise;
+  }
+  return promise;
+}
+
 apiClient.interceptors.response.use(
   (response) => {
     invalidateAfterMutation(response.config.url ?? "", response.config.method ?? "get");
@@ -74,24 +121,21 @@ apiClient.interceptors.response.use(
       originalRequest &&
       !originalRequest._retry &&
       !originalRequest._skipAuthRefresh &&
+      originalRequest._sessionVersion === tokenStorage.getSessionVersion() &&
+      !["/auth/login", "/auth/refresh"].includes(originalRequest.url ?? "") &&
       refreshToken
     ) {
       originalRequest._retry = true;
 
       try {
-        const refreshResponse = await refreshClient.post<ApiEnvelope<AuthRefreshResponse>>(
-          "/auth/refresh",
-          { refreshToken },
-        );
-        const nextSession = refreshResponse.data.data;
-        tokenStorage.setTokens(nextSession.accessToken, nextSession.refreshToken);
-        tokenStorage.setUser(normalizeUser(nextSession.user));
-
-        originalRequest.headers.Authorization = `Bearer ${nextSession.accessToken}`;
+        const accessToken = tokenStorage.getAccessToken();
+        // A previous refresh may have completed before this 401 arrived.
+        const nextAccessToken = accessToken && !tokenStorage.isAccessTokenExpired() &&
+          originalRequest.headers.Authorization !== `Bearer ${accessToken}`
+          ? accessToken : (await refreshAuthSession(refreshToken)).accessToken;
+        originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
-        tokenStorage.clear();
-        notifyAuthFailure();
         return Promise.reject(normalizeApiError(refreshError));
       }
     }

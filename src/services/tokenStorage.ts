@@ -27,8 +27,12 @@ const STORAGE_KEYS = {
   refreshToken: "kata_refresh_token",
   user: "kata_user",
 };
+let sessionVersion = 0;
 
 export const tokenStorage = {
+  getSessionVersion() {
+    return sessionVersion;
+  },
   getAccessToken() {
     return localStorage.getItem(STORAGE_KEYS.accessToken);
   },
@@ -50,6 +54,7 @@ export const tokenStorage = {
   },
 
   setSession(session: AuthSession) {
+    sessionVersion += 1;
     localStorage.setItem(STORAGE_KEYS.accessToken, session.accessToken);
     localStorage.setItem(STORAGE_KEYS.refreshToken, session.refreshToken);
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(session.user));
@@ -65,6 +70,7 @@ export const tokenStorage = {
   },
 
   clear() {
+    sessionVersion += 1;
     localStorage.removeItem(STORAGE_KEYS.accessToken);
     localStorage.removeItem(STORAGE_KEYS.refreshToken);
     localStorage.removeItem(STORAGE_KEYS.user);
