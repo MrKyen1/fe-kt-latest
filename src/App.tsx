@@ -118,6 +118,10 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="assignments/*"
+                element={<TeacherAssignments />}
+              />
               <Route path="ranking/*" element={<Leaderboard />} />
               <Route path="leaderboard/*" element={<Navigate to="/admin/ranking" replace />} />
               <Route path="rbac/*" element={<Navigate to="/admin/dashboard" replace />} />

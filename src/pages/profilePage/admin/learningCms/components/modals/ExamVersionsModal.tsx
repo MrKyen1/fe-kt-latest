@@ -33,7 +33,7 @@ interface Props {
 // ── Inner Component for Paginated Question List ─────────────
 
 const ExamVersionQuestionsList = ({ examId, versionId, versionNumber }: { examId: string; versionId: string; versionNumber: number }) => {
-  const page = useServerPagination(`/learning/exams/${examId}/versions/${versionId}/questions`, {}, 5);
+  const page = useServerPagination(`/learning/exams/${examId}/versions/${versionId}/questions`, {}, 20);
   return <div className="p-4 space-y-3">
     <div>Snapshot phiên bản v{versionNumber}: {page.total} câu hỏi</div>
 

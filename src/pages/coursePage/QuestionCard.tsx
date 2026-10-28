@@ -207,7 +207,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     (m) => m.type === "audio" || /\.(mp3|wav|ogg|m4a|aac)$/i.test(m.url || "")
   );
 
-  const hasSplitLayout = Boolean(question.passage) || imageMedia.length > 0;
+  const hasSplitLayout = Boolean(question.passage) && imageMedia.length === 0;
 
   const isAudioFillBlanks = question.type === "audio_fill_blanks" || (question as any).type === "audio-fill-blanks";
   const audioBlanksList: any[] = useMemo(() => {
@@ -294,6 +294,17 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     };
     onAnswerChange(updated);
   };
+
+  const handleInputFocus = useCallback((e: any) => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      const target = e.target;
+      setTimeout(() => {
+        try {
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        } catch {}
+      }, 300);
+    }
+  }, []);
 
   // =========================
   // Helpers
@@ -763,7 +774,9 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   // =========================
 
   const renderInlineMedia = () => {
-    const inlineItems = hasSplitLayout ? audioMedia : mediaItems;
+    // Khi câu hỏi đã có hình ảnh trong imageMedia, hình ảnh sẽ được hiển thị ở vùng hình ảnh lớn bên dưới.
+    // Do đó renderInlineMedia chỉ render audioMedia để tránh bị double (lặp 2 lần) ảnh.
+    const inlineItems = imageMedia.length > 0 ? audioMedia : (hasSplitLayout ? audioMedia : mediaItems);
 
     if (inlineItems.length === 0) return null;
 
@@ -843,8 +856,18 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           }
         };
 
+        // Tự động phân chia 2 cột trên màn hình sm+ (tablet, desktop) nếu các phương án ngắn, 1 cột nếu có phương án dài hoặc có media
+        const hasLongOption = (question.options || []).some((opt) => {
+          const label = getOptionLabel(opt);
+          return (
+            label.length > 40 ||
+            Boolean(opt && typeof opt !== "string" && (opt.media || (opt as any).imageUrl || (opt as any).audioUrl))
+          );
+        });
+        const gridColsClass = hasLongOption ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2";
+
         return (
-          <div className="grid grid-cols-1 gap-2 mb-4">
+          <div className={`grid ${gridColsClass} gap-2 sm:gap-2.5 mb-4`}>
             {question.options?.map((option, index) => {
               const optionValue = String(getOptionValue(option));
               const optionLabel = getOptionLabel(option);
@@ -944,21 +967,22 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       case "error_correction":
       case "fill-in-the-blank":
         return (
-          <div className="mb-6">
+          <div className="mb-3 sm:mb-4">
             <Input.TextArea
               autoSize={{
-                minRows: 2,
-                maxRows: 6,
+                minRows: 1,
+                maxRows: 4,
               }}
               placeholder="Nhập câu trả lời..."
               value={(currentAnswer as string) || ""}
               disabled={showFeedback}
+              onFocus={handleInputFocus}
               onChange={(e) => onAnswerChange(e.target.value)}
-              className={`rounded-xl text-[16px] py-4 px-5 shadow-sm leading-relaxed ${showFeedback
+              className={`rounded-xl text-[15px] sm:text-[16px] py-2.5 sm:py-3 px-4 shadow-2xs leading-relaxed transition-all ${showFeedback
                 ? isCorrect
-                  ? "border-2 border-emerald-400 bg-emerald-50 text-emerald-700 font-bold"
-                  : "border-2 border-rose-400 bg-rose-50 text-rose-700 font-bold"
-                : "border-slate-200 hover:border-emerald-400"
+                  ? "border-2 border-emerald-500 bg-emerald-50 text-emerald-800 font-bold"
+                  : "border-2 border-rose-400 bg-rose-50 text-rose-800 font-bold"
+                : "border-slate-200 hover:border-indigo-400 focus:border-indigo-500"
                 }`}
             />
           </div>
@@ -1123,6 +1147,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                         disabled={showFeedback}
                         value={userVal}
                         placeholder="..."
+                        onFocus={handleInputFocus}
                         onChange={(e) => handleBlankChange(blankId, e.target.value)}
                         className={`col-start-1 row-start-1 w-full min-w-0 text-center text-[14px] font-medium px-1.5 py-0.5 h-7 rounded-md transition-all outline-none ${blankStatus === "correct"
                           ? "border-2 border-emerald-500 bg-emerald-50/90 text-emerald-900 font-bold"
@@ -1416,11 +1441,56 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   // Main Content
   // =========================
 
+  const inputAreaTitle = useMemo(() => {
+    if (CHOICE_TYPES.includes(question.type)) return "Chọn đáp án của bạn:";
+    if (isWordOrdering) return "Sắp xếp các từ theo thứ tự đúng:";
+    if (question.type === "matching") return "Ghép các cặp tương ứng:";
+    if (question.type === "audio_fill_blanks" || (question as any).type === "audio-fill-blanks") return "Điền từ vào chỗ trống:";
+    return "Nhập câu trả lời của bạn:";
+  }, [question.type, isWordOrdering]);
+
   const renderQuestionContent = () => (
-    <div className="flex flex-col h-full w-full max-w-3xl mx-auto">
+    <div className="flex flex-col h-full w-full max-w-4xl mx-auto min-h-0">
       {renderQuestionHeader()}
 
-      <div className="flex-1 pb-2 overflow-x-hidden">{renderInputArea()}</div>
+      {/* Đọc đoạn văn (nếu có đoạn văn dạng text) */}
+      {question.passage && (
+        <div className="bg-emerald-50/50 p-3.5 sm:p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-inner mb-4 shrink-0">
+          <h3 className="text-xs sm:text-sm font-bold text-emerald-800 mb-2 sm:mb-3 uppercase tracking-wider">
+            Đọc đoạn văn sau
+          </h3>
+          <p className="text-sm sm:text-[15px] md:text-base leading-relaxed text-slate-700 whitespace-pre-wrap">
+            {question.passage}
+          </p>
+        </div>
+      )}
+
+      {/* Vùng hình ảnh lớn trên Desktop/Mobile - giữ tỷ lệ, cho phép phóng to (Feedback Mục 4) */}
+      {imageMedia.length > 0 && (
+        <div className="bg-slate-50/90 p-1.5 sm:p-2.5 rounded-2xl border border-slate-200/80 flex flex-col items-center justify-center gap-2 mb-2 sm:mb-2.5 shadow-2xs shrink min-h-[120px] w-full max-w-3xl mx-auto">
+          {imageMedia.map((media, index) => (
+            <div
+              key={`${media.url}-${index}`}
+              className="rounded-xl overflow-hidden shadow-xs w-full flex justify-center bg-white p-1.5 sm:p-2 border border-slate-100"
+            >
+              <AppImage
+                src={resolveMediaUrl(media.url)}
+                alt={`Context Media ${index + 1}`}
+                className="max-w-full rounded-lg object-contain max-h-[160px] sm:max-h-[200px] md:max-h-[230px] lg:max-h-[250px] xl:max-h-[280px] transition-transform duration-200 hover:scale-[1.01]"
+                maskText="Phóng to ảnh"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Khu vực chọn / nhập đáp án - Nằm TRỰC TIẾP DƯỚI hình ảnh với max-w-3xl mx-auto */}
+      <div className="w-full max-w-3xl mx-auto shrink-0 pb-2 pt-0.5">
+        <h3 className="text-xs sm:text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">
+          {inputAreaTitle}
+        </h3>
+        {renderInputArea()}
+      </div>
 
       {renderFeedbackBox()}
     </div>
@@ -1431,62 +1501,28 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     // Desktop (lg): cố định h-full, scroll nội dung bên trong card
     <div className="flex flex-col w-full lg:h-full lg:overflow-hidden bg-white/50 lg:min-h-0">
       {/* Nội dung câu hỏi: mobile = tự giãn để parent scroll, desktop = scroll bên trong */}
-      <div className="px-3.5 pt-5 pb-3 sm:px-6 sm:pt-7 md:px-8 md:pt-8 md:pb-[5px] flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-10 lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden lg:min-h-0">
+      <div className="px-3.5 pt-4 pb-2.5 sm:px-6 sm:pt-5 md:px-8 md:pt-6 md:pb-[4px] flex flex-col lg:flex-row gap-2.5 sm:gap-3.5 lg:gap-8 lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden lg:min-h-0">
         {hasSplitLayout ? (
           <>
-            {/* Left */}
-            <div className="flex-1 lg:overflow-y-auto pr-1 lg:pr-2 flex flex-col gap-3 sm:gap-4 lg:gap-6 min-h-0 shrink-0 lg:shrink">
-              {!question.passage && renderQuestionHeader()}
-
-              {question.passage && (
-                <div className="bg-emerald-50/50 p-3.5 sm:p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-inner">
-                  <h3 className="text-xs sm:text-sm font-bold text-emerald-800 mb-2 sm:mb-3 uppercase tracking-wider">
-                    Đọc đoạn văn sau
-                  </h3>
-
-                  <p className="text-sm sm:text-[15px] md:text-base leading-relaxed text-slate-700 whitespace-pre-wrap">
-                    {question.passage}
-                  </p>
-                </div>
-              )}
-
-              {imageMedia.length > 0 && (
-                <div className="bg-slate-50 p-2 sm:p-3 rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center gap-2">
-                  {imageMedia.map((media, index) => (
-                    <div key={`${media.url}-${index}`} className="rounded-xl overflow-hidden shadow-xs">
-                      <AppImage
-                        src={resolveMediaUrl(media.url)}
-                        alt={`Context Media ${index + 1}`}
-                        className="max-w-full rounded-xl object-contain max-h-[160px] sm:max-h-[240px] md:max-h-[380px]"
-                        maskText="Phóng to ảnh"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Left: Đoạn văn đọc hiểu (text-only passage) */}
+            <div className="flex-1 lg:overflow-y-auto pr-1 lg:pr-4 flex flex-col gap-3 min-h-0 shrink-0 lg:shrink">
+              <div className="bg-emerald-50/50 p-4 sm:p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-inner">
+                <h3 className="text-xs sm:text-sm font-bold text-emerald-800 mb-2 sm:mb-3 uppercase tracking-wider">
+                  Đọc đoạn văn sau
+                </h3>
+                <p className="text-sm sm:text-[15px] md:text-base leading-relaxed text-slate-700 whitespace-pre-wrap">
+                  {question.passage}
+                </p>
+              </div>
             </div>
 
-            {/* Right */}
+            {/* Right: Nội dung câu hỏi và khu vực trả lời */}
             <div className="flex-1 lg:overflow-y-auto lg:pl-6 lg:border-l border-slate-200 pr-1 lg:pr-2 pt-1 lg:pt-2 min-h-0">
-              {!question.passage ? (
-                <div className="flex flex-col h-full w-full max-w-3xl mx-auto min-h-0">
-                  <div className="flex-1 pb-2 overflow-x-hidden pt-1 sm:pt-2 min-h-0">
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-500 mb-3 sm:mb-4 uppercase tracking-wider">
-                      Chọn đáp án của bạn:
-                    </h3>
-
-                    {renderInputArea()}
-                  </div>
-
-                  {renderFeedbackBox()}
-                </div>
-              ) : (
-                renderQuestionContent()
-              )}
+              {renderQuestionContent()}
             </div>
           </>
         ) : (
-          <div className="w-full h-full lg:overflow-y-auto flex flex-col mx-auto max-w-3xl pr-1 lg:pr-2 pt-1 lg:pt-2 min-h-0">
+          <div className="w-full h-full lg:overflow-y-auto flex flex-col mx-auto max-w-4xl pr-1 lg:pr-2 pt-1 lg:pt-2 min-h-0">
             {renderQuestionContent()}
           </div>
         )}

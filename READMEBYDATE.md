@@ -13,6 +13,319 @@ Mọi response đều bọc trong envelope chuẩn:
 { "success": false, "statusCode": 400, "errorCode": "…", "message": "…",
   "fieldErrors": { }, "path": "…", "requestId": "…", "timestamp": "…" }
 ```
+## 2026-10-23
+### Báo cáo kết quả từng bài và bảng xếp hạng đúng phạm vi giao bài
+
+Bổ sung backend theo tài liệu **Những điều cần chỉnh sửa web.docx**. Giữ nguyên lịch sử làm bài, điểm chính thức của đề kiểm tra, tiến độ ôn tập và bảng xếp hạng tổng hợp hiện tại. FE cần tích hợp các API bên dưới để hoàn thiện màn hình theo mẫu tài liệu.
+
+API báo cáo hiện có bổ sung `data.summary`, không đổi `data.attempts` và `meta`:
+
+```http
+GET /api/v1/learning/student/attempts/:attemptId/report?page=1&limit=20
+```
+
+- JWT của học sinh, permission `learning.attempt`; `attemptId` phải thuộc học sinh đăng nhập.
+- `summary` tổng hợp toàn bộ các lượt chính thức cùng học sinh, cùng đề, cùng lượt giao/đăng ký giáo trình. Không phụ thuộc trang lịch sử đang tải.
+- `firstResult`: kết quả lượt chính thức `attemptNumber=1` đã nộp; chưa nộp trả `null`.
+- `bestResult`: kết quả tích lũy tốt nhất của đề ôn tập. Với đề kiểm tra, luôn giữ kết quả lượt đầu; ôn tiếp đạt 100% không ghi đè điểm kiểm tra.
+- `attemptsCount`: số lượt chính thức đã nộp. `attemptsToMastery`: số lượt đã nộp tính đến lần đầu tiến độ tích lũy đạt 100%; chưa đạt trả `null`. Không dùng `attemptsCount` thay cho số lần để đúng hết.
+- `masteredAt`: thời điểm lần đầu đạt 100%, chưa đạt trả `null`.
+- `status`: `not_started`, `in_progress`, `finished`. Đề kiểm tra `finished` sau khi nộp lượt đầu; đề ôn tập `finished` khi đạt 100%.
+- Tất cả chỉ số trong `summary` loại `isRedo=true`. Lịch sử `attempts` vẫn bao gồm các lượt làm lại từ đầu để học sinh xem lại. `meta.total` là tổng lịch sử, không phải số lượt chính thức.
+
+```jsonc
+// Phần data bổ sung; ví dụ đề ôn tập 18 câu, lần đầu đúng 9 câu, lần hai đạt 100%
+{
+  "student": {
+    "id": "<studentId>",
+    "code": "HS001",
+    "fullName": "Nguyễn Văn An",
+  },
+  "examId": "<examId>",
+  "summary": {
+    "firstResult": {
+      "attemptId": "<attemptId-lần-1>",
+      "correctCount": 9,
+      "totalQuestions": 18,
+      "percentage": 50,
+      "submittedAt": "2026-10-22T08:10:00.000Z",
+    },
+    "bestResult": {
+      "attemptId": "<attemptId-lần-2>",
+      "correctCount": 18,
+      "totalQuestions": 18,
+      "percentage": 100,
+      "submittedAt": "2026-10-22T08:23:00.000Z",
+    },
+    "attemptsCount": 2,
+    "attemptsToMastery": 2,
+    "masteredAt": "2026-10-22T08:23:00.000Z",
+    "status": "finished",
+  },
+  "attempts": [
+    /* Giữ contract lịch sử hiện có */
+  ],
+}
+```
+
+API mới cho bảng xếp hạng cạnh báo cáo:
+
+```http
+GET /api/v1/learning/student/attempts/:attemptId/leaderboard?page=1&limit=20
+```
+
+JWT vai trò `student`, permission `learning.attempt`. BE xác thực quyền sở hữu `attemptId`, tự xác định đề và nhóm; FE không gửi `studentId`, `classId`, `assignmentId` để mở rộng nhóm.
+
+- Bài giao trực tiếp: so sánh người nhận trong cùng lượt giao bài, cùng đề. Nếu chỉ giao một nhóm trong lớp, tổng số là số người nhận, không phải toàn bộ sĩ số lớp.
+- Bài trong giáo trình: cùng lượt giao giáo trình hoặc cùng liên kết giáo trình–lớp. Đăng ký không gắn lượt giao/lớp chỉ trả chính học sinh đó; không so sánh với người học cùng giáo trình ở lớp khác.
+- Nhóm gồm cả người nhận chưa làm. Người đã có kết quả đứng trước người đang làm nhưng chưa nộp; người chưa bắt đầu ở cuối.
+- Sắp theo tỷ lệ của `bestResult` giảm dần; bằng điểm ưu tiên ít lượt để đạt 100% hơn (chưa đạt dùng số lượt đã nộp), rồi thời điểm đạt/kết quả tốt nhất sớm hơn, cuối cùng ID để thứ tự ổn định. `rank` là thứ tự liên tiếp 1, 2, 3…, không đồng hạng.
+- Mỗi entry có tên/mã và các trường summary nêu trên, thêm `rank`, `isMe`. Không trả đáp án, nội dung câu hỏi, email hoặc số điện thoại của bạn học.
+- `viewer` luôn chứa dòng của học sinh đăng nhập kể cả khi nằm ngoài trang `entries`. FE dùng `viewer.rank` và `meta.total` cho ô “Xếp hạng trong lớp/nhóm”.
+- `page` mặc định 1; `limit` mặc định 20, tối đa 100. Trang vượt phạm vi trả `entries=[]`, giữ `viewer` và `meta.total`.
+- Bài/lượt giao không còn hoạt động hoặc attempt của người khác trả 404. UUID sai/giá trị phân trang sai trả 400; sai vai trò/quyền trả 403. JWT thiếu/hết hạn trả 401 theo cơ chế chung.
+
+```jsonc
+// data/meta bên trong envelope chuẩn
+{
+  "data": {
+    "exam": {
+      "id": "<examId>",
+      "title": "Lesson 2 – School things",
+      "examType": "practice",
+    },
+    "classId": "<classId-hoặc-null>",
+    "entries": [
+      {
+        "student": {
+          "id": "<studentId>",
+          "code": "HS001",
+          "fullName": "Nguyễn Văn An",
+        },
+        "rank": 1,
+        "isMe": true,
+        "firstResult": {
+          /* Cùng cấu trúc summary.firstResult */
+        },
+        "bestResult": {
+          /* Cùng cấu trúc summary.bestResult */
+        },
+        "attemptsCount": 2,
+        "attemptsToMastery": 2,
+        "masteredAt": "2026-10-22T08:23:00.000Z",
+        "status": "finished",
+      },
+    ],
+    "viewer": {
+      /* Cùng cấu trúc một entry */
+    },
+  },
+  "meta": { "page": 1, "limit": 20, "total": 12, "totalPages": 1 },
+}
+```
+
+**FE sửa màn hình kết quả:** gọi report và leaderboard bằng attempt vừa nộp. Hiển thị tên từ `data.student.fullName`; kết quả lần đầu/best theo `summary`, ô “số lần để đúng hết” theo `attemptsToMastery`. Nếu chưa đạt, hiển thị “Chưa đạt 100%”, không hiển thị `null` thành 0 lần. Lịch sử vẫn phân biệt kết quả riêng lượt (`attemptCorrectCount/attemptQuestionCount`) với tiến độ tích lũy (`cumulativeCorrectCount/totalQuestions`). Dòng chưa làm hiển thị `—` thay điểm và nhãn “Chưa làm”; đề kiểm tra có thể hoàn thành dù điểm dưới 100%.
+
+### Báo cáo tháng của giáo viên, thống kê kỹ năng và xuất Excel
+
+```http
+GET /api/v1/learning/teacher/reports/monthly?year=2026&month=10&classId=<uuid>&page=1&limit=20
+GET /api/v1/learning/teacher/reports/monthly/export?year=2026&month=10&classId=<uuid>
+```
+
+Cả hai API yêu cầu JWT, vai trò `teacher` hoặc `admin`, permission `learning.assign` (hoặc quyền tổng `learning.manage`). Giáo viên chỉ xem học sinh đang thuộc lớp mình đang phụ trách; admin xem các lớp đang hoạt động. Không gửi filter lớp thì tổng hợp trong toàn bộ phạm vi được phép. Học sinh thuộc nhiều lớp chỉ xuất hiện một dòng.
+
+| Query              | JSON                       | Excel     | Ý nghĩa                                                   |
+| ------------------ | -------------------------- | --------- | --------------------------------------------------------- |
+| `year`             | Bắt buộc                   | Bắt buộc  | Số nguyên 2000–2100                                       |
+| `month`            | Bắt buộc                   | Bắt buộc  | Số nguyên 1–12                                            |
+| `classId`          | Tùy chọn                   | Tùy chọn  | Giới hạn một lớp thuộc phạm vi quản lý                    |
+| `studentId`        | Tùy chọn                   | Tùy chọn  | ID hồ sơ học sinh (`students.id`), không phải user ID     |
+| `specializationId` | Tùy chọn                   | Tùy chọn  | Giới hạn môn học                                          |
+| `page`, `limit`    | Mặc định 1, 20; limit ≤100 | Không gửi | Excel tự lấy toàn bộ học sinh, không chỉ trang FE đang mở |
+
+**Quy tắc thống kê đã được xác nhận:**
+
+- Tháng theo `Asia/Ho_Chi_Minh` (UTC+7); đầu tháng inclusive, đầu tháng sau exclusive. Tháng 10/2026 tương ứng `[2026-09-30T17:00:00Z, 2026-10-31T17:00:00Z)`.
+- Đếm các đề **được giao trong tháng**, gồm giao trực tiếp và các đề trong giáo trình đã có dòng tiến độ của học sinh. Ngày giao đề là thời điểm muộn hơn giữa ngày nhận bài/giáo trình và ngày tạo liên kết đề/dòng tiến độ. Một giáo trình 10 đề tính 10 đề; cùng đề được giao ở hai lượt khác nhau tính hai nhiệm vụ.
+- Chỉ tính lượt giao/người nhận còn active; lượt đã hủy không tính. Đây là báo cáo trực tiếp từ dữ liệu đang hoạt động; việc hủy bài/chuyển lớp có thể làm kết quả xem trực tiếp thay đổi. Dùng chức năng lưu/chốt bên dưới để giữ nguyên một bản báo cáo.
+- `assignedExams = notStartedExams + inProgressExams + finishedExams`. Đề chưa mở là `notStarted`; đã mở nhưng chưa đạt điều kiện hoàn thành là `inProgress`. Đề ôn tập hoàn thành khi tiến độ tích lũy đạt 100%, đề kiểm tra hoàn thành khi nộp. Trạng thái lấy thực tế **đến thời điểm xem báo cáo**, kể cả học sinh hoàn thành ở tháng sau. Ví dụ bài giao tháng 9, hoàn thành tháng 10 vẫn thuộc báo cáo tháng 9 và hiển thị đã hoàn thành khi xem sau đó. Không thêm bài giao tháng khác vào số đếm. `statusAsOf` là thời điểm thống kê; `windowFrom/windowTo` chỉ giới hạn ngày giao bài.
+- Tỷ lệ đúng dùng **các câu của lượt chính thức đầu tiên đã nộp đến `statusAsOf`**, bỏ mọi lượt ôn tiếp và làm lại từ đầu. `accuracy = correctAnswers / totalQuestions × 100`, làm tròn hai chữ số. Không lấy trung bình phần trăm của các đề; câu chưa trả lời trong lượt đã nộp tính chưa đúng.
+- Chưa có lượt đầu đã nộp: `accuracy=null`, `totalQuestions=0`, `skills=[]`; `afterPractice` chưa có dữ liệu trả `correctCount=0`, `totalQuestions=0`, `percentage=null`. FE hiển thị “Chưa có dữ liệu”, không diễn giải là học sinh làm sai 100%.
+- Học sinh trong phạm vi không được giao đề nào trong tháng vẫn có dòng với các bộ đếm bằng 0.
+- Lượt giao không gắn lớp được tính cho học sinh trong phạm vi quản lý; lượt gắn lớp khác ngoài filter/phạm vi không tính.
+
+```jsonc
+{
+  "data": {
+    "year": 2026,
+    "month": 10,
+    "timeZone": "Asia/Ho_Chi_Minh",
+    "windowFrom": "2026-09-30T17:00:00.000Z",
+    "windowTo": "2026-10-31T17:00:00.000Z",
+    "statusAsOf": "2026-10-23T09:00:00.000Z",
+    "accuracyBasis": "first_official_attempt",
+    "students": [
+      {
+        "student": {
+          "id": "<studentId>",
+          "code": "HS001",
+          "fullName": "Nguyễn Văn An",
+        },
+        "assignedExams": 10,
+        "notStartedExams": 3,
+        "inProgressExams": 2,
+        "finishedExams": 5,
+        "correctAnswers": 42,
+        "totalQuestions": 60,
+        "accuracy": 70,
+        "afterPractice": {
+          "correctCount": 54,
+          "totalQuestions": 60,
+          "percentage": 90,
+        },
+        "skills": [
+          {
+            "skillId": "<skillId>",
+            "skillName": "Ngữ pháp",
+            "metadata": "frozen",
+            "correct": 18,
+            "total": 20,
+            "accuracy": 90,
+            "practiceCorrect": 20,
+            "practiceTotal": 20,
+            "practiceAccuracy": 100,
+          },
+          {
+            "skillId": "<skillId-khác>",
+            "skillName": "Từ vựng",
+            "metadata": "frozen",
+            "correct": 24,
+            "total": 40,
+            "accuracy": 60,
+            "practiceCorrect": 34,
+            "practiceTotal": 40,
+            "practiceAccuracy": 85,
+          },
+        ],
+      },
+    ],
+  },
+  "meta": { "page": 1, "limit": 20, "total": 12, "totalPages": 1 },
+}
+```
+
+**Kỹ năng và dữ liệu cũ:** snapshot câu hỏi mới lưu `skill={id,name}` hoặc `skill=null`. Kỹ năng đã lưu trong snapshot không đổi khi sửa câu hỏi/tên kỹ năng sau này. Không sửa lại snapshot hoặc phiên bản cũ và không yêu cầu migration.
+
+| `skills[].metadata` | FE hiển thị/diễn giải                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `frozen`            | Kỹ năng đã lưu trong snapshot của câu hỏi                                                                                                              |
+| `untagged`          | Snapshot mới ghi rõ chưa gắn kỹ năng; `skillId=null`                                                                                                   |
+| `legacy_current`    | Snapshot cũ thiếu metadata; tạm dùng kỹ năng hiện tại của câu hỏi. Đánh dấu “Dữ liệu cũ – kỹ năng hiện tại”; thay đổi taxonomy có thể đổi thống kê này |
+| `legacy_unknown`    | Snapshot cũ thiếu metadata và câu hỏi hiện tại cũng chưa gắn kỹ năng; `skillId=null`                                                                   |
+
+Các dòng kỹ năng sắp theo tỷ lệ đúng giảm dần, số mẫu giảm dần rồi ID/metadata. Chỉ thống kê đúng/sai và tỷ lệ theo từng kỹ năng; **không gắn nhãn mạnh/yếu, không có ngưỡng tối thiểu 5 câu**, không trả `strongestSkill`/`weakestSkill`. Cùng kỹ năng nhưng nguồn metadata khác nhau trả dòng riêng; FE dùng key kết hợp `skillId + metadata`. Hiển thị số câu `total` cạnh phần trăm.
+
+**Kết quả sau luyện:** `accuracy`, `correctAnswers`, `totalQuestions` vẫn giữ kết quả lần đầu làm chỉ số chính. Bổ sung `afterPractice={correctCount,totalQuestions,percentage}` cho từng học sinh và `practiceCorrect/practiceTotal/practiceAccuracy` cho từng dòng kỹ năng. Các chỉ số sau luyện lấy câu đã từng trả lời đúng trong các lượt chính thức đã nộp đến `statusAsOf`, tính mỗi câu một lần trong cùng nhiệm vụ/đề; không cộng trùng câu qua các lượt luyện. Vẫn loại `isRedo=true`; cùng câu được giao ở hai lượt khác nhau là hai nhiệm vụ riêng. Với đề kiểm tra, kết quả sau luyện chỉ thể hiện tiến độ luyện tập, không ghi đè điểm lần thi đầu.
+
+**FE làm trang báo cáo giáo viên:**
+
+1. Thêm bộ lọc tháng/năm, lớp, học sinh và môn; khi đổi filter đặt lại `page=1` và hủy/bỏ qua response cũ.
+2. Bảng gồm tên/mã HS, đề được giao, chưa làm, đang làm, hoàn thành, tỷ lệ đúng lần đầu và tỷ lệ sau luyện. Dùng `meta` từ BE cho phân trang; không cộng dữ liệu trang đầu để suy ra tổng toàn lớp.
+3. Mở chi tiết một học sinh bằng cùng API kèm `studentId`; vẽ biểu đồ đúng/sai theo kỹ năng từ `skills`, so sánh tỷ lệ lần đầu và sau luyện; không đánh giá năng lực mạnh/yếu. Không dùng bảng xếp hạng tổng hợp hoặc analytics một lượt giao thay cho báo cáo tháng.
+4. Nút “Xuất báo cáo tháng” gọi endpoint export với **cùng filter**, bỏ `page/limit`, nhận Blob. Các trang của cùng file export được đọc trong một transaction nhất quán, tránh thiếu/trùng học sinh khi đang đổi tên hoặc chuyển lớp. File XLSX có sheet **Học sinh** và **Kỹ năng**, thêm các cột đúng/tổng/tỷ lệ sau luyện, lấy toàn bộ học sinh; trường không có dữ liệu để trống. Timeout export tối đa 10 phút theo cấu hình route, FE cần đặt timeout tải file tương ứng.
+
+```ts
+// Ví dụ Axios đã cấu hình baseURL=/api/v1 và interceptor JWT.
+const params = { year, month, classId, studentId, specializationId };
+const response = await api.get('/learning/teacher/reports/monthly/export', {
+  params,
+  responseType: 'blob',
+  timeout: 600_000,
+});
+const url = URL.createObjectURL(response.data);
+const a = document.createElement('a');
+a.href = url;
+a.download = `bao-cao-hoc-tap-${year}-${String(month).padStart(2, '0')}.xlsx`;
+a.click();
+URL.revokeObjectURL(url);
+```
+
+Client tải file cần bỏ qua bước unwrap JSON trong interceptor dùng chung. Nếu lỗi trả Blob JSON, đọc `await error.response.data.text()` rồi parse để hiển thị message chuẩn. Không lưu file lỗi thành `.xlsx`. Export không bọc envelope success vì trả binary; lỗi trước khi bắt đầu stream vẫn theo contract lỗi chung.
+
+Query thiếu/sai tháng/năm, UUID không hợp lệ hoặc truyền field ngoài contract trả 400. `classId`/`studentId` ngoài phạm vi trả 403. Không có học sinh trong phạm vi/filter trả 200 với `students=[]`, `meta.total=0`; Excel vẫn có hai sheet và hàng tiêu đề.
+
+### Lưu/chốt báo cáo tháng để giữ nguyên số liệu
+
+Báo cáo live luôn cập nhật trạng thái đến lúc xem. Giáo viên có thể bấm **Lưu/chốt báo cáo** để tạo một bản lưu cố định gồm danh sách học sinh, tên/mã, số đề, kết quả lần đầu/sau luyện và kỹ năng tại `statusAsOf`. Mỗi lần lưu tạo một `id` mới; không ghi đè bản cũ, không tự động chốt theo lịch. Không có API sửa/xóa bản đã chốt.
+
+| Thao tác           | API                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| Lưu/chốt           | `POST /api/v1/learning/teacher/reports/monthly/snapshots`                                   |
+| Danh sách bản lưu  | `GET /api/v1/learning/teacher/reports/monthly/snapshots?year=2026&month=10&page=1&limit=20` |
+| Xem bản lưu        | `GET /api/v1/learning/teacher/reports/monthly/snapshots/:id?page=1&limit=20`                |
+| Xuất Excel bản lưu | `GET /api/v1/learning/teacher/reports/monthly/snapshots/:id/export`                         |
+
+Cả bốn API yêu cầu JWT, vai trò teacher/admin, permission `learning.assign` hoặc `learning.manage`. Giáo viên chỉ đọc/xuất bản do chính mình tạo; admin có thể đọc tất cả. Không cần học sinh còn ở lớp cũ khi đọc bản lưu; quyền đọc theo người tạo bản lưu, không mở quyền cho giáo viên khác. ID không tồn tại hoặc không thuộc quyền đọc trả 404; học sinh gọi trả 403. Danh sách chỉ trả metadata, không tải nội dung toàn bộ các bản lưu.
+
+```jsonc
+// POST .../snapshots. BE tự tính toàn bộ; không nhận report/payload từ FE.
+{ "year": 2026, "month": 10, "classId": "<uuid-lớp>" }
+```
+
+Body nhận cùng filter `year/month/classId/studentId/specializationId` của báo cáo live, **không gửi page/limit/payload**. Khi lưu, BE kiểm tra phạm vi lớp/học sinh hiện tại và lấy tất cả các trang trong cùng một transaction để không chốt thiếu học sinh. Response tạo trả 201; `data` gồm `{id,createdByUserId,year,month,filters,statusAsOf,createdAt,report}` với `report.students` đầy đủ.
+
+GET danh sách nhận cùng filter tháng/năm và filter tùy chọn; filter lớp/học sinh/môn khớp **filter đã dùng lúc lưu**, không tìm theo từng học sinh bên trong bản toàn lớp. Response `data` là mảng metadata cùng `meta` phân trang, mặc định 20, tối đa 100. GET chi tiết có cấu trúc `data` như tạo nhưng `report.students` phân trang và `meta.total` là tổng học sinh đã lưu. Tên, trạng thái, kết quả và ghi chú kỹ năng của bản lưu không được tính lại khi xem/xuất.
+
+**FE:** tách “Báo cáo trực tiếp” và “Báo cáo đã chốt”. Màn trực tiếp hiển thị “Các bài được giao trong tháng X — kết quả cập nhật lúc statusAsOf”, cùng cột kết quả lần đầu/sau luyện. Nút lưu gửi cùng filter đang xem, khóa nút trong lúc request để tránh lưu lặp do bấm nhiều lần; sau thành công chuyển sang bản lưu theo `id`. Mỗi bản lưu hiển thị thời điểm `statusAsOf/createdAt`. Nút tải Excel ở màn bản lưu phải gọi URL có snapshot ID, không gọi export live. Nếu muốn cập nhật số liệu, quay lại màn live và tạo bản lưu mới; các bản trước giữ nguyên.
+
+Lưu và xuất có timeout route 10 phút. Export bản lưu dùng Blob và xử lý lỗi giống export live ở trên. Chức năng này lưu báo cáo khi bấm nút, không khóa việc giao bài, sửa câu hỏi hoặc học sinh tiếp tục làm bài.
+
+### FE hoàn thiện tổng quan giáo trình, xem trước/sửa đề và hiển thị
+
+Backend đã có API cho mục 4 trong tài liệu, không cần giao bài thử cho học sinh:
+
+| Luồng FE                     | API hiện có                                                                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Tổng quan giáo trình         | `GET /api/v1/learning/curriculums?specializationId=<uuid>&page=1&limit=20`; dùng `examCount`, `testCount`, `practiceCount`                |
+| Mở giáo trình                | `GET /api/v1/learning/curriculums/:id`; các đề trong `data.exams`, theo `orderIndex`                                                      |
+| Xem bản soạn hiện tại của đề | `GET /api/v1/learning/exams/:examId`; giáo viên nhận `data.questions` có câu hỏi và media                                                 |
+| Xem đúng bản đã phát hành    | `GET /api/v1/learning/exams/:examId/versions/:versionId` hoặc endpoint `/questions` có phân trang; dùng `currentVersionId` từ chi tiết đề |
+| Sửa nội dung câu hỏi         | `PATCH /api/v1/learning/questions/:questionId`; gửi các field cần đổi và `expectedUpdatedAt` mới nhất                                     |
+| Phát hành bản đề sau sửa     | `PATCH /api/v1/learning/exams/:examId/status` với `status=published` và `expectedUpdatedAt` mới nhất                                      |
+
+- API đọc CMS dùng `learning.read`; sửa câu hỏi dùng `learning.write`; phát hành dùng `learning.publish`. Giáo viên có bộ quyền này theo mặc định.
+- Phân biệt tab **Bản đang soạn** và **Bản đã phát hành** (`currentVersionId`, `hasUnpublishedChanges`). Chế độ xem trước dùng cùng component hiển thị câu hỏi của học sinh, lấy dữ liệu CMS/phiên bản; không gọi API tạo attempt hay tự nộp câu trả lời của học sinh.
+- Câu hỏi dùng chung có thể nằm trong nhiều đề. PATCH nội dung câu hỏi sửa bản soạn dùng chung và đánh dấu các đề liên quan có thay đổi chưa phát hành. Nếu muốn biến thể riêng, nhân bản câu hỏi bằng API hiện có rồi thay liên kết trong đề.
+- `PATCH /learning/exams/:examId/questions/:questionId` chỉ chỉnh liên kết/thứ tự, không dùng để sửa nội dung câu hỏi. Khi sửa ảnh/options, gửi đủ danh sách cần giữ theo contract thay thế hiện có; không đổi `type` câu hỏi.
+- Phát hành tạo phiên bản mới; lượt giao/lượt làm đã ghim bản cũ vẫn giữ nội dung, đáp án và điểm cũ. Không hứa việc sửa câu hỏi sẽ tự sửa điểm bài học sinh đã làm.
+
+- Mục 5: FE tăng vùng ảnh ở desktop, đưa ô/nhóm đáp án xuống dưới ảnh; giữ tỷ lệ ảnh, cho phép phóng to. API media không thay đổi.
+- Mục 6: FE kiểm tra viewport, overflow ngang, chiều cao khi bàn phím mở và font-size input trên trình duyệt điện thoại thực tế. Nếu làm trải nghiệm thêm vào màn hình chính, bổ sung manifest/icon và cấu hình web/PWA phù hợp. Không cache API JWT, dữ liệu báo cáo hoặc đáp án học sinh bằng service worker dùng chung.
+
+### Kiểm thử và triển khai
+
+- Không thêm dependency. **Cần chạy migration `1780000043000-add-monthly-report-snapshots.ts`** để tạo bảng lưu báo cáo trước khi dùng chức năng lưu/chốt; deploy backend rồi FE tích hợp. Không sửa snapshot câu hỏi/đề cũ. Các API live giữ trường kết quả lần đầu, thêm kết quả sau luyện và bỏ trường nhãn mạnh/yếu của bản triển khai trước.
+- Unit test kiểm tra snapshot kỹ năng, điểm chính thức/ôn tập, số lần đạt 100%, bỏ redo, dữ liệu trống và stream export đóng/lỗi.
+- E2E PostgreSQL kiểm tra report không phụ thuộc trang, thứ hạng và học sinh chưa làm, phạm vi bài giao/giáo trình lớp/giao giáo trình thủ công/đăng ký riêng, chặn truy cập chéo, bộ lọc tháng/môn/học sinh, học sinh nhiều lớp, dữ liệu cũ, bài hủy, dữ liệu tương lai, phân trang và Excel hơn 100 học sinh.
+- Chạy test báo cáo mới trên database QA **riêng đã chạy migration**, không trỏ vào database ứng dụng:
+
+```bash
+DB_NAME=kata_reports_qa_<số> REPORTS_QA_DB=kata_reports_qa_<số> \
+  npm run test:e2e -- --runInBand learning-reports.e2e-spec.ts
+```
+
+`REPORTS_QA_DB` phải khớp `DB_NAME`; test chặn tên ngoài mẫu trên và rollback fixture khi kết thúc. Test concurrency export dùng fixture commit riêng để mô phỏng kết nối đồng thời và tự xóa đúng các dòng đã tạo.
+
+Kết quả xác minh sau khi áp dụng các quy tắc đã xác nhận ngày 23/10/2026:
+
+- `npm test -- --runInBand`: 44 suite, **295 test pass**.
+- E2E PostgreSQL báo cáo gồm **16 test live** và **8 test lưu/chốt**: trạng thái cập nhật sau tháng giao bài, so sánh sau luyện không cộng trùng câu, bỏ redo/tương lai, 101+ học sinh, quyền truy cập, snapshot bất biến, bản lưu mới và rollback khi lưu lỗi.
+- E2E toàn repo trên QA: **7 suite, 91 test pass**, gồm 2 ca export khi có chỉnh sửa đồng thời (tái hiện lỗi ở cách cũ và xác minh bản sửa). Ba suite opt-in được skip theo điều kiện môi trường.
+- Các suite opt-in câu hỏi tổng hợp/media đã được chạy ở vòng triển khai trước: 27 + 6 test pass. Suite performance/concurrency yêu cầu database synthetic riêng (`kata_perf_qa`) chưa chạy ở vòng này.
+- `npm run build`, `npm run build:production`, ESLint toàn repo và `git diff --check` pass.
+- `tools:check-memory`: memory backend/learning cập nhật; các module cũ khác vẫn thiếu MEMORY.md từ trước. Lệnh TypeScript tổng quát `tsc --noEmit` còn lỗi type ở spec cũ; hai lệnh build chính thức loại spec và đã pass.
+- Migration mới phải chạy khi triển khai: `npm run migration:run` với đúng môi trường mục tiêu. Revert migration43 sẽ xóa bảng cùng các báo cáo đã lưu; không dùng revert để thay thế việc điều chỉnh số liệu, hãy tạo bản lưu mới.
 
 ## 2026-10-15
 

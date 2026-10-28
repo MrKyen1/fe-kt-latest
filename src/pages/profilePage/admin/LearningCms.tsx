@@ -74,6 +74,7 @@ import QuestionsTab from "./learningCms/components/QuestionsTab";
 import { invalidateQuestionDetailCache } from "./learningCms/components/QuestionPopoverContent";
 import ExamsTab from "./learningCms/components/ExamsTab";
 import CurriculumsTab from "./learningCms/components/CurriculumsTab";
+import CurriculumOverviewTab from "./learningCms/components/CurriculumOverviewTab";
 
 // ── Modal components ─────────────────────────────────────────
 import TaxonomyModal from "./learningCms/components/modals/TaxonomyModal";
@@ -328,6 +329,7 @@ export default function LearningCms() {
 
   // Cache of fully-fetched question details (for hover popover in ManageQuestionsModal)
   const [questionDetails, setQuestionDetails] = useState<Record<string, any>>({});
+  const [lastSavedQuestion, setLastSavedQuestion] = useState<{ id: string; timestamp: number } | null>(null);
 
   // ── Media upload state ─────────────────────────────────────
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -468,7 +470,7 @@ export default function LearningCms() {
   // DATA LOADING
   // ============================================================
 
-  const resource = activeTab === "taxonomy" ? taxTab : activeTab === "media" ? "media-assets" : activeTab === "passages" ? "reading-passages" : activeTab;
+  const resource = activeTab === "taxonomy" ? taxTab : activeTab === "media" ? "media-assets" : activeTab === "passages" ? "reading-passages" : activeTab === "curriculum-overview" ? "curriculums" : activeTab;
   const [cmsFilters, setCmsFilters] = useState<Record<string, CmsFilters>>({});
   const filterScope = JSON.stringify([selectedSpecializationId, resource]);
   const appliedCmsFilters = cmsFilters[filterScope] || {};
@@ -486,7 +488,7 @@ export default function LearningCms() {
     setMediaLoading(activeTab === "media" && resourcePage.loading);
     setQuestionsLoading(activeTab === "questions" && resourcePage.loading);
     setExamsLoading(activeTab === "exams" && resourcePage.loading);
-    setCurriculumsLoading(activeTab === "curriculums" && resourcePage.loading);
+    setCurriculumsLoading((activeTab === "curriculums" || activeTab === "curriculum-overview") && resourcePage.loading);
     if (resourcePage.error) message.error(resourcePage.error.message);
     const { current, pageSize } = resourcePage.pagination;
     switch (activeTab) {
@@ -500,7 +502,9 @@ export default function LearningCms() {
       case "passages": setPassages(data); setPassagesPage(current); setPassagesPageSize(pageSize); setPassagesTotal(resourcePage.total); break;
       case "questions": setQuestions(data); setQuestionsPage(current); setQuestionsPageSize(pageSize); setQuestionsTotal(resourcePage.total); break;
       case "exams": setExams(data); setExamsPage(current); setExamsPageSize(pageSize); setExamsTotal(resourcePage.total); break;
-      case "curriculums": setCurriculums(data); setCurriculumsPage(current); setCurriculumsPageSize(pageSize); setCurriculumsTotal(resourcePage.total); break;
+      case "curriculums":
+      case "curriculum-overview":
+        setCurriculums(data); setCurriculumsPage(current); setCurriculumsPageSize(pageSize); setCurriculumsTotal(resourcePage.total); break;
     }
   }, [resourcePage.data, resourcePage.total, resourcePage.loading, resourcePage.error, activeTab, taxTab]);
   const loadTaxonomyData = async (_tab: string, _search = "", page = taxPage, size = taxPageSize) => resourcePage.pagination.onChange(page, size);
@@ -748,7 +752,8 @@ export default function LearningCms() {
 
   const handleQuestionEdit = async (record: any) => {
     try {
-      const fullRecord = await learningCmsService.questions.get(record.id);
+      const targetId = record.questionId || record.id;
+      const fullRecord = await learningCmsService.questions.get(targetId);
       setEditingItem(fullRecord);
       setIsDuplicatingQuestion(false);
       setCurrentQuestionType(fullRecord.type);
@@ -1181,6 +1186,7 @@ export default function LearningCms() {
           delete next[editingItem.id];
           return next;
         });
+        setLastSavedQuestion({ id: editingItem.id, timestamp: Date.now() });
         message.success("Cập nhật câu hỏi thành công");
       } else {
         await learningCmsService.questions.create({ ...payload, specializationId: selectedSpecializationId });
@@ -1788,6 +1794,30 @@ export default function LearningCms() {
         />
       ),
     },
+    {
+      key: "curriculum-overview",
+      label: (
+        <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold text-indigo-700">
+          <OrderedListOutlined /> Tổng quan giáo trình
+        </span>
+      ),
+      children: (
+        <CurriculumOverviewTab
+          curriculums={curriculums}
+          loading={curriculumsLoading}
+          pagination={{
+            current: curriculumsPage,
+            pageSize: curriculumsPageSize,
+            total: curriculumsTotal,
+            onChange: handleCurriculumsPageChange,
+          }}
+          specializationId={selectedSpecializationId}
+          onRefreshParent={loadAllData}
+          onOpenQuestionFullEdit={handleQuestionEdit}
+          lastSavedQuestion={lastSavedQuestion}
+        />
+      ),
+    },
   ];
 
   return (
@@ -1958,6 +1988,10 @@ export default function LearningCms() {
               viewingQuestion={viewingQuestion}
               questionVersions={questionVersions}
               onCancel={() => { setQuestionVersionsModalOpen(false); setViewingQuestion(null); }}
+              skills={skills}
+              levels={levels}
+              topics={topics}
+              tags={tags}
             />
 
             <ManageQuestionsModal

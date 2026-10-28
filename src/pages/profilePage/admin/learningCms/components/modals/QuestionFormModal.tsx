@@ -1689,6 +1689,7 @@ export default function QuestionFormModal({
         </div>
       }
       open={open}
+      zIndex={1300}
       forceRender
       maskClosable={false}
       onCancel={handleModalCancel}

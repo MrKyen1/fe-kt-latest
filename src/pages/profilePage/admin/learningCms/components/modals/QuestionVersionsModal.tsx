@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useCmsHeaderFilters, type CmsFilters } from "../../../../../../components/CmsHeaderFilters";
 import Table from "../../../../../../components/Table";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
-import { Alert, Empty, Modal, Tag, Tooltip } from "antd";
+import { Alert, Empty, Modal, Tag, Tooltip, Popover } from "antd";
 import { History, Info, Check } from "lucide-react";
 import { QUESTION_TYPE_COLORS, QUESTION_TYPE_LABELS } from "../../constants";
 import { resolveMediaUrl } from "../../../../../../services/apiClient";
 import { normalizeLineBreaks } from "../../../../../../utils/textFormatters";
 import { AppImage } from "../../../../../../components/AppImagePreview";
+import QuestionPopoverContent from "../QuestionPopoverContent";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -42,6 +43,11 @@ export interface QuestionVersion {
   contentHash?: string;
 }
 
+interface TaxonomyItem {
+  id: string;
+  name: string;
+}
+
 interface Question {
   id: string;
   prompt?: string;
@@ -52,6 +58,10 @@ interface Props {
   viewingQuestion:  Question | null;
   questionVersions: QuestionVersion[];
   onCancel:         () => void;
+  skills?:          TaxonomyItem[];
+  levels?:          TaxonomyItem[];
+  topics?:          TaxonomyItem[];
+  tags?:            TaxonomyItem[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -338,90 +348,64 @@ function renderCorrectAnswer(r: QuestionVersion) {
   );
 }
 
-// ── Columns ──────────────────────────────────────────────────
+// ── Adapter ──────────────────────────────────────────────────
 
-const COLUMNS = [
-  {
-    title: "Phiên bản",
-    dataIndex: "versionNumber",
-    key: "versionNumber",
-    width: 85,
-    align: "center" as const,
-    render: (num: number) => (
-      <Tag color="indigo" className="font-bold text-xs px-2.5 py-0.5 rounded-full border-none">
-        v{num}
-      </Tag>
-    ),
-  },
-  {
-    title: "Loại câu hỏi",
-    dataIndex: "questionType",
-    key: "questionType",
-    width: 150,
-    render: (type: string) => (
-      <Tag color={QUESTION_TYPE_COLORS[type] ?? "default"} className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
-        {QUESTION_TYPE_LABELS[type] ?? type}
-      </Tag>
-    ),
-  },
-  {
-    title: "Nội dung đề bài snapshot",
-    key: "prompt",
-    minWidth: 200,
-    render: (_: unknown, r: QuestionVersion) => {
-      const promptText = r.questionSnapshot?.prompt ?? "Không có nội dung";
-      return (
-        <Tooltip title={promptText} placement="topLeft">
-          <div
-            className="text-xs text-slate-700 line-clamp-2 font-medium cursor-default leading-relaxed max-w-xs"
-            dangerouslySetInnerHTML={{ __html: promptText }}
-          />
-        </Tooltip>
-      );
-    },
-  },
-  {
-    title: "Đáp án đúng",
-    key: "correctAnswer",
-    minWidth: 200,
-    render: (_: unknown, r: QuestionVersion) => renderCorrectAnswer(r),
-  },
-  {
-    title: "Giải thích",
-    key: "explanation",
-    minWidth: 200,
-    render: (_: unknown, r: QuestionVersion) => renderExplanation(r),
-  },
-  {
-    title: "Ngày cắt phiên bản",
-    dataIndex: "createdAt",
-    key: "createdAt",
-    width: 160,
-    render: (date: string) => (
-      <span className="text-xs text-slate-500 font-mono">
-        {date ? new Date(date).toLocaleString("vi-VN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }) : "—"}
-      </span>
-    ),
-  },
-];
+function adaptVersionToQuestion(r: QuestionVersion): any {
+  const snapshot = r.questionSnapshot || {};
+  const correctAnswer = r.correctAnswer || (snapshot as any).correctAnswer;
+
+  const selectedOptionIds: string[] = Array.isArray(correctAnswer?.selectedOptionIds)
+    ? correctAnswer.selectedOptionIds.map(String)
+    : correctAnswer?.selectedOptionId
+      ? [String(correctAnswer.selectedOptionId)]
+      : Array.isArray(correctAnswer?.correctOptionIds)
+        ? correctAnswer.correctOptionIds.map(String)
+        : [];
+
+  const options = (snapshot.options || []).map((opt, idx) => {
+    let isCorrect = Boolean((opt as any).isCorrect);
+    if (!isCorrect && selectedOptionIds.length > 0) {
+      if (selectedOptionIds.includes(String(opt.id))) {
+        isCorrect = true;
+      }
+    }
+    return {
+      label: opt.label ?? (opt.orderIndex !== undefined ? String.fromCharCode(65 + opt.orderIndex) : String.fromCharCode(65 + idx)),
+      content: opt.content || "",
+      isCorrect,
+      media: opt.media,
+    };
+  });
+
+  return {
+    id: r.id,
+    type: r.questionType || (snapshot as any).type || "multiple_choice",
+    prompt: snapshot.prompt || "",
+    instruction: snapshot.instruction,
+    explanation: r.feedback?.explanation || snapshot.explanation || (snapshot.feedback as any)?.explanation || "",
+    options,
+    media: snapshot.media || [],
+    detail: snapshot.detail || (correctAnswer ? { ...correctAnswer } : undefined),
+    difficultyLevelId: (snapshot as any).difficultyLevelId,
+    skillId: (snapshot as any).skillId,
+    topicId: (snapshot as any).topicId,
+  };
+}
 
 // ── Component ────────────────────────────────────────────────
 
 /**
- * Question version history modal — read-only table with architecture explanation.
+ * Question version history modal — read-only table with architecture explanation and hover preview.
  */
 export default function QuestionVersionsModal({
   open,
   viewingQuestion,
   questionVersions,
   onCancel,
+  skills = [],
+  levels = [],
+  topics = [],
+  tags = [],
 }: Props) {
   const promptPreview = viewingQuestion?.prompt
     ? viewingQuestion.prompt.length > 30
@@ -429,12 +413,116 @@ export default function QuestionVersionsModal({
       : viewingQuestion.prompt
     : "";
 
+  const columns = useMemo(() => [
+    {
+      title: "Phiên bản",
+      dataIndex: "versionNumber",
+      key: "versionNumber",
+      width: 95,
+      align: "center" as const,
+      render: (num: number, r: QuestionVersion) => (
+        <Popover
+          content={
+            <QuestionPopoverContent
+              question={adaptVersionToQuestion(r)}
+              skills={skills}
+              levels={levels}
+              topics={topics}
+              tags={tags}
+            />
+          }
+          title="Chi tiết câu hỏi"
+          trigger="hover"
+          placement="rightTop"
+          overlayStyle={{ maxWidth: 420 }}
+        >
+          <span className="cursor-pointer inline-flex items-center gap-1 group">
+            <Tag color="indigo" className="font-bold text-xs px-2.5 py-0.5 rounded-full border-none group-hover:scale-105 transition-transform cursor-pointer shadow-2xs">
+              v{num}
+            </Tag>
+          </span>
+        </Popover>
+      ),
+    },
+    {
+      title: "Loại câu hỏi",
+      dataIndex: "questionType",
+      key: "questionType",
+      width: 150,
+      render: (type: string) => (
+        <Tag color={QUESTION_TYPE_COLORS[type] ?? "default"} className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+          {QUESTION_TYPE_LABELS[type] ?? type}
+        </Tag>
+      ),
+    },
+    {
+      title: "Nội dung đề bài snapshot",
+      key: "prompt",
+      minWidth: 200,
+      render: (_: unknown, r: QuestionVersion) => {
+        const promptText = r.questionSnapshot?.prompt ?? "Không có nội dung";
+        return (
+          <Popover
+            content={
+              <QuestionPopoverContent
+                question={adaptVersionToQuestion(r)}
+                skills={skills}
+                levels={levels}
+                topics={topics}
+                tags={tags}
+              />
+            }
+            title="Chi tiết câu hỏi"
+            trigger="hover"
+            placement="rightTop"
+            overlayStyle={{ maxWidth: 420 }}
+          >
+            <div
+              className="text-xs text-slate-700 line-clamp-2 font-medium cursor-pointer hover:text-indigo-600 transition leading-relaxed max-w-xs"
+              dangerouslySetInnerHTML={{ __html: promptText }}
+            />
+          </Popover>
+        );
+      },
+    },
+    {
+      title: "Đáp án đúng",
+      key: "correctAnswer",
+      minWidth: 200,
+      render: (_: unknown, r: QuestionVersion) => renderCorrectAnswer(r),
+    },
+    {
+      title: "Giải thích",
+      key: "explanation",
+      minWidth: 200,
+      render: (_: unknown, r: QuestionVersion) => renderExplanation(r),
+    },
+    {
+      title: "Ngày cắt phiên bản",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      width: 160,
+      render: (date: string) => (
+        <span className="text-xs text-slate-500 font-mono">
+          {date ? new Date(date).toLocaleString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }) : "—"}
+        </span>
+      ),
+    },
+  ], [skills, levels, topics, tags]);
+
   const [versionFilters, setVersionFilters] = useState<{ id?: string; filters: CmsFilters }>({ filters: {} });
   const appliedVersionFilters = versionFilters.id === viewingQuestion?.id ? versionFilters.filters : {};
   const applyVersionFilters = (patch: CmsFilters) => setVersionFilters({ id: viewingQuestion?.id, filters: { ...appliedVersionFilters, ...patch } });
   const versionQuery = Object.fromEntries(Object.entries(appliedVersionFilters).filter(([, value]) => value.length > 0));
   const versionPage = useServerPagination(`/learning/questions/${viewingQuestion?.id}/versions`, versionQuery, 5, open && !!viewingQuestion);
-  const headerColumns = useCmsHeaderFilters(COLUMNS, "question-versions", { filters: appliedVersionFilters, apply: applyVersionFilters });
+  const headerColumns = useCmsHeaderFilters(columns, "question-versions", { filters: appliedVersionFilters, apply: applyVersionFilters });
   return (
     <Modal
       title={

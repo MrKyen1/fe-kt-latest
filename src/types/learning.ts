@@ -296,6 +296,23 @@ export interface LeaderboardSummaryQuery {
   source?: LeaderboardSource;
 }
 
+export interface AttemptResultDetail {
+  attemptId: string;
+  correctCount: number;
+  totalQuestions: number;
+  percentage: number;
+  submittedAt: string;
+}
+
+export interface AttemptReportSummary {
+  firstResult: AttemptResultDetail | null;
+  bestResult: AttemptResultDetail | null;
+  attemptsCount: number;
+  attemptsToMastery: number | null;
+  masteredAt: string | null;
+  status: "not_started" | "in_progress" | "finished";
+}
+
 export interface AttemptReportItem {
   attemptNumber: number;
   isRedo: boolean;
@@ -317,5 +334,121 @@ export interface AttemptReportData {
   examId: string;
   assignmentStudentId?: string | null;
   curriculumAssignmentStudentId?: string | null;
+  summary?: AttemptReportSummary;
   attempts: AttemptReportItem[];
 }
+
+// Student Attempt Leaderboard (bảng xếp hạng cạnh báo cáo)
+export interface StudentLeaderboardEntry {
+  student: {
+    id: string;
+    code: string;
+    fullName: string;
+  };
+  rank: number;
+  isMe: boolean;
+  firstResult: AttemptResultDetail | null;
+  bestResult: AttemptResultDetail | null;
+  attemptsCount: number;
+  attemptsToMastery: number | null;
+  masteredAt: string | null;
+  status: "not_started" | "in_progress" | "finished";
+}
+
+export interface StudentLeaderboardData {
+  exam: {
+    id: string;
+    title: string;
+    examType: "exam" | "practice" | string;
+  };
+  classId?: string | null;
+  entries: StudentLeaderboardEntry[];
+  viewer: StudentLeaderboardEntry;
+}
+
+export interface StudentLeaderboardResponse {
+  data: StudentLeaderboardData;
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// ==================== TEACHER MONTHLY REPORTS & SNAPSHOTS ====================
+
+export interface MonthlyReportQuery {
+  year: number;
+  month: number;
+  classId?: string;
+  studentId?: string;
+  specializationId?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface MonthlyReportSkill {
+  skillId: string | null;
+  skillName: string;
+  metadata: "frozen" | "untagged" | "legacy_current" | "legacy_unknown";
+  correct: number;
+  total: number;
+  accuracy: number;
+  practiceCorrect: number;
+  practiceTotal: number;
+  practiceAccuracy: number;
+}
+
+export interface MonthlyReportStudent {
+  student: {
+    id: string;
+    code: string;
+    fullName: string;
+  };
+  assignedExams: number;
+  notStartedExams: number;
+  inProgressExams: number;
+  finishedExams: number;
+  correctAnswers: number;
+  totalQuestions: number;
+  accuracy: number | null;
+  afterPractice: {
+    correctCount: number;
+    totalQuestions: number;
+    percentage: number | null;
+  };
+  skills: MonthlyReportSkill[];
+}
+
+export interface MonthlyReportData {
+  year: number;
+  month: number;
+  timeZone: string;
+  windowFrom: string;
+  windowTo: string;
+  statusAsOf: string;
+  accuracyBasis: string;
+  students: MonthlyReportStudent[];
+}
+
+export interface MonthlyReportSnapshotMetadata {
+  id: string;
+  createdByUserId: string;
+  year: number;
+  month: number;
+  filters: {
+    classId?: string;
+    studentId?: string;
+    specializationId?: string;
+  };
+  statusAsOf: string;
+  createdAt: string;
+}
+
+export interface MonthlyReportSnapshotDetail extends MonthlyReportSnapshotMetadata {
+  report: {
+    students: MonthlyReportStudent[];
+  };
+}
+

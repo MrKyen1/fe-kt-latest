@@ -412,7 +412,6 @@ export function ExamAnalyticsModal({
       >
         {loading ? <ContentSkeleton variant="stats" /> : (
           <div>
-            {activeTab === "overview" && <><Pagination {...questionPage.pagination} className="mb-3" /><Pagination {...studentPage.pagination} className="mb-3" /></>}
             {(studentPage.error || questionPage.error) && <Alert type="error" message={(studentPage.error || questionPage.error)?.message} />}
             <Tabs
               activeKey={activeTab}
@@ -889,6 +888,12 @@ export function ExamAnalyticsModal({
                         ) : (
                           <div className="py-8 text-center text-slate-400 text-xs">
                             Chưa có câu hỏi nào được ghi nhận làm bài
+                          </div>
+                        )}
+
+                        {questionPage.total > 0 && (
+                          <div className="flex justify-end pt-3 border-t border-slate-100">
+                            <Pagination {...questionPage.pagination} size="small" />
                           </div>
                         )}
                       </div>

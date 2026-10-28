@@ -25,6 +25,8 @@ import { studentLearningService } from "../../services/studentLearningService";
 import { resolveMediaUrl } from "../../services/apiClient";
 import { parseBackendAnswer } from "./ExamDetail";
 import { formatScore, formatPercentage, formatStudentExamScoreDisplay } from "../../utils/studentExamUtils";
+import { ExamResultReport } from "./ExamResultReport";
+import { AttemptReportSummary, StudentLeaderboardData } from "../../types/learning";
 
 const formatDateTime = (iso?: string | null) => {
   if (!iso) return "—";
@@ -457,7 +459,11 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [reportAttempts, setReportAttempts] = useState<any[]>([]);
   const [reportStudent, setReportStudent] = useState<{ id?: string; code?: string; fullName?: string } | null>(null);
+  const [reportSummary, setReportSummary] = useState<AttemptReportSummary | null>(null);
+  const [leaderboardData, setLeaderboardData] = useState<StudentLeaderboardData | null>(null);
+  const [leaderboardTotal, setLeaderboardTotal] = useState<number | undefined>(undefined);
   const [isReportLoading, setIsReportLoading] = useState(false);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
   type AnswerValue = string | string[] | Record<string, string>;
 
   const [userAnswers, setUserAnswers] = useState<Record<string, AnswerValue>>(() => {
@@ -1499,6 +1505,9 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
             if (reportData.student) {
               setReportStudent(reportData.student);
             }
+            if (reportData.summary) {
+              setReportSummary(reportData.summary);
+            }
           } else {
             fallbackReportAttempts();
           }
@@ -1508,6 +1517,23 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         })
         .finally(() => {
           setIsReportLoading(false);
+        });
+
+      // Tải bảng xếp hạng trong nhóm/lớp (API 2026-10-23)
+      setIsLeaderboardLoading(true);
+      studentLearningService.attempts
+        .getLeaderboard(targetAttemptId, 1, 50)
+        .then((res) => {
+          if (res?.data) {
+            setLeaderboardData(res.data);
+            setLeaderboardTotal(res.meta?.total);
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to fetch leaderboard", err);
+        })
+        .finally(() => {
+          setIsLeaderboardLoading(false);
         });
     }
   }, [isPracticeCompleted100, isExamComplete, isReviewMode, targetAttemptId, fallbackReportAttempts]);
@@ -1638,7 +1664,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 
     return (
       <div
-        className="min-h-screen flex flex-col bg-slate-100/70 font-sans"
+        className="min-h-screen min-h-[100dvh] flex flex-col bg-slate-100/70 font-sans exam-viewport-container"
         style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
       >
         {/* Full Page Top Header */}
@@ -1674,229 +1700,27 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           )}
         </header>
 
-        {/* Full Page Main Area */}
-        <main className="flex-1 w-full p-3 sm:p-5 lg:p-7 flex flex-col items-center justify-start overflow-y-auto pb-28 sm:pb-24 min-h-0">
-          {/* Result Card Container - To full phần container, chuyên nghiệp và rộng rãi */}
-          <div className="w-full max-w-7xl bg-white rounded-2xl shadow-sm border border-slate-200/90 p-4 sm:p-6 lg:p-7 flex flex-col justify-between">
-            {/* Top Card Row - Chỉ giữ tiêu đề Phiếu kết quả học tập, không lặp lại tên đề & học sinh vì đã có trên header */}
-            <div className="pb-2.5 sm:pb-3 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <span className="text-xs sm:text-sm text-slate-500 font-semibold uppercase tracking-wider">
-                Phiếu kết quả học tập
-              </span>
-            </div>
-
-            {/* 2-Column Dashboard on Desktop / 1-Column on Mobile */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-7 pt-3 sm:pt-4">
-              {/* Left Column: Result Header & 4 Stats Cards */}
-              <div className="lg:col-span-5 flex flex-col gap-3 sm:gap-3.5 pr-0 lg:pr-6 lg:border-r lg:border-slate-100">
-                {/* Result Header Banner - Tinh tế hiện đại, icon nổi bật */}
-                <div className="bg-slate-50/80 border border-slate-200/90 rounded-xl p-3.5 sm:p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200/80 shadow-2xs">
-                      <Trophy className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <div className="min-w-0">
-                      <h2 className="text-sm sm:text-base font-bold text-slate-900 m-0">
-                        {titleText}
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-snug m-0 font-normal">
-                        {isMastered
-                          ? "Bạn đã hoàn thành chính xác toàn bộ câu hỏi trong đề."
-                          : isExamType
-                            ? "Điểm kiểm tra lượt đầu đã ghi nhận. Hãy ôn lại câu sai để nâng cao kết quả."
-                            : "Lượt làm bài đã ghi nhận. Hãy ôn lại các câu sai để đạt 100%."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4 Stats Cards - Bổ sung icon màu sắc tinh tế, nội dung hiển thị flex trên 1 dòng */}
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
-                  {stats.map((s, idx) => {
-                    const IconComp = s.icon;
-                    return (
-                      <div
-                        key={idx}
-                        className="p-3 sm:p-3.5 rounded-xl border border-slate-200 bg-white shadow-2xs hover:border-slate-300 transition flex flex-col justify-between min-h-[86px] sm:min-h-[92px]"
-                      >
-                        <div className="flex items-center justify-between gap-1.5">
-                          <span className="text-xs text-slate-500 font-medium leading-tight truncate">
-                            {s.label}
-                          </span>
-                          <div className={`w-6 h-6 rounded-lg ${s.iconBg} flex items-center justify-center shrink-0`}>
-                            <IconComp className={`w-3.5 h-3.5 ${s.iconColor}`} />
-                          </div>
-                        </div>
-
-                        <div className="flex items-baseline gap-1.5 flex-wrap mt-1.5">
-                          <span className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight">
-                            {s.value}
-                          </span>
-                          {s.sub && (
-                            <span className="text-xs font-normal text-slate-500 whitespace-nowrap">
-                              {s.sub}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Right Column: Inline Attempt History Table */}
-              <div className="lg:col-span-7 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-2 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <History className="w-4 h-4 text-emerald-600" />
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 m-0">
-                      Báo cáo lịch sử các lượt làm bài
-                    </h3>
-                  </div>
-                  <span className="text-xs text-slate-600 font-medium bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
-                    {isReportLoading ? "Đang tải..." : `Tổng cộng: ${sortedAttempts.length} lượt`}
-                  </span>
-                </div>
-
-                <div className="flex-1 overflow-x-auto rounded-xl border border-slate-200 max-h-[260px] sm:max-h-[320px] lg:max-h-[380px]">
-                  <table className="w-full text-left text-xs sm:text-sm">
-                    <thead className="bg-slate-50 text-slate-600 font-semibold text-xs border-b border-slate-200 sticky top-0 z-10 whitespace-nowrap">
-                      <tr>
-                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Lần</th>
-                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Kết quả lượt</th>
-                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Tiến độ đề</th>
-                        {isExamType && <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Điểm</th>}
-                        <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Thời gian</th>
-                        <th className="py-2.5 px-3 text-right font-semibold whitespace-nowrap">Trạng thái</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {sortedAttempts.map((att, idx) => {
-                        const isLast = idx === sortedAttempts.length - 1;
-                        const pct =
-                          att.attemptPercentage != null ? att.attemptPercentage : att.percentage;
-                        const pctNum = pct != null ? Math.round(parseFloat(String(pct))) : null;
-                        const progNum =
-                          att.percentage != null ? Math.round(parseFloat(String(att.percentage))) : null;
-
-                        return (
-                          <tr key={att.id || idx} className={`transition ${isLast ? "bg-emerald-50/25" : "hover:bg-slate-50/50"}`}>
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                <span className="font-semibold text-slate-900 text-xs sm:text-sm">
-                                  #{att.attemptNumber || idx + 1}
-                                </span>
-                                {(att.isRedo || (att.attemptNumber && att.attemptNumber > 1)) && (
-                                  <span className="text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/90 font-medium whitespace-nowrap">
-                                    Làm lại
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-900 font-medium text-xs sm:text-sm whitespace-nowrap">
-                              <div className="inline-flex items-baseline gap-1 whitespace-nowrap">
-                                <span className="font-semibold text-slate-900">
-                                  {pctNum != null ? `${pctNum}%` : "—"}
-                                </span>
-                                {att.attemptQuestionCount ? (
-                                  <span className="text-slate-500 text-xs font-normal whitespace-nowrap">
-                                    ({att.attemptCorrectCount ?? 0}/{att.attemptQuestionCount})
-                                  </span>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              {progNum != null ? (
-                                <div className="w-20 sm:w-28 flex items-center gap-2">
-                                  <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                    <div
-                                      className="bg-emerald-500 h-full rounded-full transition-all duration-300"
-                                      style={{ width: `${Math.min(100, Math.max(0, progNum))}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs font-medium text-slate-700 tabular-nums">
-                                    {progNum}%
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 font-normal">—</span>
-                              )}
-                            </td>
-                            {isExamType && (
-                              <td className="py-2.5 px-3 text-slate-900 font-medium whitespace-nowrap">
-                                {formatScore(att.score)}{" "}
-                                {att.maxScore && att.maxScore !== "—"
-                                  ? `/ ${formatScore(att.maxScore)}`
-                                  : ""}
-                              </td>
-                            )}
-                            <td className="py-2.5 px-3 text-slate-600 text-xs whitespace-nowrap font-normal">
-                              {formatDateTime(
-                                att.submittedAt || att.completedAt || att.startedAt || att.createdAt
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs text-emerald-700 bg-emerald-50 font-medium border border-emerald-200 whitespace-nowrap">
-                                Đã nộp
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Full Page Main Area with New Beautiful Report & Leaderboard (Feedback Mục 1) */}
+        <main className="flex-1 w-full p-3 sm:p-5 lg:p-7 flex flex-col items-center justify-start overflow-y-auto min-h-0">
+          <ExamResultReport
+            examTitle={examData.title || "Bài tập"}
+            studentName={displayStudent?.fullName || "Học sinh Kata"}
+            studentCode={displayStudent?.code}
+            studentAvatar={(displayStudent as any)?.avatar || (displayStudent as any)?.avatarUrl}
+            isExamType={isExamType}
+            totalQuestions={examData.questions.length || totalQuestions}
+            reportSummary={reportSummary}
+            leaderboardData={leaderboardData}
+            leaderboardTotal={leaderboardTotal}
+            historyAttempts={sortedAttempts}
+            isReportLoading={isReportLoading}
+            isLeaderboardLoading={isLeaderboardLoading}
+            onReviewAnswers={handleReview}
+            onRetryNewAttempt={() => handleRetryNewAttempt(!isExamType && isMastered)}
+            onBackToCourse={() => navigate(-1)}
+            canRetry={!isExamType || !isMastered}
+          />
         </main>
-
-        {/* Bottom Action Bar - 3 buttons cùng hiển thị 100% trên 1 hàng ngang, không bị che, không bị cắt chữ, font normal */}
-        <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 sm:py-3 sm:px-6 flex items-center justify-center shadow-xs safe-bottom">
-          <div className="w-full max-w-lg mx-auto grid grid-cols-3 gap-2">
-            <button
-              onClick={() => navigate(-1)}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 font-normal text-xs sm:text-sm active:scale-[0.98] transition text-center whitespace-nowrap"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 stroke-[2] shrink-0 text-slate-700" />
-              <span>Quay lại</span>
-            </button>
-
-            <button
-              onClick={handleReview}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 font-normal text-xs sm:text-sm active:scale-[0.98] transition text-center whitespace-nowrap"
-            >
-              <BookOpen className="w-3.5 h-3.5 stroke-[2] shrink-0 text-slate-700" />
-              <span>Xem đáp án</span>
-            </button>
-
-            {isMastered ? (
-              <button
-                onClick={() => handleRetryNewAttempt(true)}
-                disabled={isRetrying}
-                className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white font-normal text-xs sm:text-sm active:scale-[0.98] transition disabled:opacity-50 text-center whitespace-nowrap"
-              >
-                <RotateCcw className="w-3.5 h-3.5 stroke-[2] shrink-0 text-white" />
-                <span>{isRetrying ? "Đang tạo..." : "Ôn tập lại"}</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => handleRetryNewAttempt(false)}
-                disabled={isRetrying}
-                className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white font-normal text-xs sm:text-sm active:scale-[0.98] transition disabled:opacity-50 text-center whitespace-nowrap"
-              >
-                <RotateCcw className="w-3.5 h-3.5 stroke-[2] shrink-0 text-white" />
-                <span>
-                  {isRetrying
-                    ? "Đang tạo..."
-                    : remainingCount > 0
-                      ? `Làm lại (${remainingCount})`
-                      : "Làm lại"}
-                </span>
-              </button>
-            )}
-          </div>
-        </footer>
 
         <AttemptHistoryModal
           open={historyModalOpen}
@@ -1911,7 +1735,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   }
 
   return (
-    <div className="text-slate-800 flex flex-col h-screen font-sans bg-slate-50 transition-colors">
+    <div className="text-slate-800 flex flex-col h-screen h-[100dvh] min-h-[100dvh] max-h-[100dvh] font-sans bg-slate-50 transition-colors exam-viewport-container overflow-hidden">
       <header className="h-12 sm:h-14 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-10 shrink-0 transition-colors">
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
@@ -2049,7 +1873,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         </aside>
 
         {/* ── Section chứa card câu hỏi: mobile = scroll bên trong section, desktop = cố định viewport ── */}
-        <section className="flex-1 bg-slate-50 flex flex-col items-center overflow-y-auto min-h-0 p-2.5 sm:p-4 lg:p-8 pt-6 sm:pt-7 lg:pt-9 pb-10 sm:pb-12 lg:pb-8 lg:overflow-hidden">
+        <section className="flex-1 bg-slate-50 flex flex-col items-center overflow-y-auto min-h-0 p-2 sm:p-3.5 lg:p-6 pt-5 sm:pt-6 lg:pt-7 pb-8 sm:pb-10 lg:pb-6 lg:overflow-hidden">
           <div
             className={`w-full ${
               currentQuestion.passage ||

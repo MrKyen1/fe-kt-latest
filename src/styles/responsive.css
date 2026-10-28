@@ -281,3 +281,50 @@
 .safe-bottom {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
+
+/* ============================================================
+ * 4. TỐI ƯU MOBILE BROWSER & VIRTUAL KEYBOARD (Feedback Mục 5)
+ * ============================================================ */
+html,
+body,
+#root {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+  -webkit-text-size-adjust: 100%;
+  background-color: #f8fafc;
+}
+
+@media (max-width: 768px) {
+  /* Khóa triệt để tràn ngang và khoảng đen nảy overscroll trên mobile */
+  html,
+  body {
+    position: relative;
+    width: 100%;
+    min-height: 100dvh;
+    background-color: #f8fafc;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body {
+    touch-action: pan-y;
+  }
+
+  /* Khắc phục lỗi vỡ layout khi bàn phím ảo đẩy viewport */
+  .exam-viewport-container {
+    min-height: 100dvh !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background-color: #f8fafc;
+  }
+
+  /* Input & Textarea tự nhiên, không bị zoom hoặc co cụm */
+  input,
+  textarea {
+    font-size: 16px !important;
+    line-height: 1.4 !important;
+  }
+}
+

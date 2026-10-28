@@ -65,6 +65,7 @@ import { Can } from "../../../components/Can";
 import { getErrorMessage } from "../../../services/apiClient";
 import { Center, Specialization } from "../../../types/backend";
 import { ExamAnalyticsModal } from "./components/ExamAnalyticsModal";
+import TeacherMonthlyReports from "./components/TeacherMonthlyReports";
 
 const { Title, Text } = Typography;
 
@@ -1531,6 +1532,25 @@ export default function TeacherAssignments() {
                             className="rounded-2xl overflow-hidden"
                           />
                         )}
+                      </div>
+                    ),
+                  },
+
+                  // ======= TAB 3: MONTHLY LEARNING REPORTS & SNAPSHOTS =======
+                  {
+                    key: "monthly_reports",
+                    label: (
+                      <span className="flex items-center gap-2 px-2">
+                        <BarChartOutlined />
+                        <span>Báo Cáo Học Tập Tháng</span>
+                      </span>
+                    ),
+                    children: (
+                      <div className="p-6">
+                        <TeacherMonthlyReports
+                          classes={classes}
+                          specializations={specializations}
+                        />
                       </div>
                     ),
                   },

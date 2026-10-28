@@ -1,9 +1,10 @@
 import { PagedCollection } from "../../../../../../components/PagedCollection";
 import { useServerPagination } from "../../../../../../hooks/useServerPagination";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Button, Card, Col, Empty, Modal, Row, Tag, Pagination, Alert } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { AlertCircle, Clock } from "lucide-react";
+import { learningCmsService } from "../../../../../../services/learningCmsService";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -21,7 +22,10 @@ interface Exam {
   code?: string;
   status: string;
   timeLimitSeconds?: number;
+  questionCount?: number;
+  questionsCount?: number;
   questions?: ExamQuestion[];
+  currentVersionId?: string;
 }
 
 interface Curriculum {
@@ -68,6 +72,41 @@ export default function ManageExamsModal({
   }, 10, open && !!selectedCurriculum);
   const availableExams = availablePage.data;
   const [addingExamId, setAddingExamId] = useState<string | null>(null);
+  const [questionCounts, setQuestionCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!open || !selectedCurriculum) return;
+    const examsToFetch = (selectedCurriculum.exams ?? []).filter(
+      (ce) => ce.examId && questionCounts[ce.examId] === undefined
+    );
+    if (examsToFetch.length === 0) return;
+
+    let isMounted = true;
+    Promise.all(
+      examsToFetch.map(async (ce) => {
+        try {
+          const detail = await learningCmsService.exams.get(ce.examId);
+          const count = detail.questionCount ?? (detail as any).questionsCount ?? detail.questions?.length ?? 0;
+          return { examId: ce.examId, count };
+        } catch {
+          return { examId: ce.examId, count: 0 };
+        }
+      })
+    ).then((results) => {
+      if (!isMounted) return;
+      setQuestionCounts((prev) => {
+        const next = { ...prev };
+        results.forEach((r) => {
+          next[r.examId] = r.count;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, selectedCurriculum]);
 
   return (
     <Modal
@@ -117,6 +156,7 @@ export default function ManageExamsModal({
               ) : (
                 currExams.map((ce: CurriculumExam, index) => {
                   const exam = ce.exam ?? allExams.find((e) => e.id === ce.examId);
+                  const count = questionCounts[ce.examId] ?? exam?.questionCount ?? (exam as any)?.questionsCount ?? exam?.questions?.length ?? 0;
                   return (
                     <div key={ce.examId || index} className="flex items-center justify-between py-2 px-1 hover:bg-slate-50/60 rounded-lg transition">
                       <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -131,7 +171,7 @@ export default function ManageExamsModal({
                             <Tag color={ce.isRequired ? "red" : "default"} className="text-[9px] border-none m-0 px-1.5 py-0">
                               {ce.isRequired ? "Bắt buộc" : "Tuỳ chọn"}
                             </Tag>
-                            {exam && <span className="text-[10px] text-slate-400">{exam.questions?.length ?? 0} câu</span>}
+                            {exam && <span className="text-[10px] text-slate-400">{count} câu</span>}
                           </div>
                         </div>
                       </div>
@@ -164,41 +204,45 @@ export default function ManageExamsModal({
               {availableExams.length === 0 ? (
                 <Empty description="Không có đề thi đã phát hành" styles={{ image: { height: 40 } }} className="py-6" />
               ) : (
-                availableExams.map((exam: Exam) => (
-                  <div key={exam.id} className="flex items-center justify-between py-2 px-1 hover:bg-slate-50/60 rounded-lg transition">
-                    <div className="min-w-0 pr-2">
-                      <div className="text-xs font-semibold line-clamp-1 text-slate-800">{exam.title}</div>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                        <span>{exam.questions?.length ?? 0} câu •</span>
-                        <Clock size={10} className="inline text-slate-400" />
-                        <span>
-                          {exam.timeLimitSeconds
-                            ? `${Math.round(exam.timeLimitSeconds / 60)} phút`
-                            : "Không giới hạn"}
+                availableExams.map((exam: Exam) => {
+                  const count = exam.questionCount ?? (exam as any).questionsCount ?? exam.questions?.length ?? 0;
+                  return (
+                    <div key={exam.id} className="flex items-center justify-between py-2 px-1 hover:bg-slate-50/60 rounded-lg transition">
+                      <div className="min-w-0 pr-2">
+                        <div className="text-xs font-semibold line-clamp-1 text-slate-800">{exam.title}</div>
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <span>{count} câu •</span>
+                          <Clock size={10} className="inline text-slate-400" />
+                          <span>
+                            {exam.timeLimitSeconds
+                              ? `${Math.round(exam.timeLimitSeconds / 60)} phút`
+                              : "Không giới hạn"}
+                          </span>
                         </span>
-                      </span>
+                      </div>
+                      <Button
+                        type="dashed"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        loading={addingExamId === exam.id}
+                        disabled={addingExamId !== null}
+                        onClick={async () => {
+                          try {
+                            setAddingExamId(exam.id);
+                            setQuestionCounts((prev) => ({ ...prev, [exam.id]: count }));
+                            await onAddExam(exam.id);
+                            availablePage.reload();
+                          } finally {
+                            setAddingExamId(null);
+                          }
+                        }}
+                        className="shrink-0 text-xs"
+                      >
+                        Thêm
+                      </Button>
                     </div>
-                    <Button
-                      type="dashed"
-                      size="small"
-                      icon={<PlusOutlined />}
-                      loading={addingExamId === exam.id}
-                      disabled={addingExamId !== null}
-                      onClick={async () => {
-                        try {
-                          setAddingExamId(exam.id);
-                          await onAddExam(exam.id);
-                          availablePage.reload();
-                        } finally {
-                          setAddingExamId(null);
-                        }
-                      }}
-                      className="shrink-0 text-xs"
-                    >
-                      Thêm
-                    </Button>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div></PagedCollection>
           </Card>

@@ -1,0 +1,24 @@
+{
+  "name": "Kata Edu — Nền tảng học tập ngoại ngữ",
+  "short_name": "Kata Edu",
+  "description": "Nền tảng kiểm tra, ôn tập và học tập ngoại ngữ Kata",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

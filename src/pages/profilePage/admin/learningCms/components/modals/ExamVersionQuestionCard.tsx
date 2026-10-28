@@ -137,8 +137,9 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
   // Helper render media file (Ảnh / Âm thanh / Video)
   const renderMediaItem = (m: any, idx: number) => {
     if (!m) return null;
-    // Hỗ trợ cả trường hợp lồng m.media.url và m.url
+    // Hỗ trợ cả trường hợp lồng m.media.url, m.media.media.url và m.url
     const rawUrl =
+      m?.media?.media?.url ||
       m?.media?.url ||
       m?.url ||
       m?.mediaUrl ||
@@ -149,8 +150,10 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
     const resolved = resolveMediaUrl(rawUrl);
 
     const mime = String(
+      m?.media?.media?.mimeType ||
       m?.media?.mimeType ||
       m?.mimeType ||
+      m?.media?.media?.type ||
       m?.media?.type ||
       m?.type ||
       m?.role ||
@@ -588,7 +591,7 @@ export const ExamVersionQuestionCard: React.FC<Props> = ({ question: q, index })
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
           <span className="font-bold text-slate-800 bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-lg text-xs">
-            Câu {q.orderIndex !== undefined ? q.orderIndex + 1 : index + 1}
+            Câu {index !== undefined ? index + 1 : (q.orderIndex !== undefined ? (q.orderIndex === 0 ? 1 : q.orderIndex) : 1)}
           </span>
           <Tag
             color={QUESTION_TYPE_COLORS[questionType] || "default"}

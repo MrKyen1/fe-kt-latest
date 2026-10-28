@@ -13,6 +13,10 @@ import {
   CurriculumAssignmentRequest,
   ExamAssignmentRequest,
   TeacherAssignmentQuery,
+  MonthlyReportQuery,
+  MonthlyReportData,
+  MonthlyReportSnapshotMetadata,
+  MonthlyReportSnapshotDetail,
 } from "../types/learning";
 import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
@@ -183,6 +187,115 @@ export const teacherLearningService = {
           `/learning/teacher/curriculum-assignments/${assignmentId}/analytics`,
         ),
       );
+    },
+  },
+
+  /**
+   * Báo cáo tháng của giáo viên & Snapshots (API ngày 2026-10-23)
+   */
+  monthlyReports: {
+    /**
+     * Báo cáo học tập tháng trực tiếp
+     * GET /api/v1/learning/teacher/reports/monthly
+     */
+    async get(params: MonthlyReportQuery): Promise<{ data: MonthlyReportData; meta: any }> {
+      const response = await apiClient.get<ApiEnvelope<MonthlyReportData>>(
+        "/learning/teacher/reports/monthly",
+        { params },
+      );
+      return {
+        data: unwrapData(response),
+        meta: (response.data as any)?.meta || { page: 1, limit: 20, total: 0, totalPages: 1 },
+      };
+    },
+
+    /**
+     * Xuất Excel báo cáo học tập tháng (live)
+     * GET /api/v1/learning/teacher/reports/monthly/export
+     */
+    async export(params: Omit<MonthlyReportQuery, "page" | "limit">): Promise<Blob> {
+      const response = await apiClient.get("/learning/teacher/reports/monthly/export", {
+        params,
+        responseType: "blob",
+        timeout: 600_000,
+      });
+      return response.data;
+    },
+
+    /**
+     * Lưu/chốt báo cáo tháng (tạo snapshot mới)
+     * POST /api/v1/learning/teacher/reports/monthly/snapshots
+     */
+    async createSnapshot(payload: {
+      year: number;
+      month: number;
+      classId?: string;
+      studentId?: string;
+      specializationId?: string;
+    }): Promise<MonthlyReportSnapshotDetail> {
+      return unwrapData(
+        await apiClient.post<ApiEnvelope<MonthlyReportSnapshotDetail>>(
+          "/learning/teacher/reports/monthly/snapshots",
+          payload,
+          { timeout: 600_000 },
+        ),
+      );
+    },
+
+    /**
+     * Danh sách các bản lưu báo cáo tháng
+     * GET /api/v1/learning/teacher/reports/monthly/snapshots
+     */
+    async listSnapshots(
+      params: {
+        year: number;
+        month: number;
+        classId?: string;
+        studentId?: string;
+        specializationId?: string;
+        page?: number;
+        limit?: number;
+      },
+    ): Promise<{ data: MonthlyReportSnapshotMetadata[]; meta: any }> {
+      const response = await apiClient.get<ApiEnvelope<MonthlyReportSnapshotMetadata[]>>(
+        "/learning/teacher/reports/monthly/snapshots",
+        { params },
+      );
+      return unwrapList(response);
+    },
+
+    /**
+     * Xem nội dung một bản lưu đã chốt
+     * GET /api/v1/learning/teacher/reports/monthly/snapshots/:id
+     */
+    async getSnapshot(
+      id: string,
+      page = 1,
+      limit = 20,
+    ): Promise<{ data: MonthlyReportSnapshotDetail; meta: any }> {
+      const response = await apiClient.get<ApiEnvelope<MonthlyReportSnapshotDetail>>(
+        `/learning/teacher/reports/monthly/snapshots/${id}`,
+        { params: { page, limit } },
+      );
+      return {
+        data: unwrapData(response),
+        meta: (response.data as any)?.meta || { page, limit, total: 0, totalPages: 1 },
+      };
+    },
+
+    /**
+     * Xuất Excel bản lưu báo cáo tháng đã chốt
+     * GET /api/v1/learning/teacher/reports/monthly/snapshots/:id/export
+     */
+    async exportSnapshot(id: string): Promise<Blob> {
+      const response = await apiClient.get(
+        `/learning/teacher/reports/monthly/snapshots/${id}/export`,
+        {
+          responseType: "blob",
+          timeout: 600_000,
+        },
+      );
+      return response.data;
     },
   },
 };

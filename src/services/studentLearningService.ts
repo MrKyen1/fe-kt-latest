@@ -5,7 +5,13 @@ import {
   StudentCurriculumAssignment,
   StudentExamAssignment,
 } from "../types/backend";
-import { SubmitAttemptRequest, SubmitAnswerRequest } from "../types/learning";
+import {
+  SubmitAttemptRequest,
+  SubmitAnswerRequest,
+  StudentLeaderboardResponse,
+  StudentLeaderboardData,
+  AttemptReportData,
+} from "../types/learning";
 import { apiClient, unwrapData, unwrapList } from "./apiClient";
 
 export const studentLearningService = {
@@ -154,11 +160,11 @@ export const studentLearningService = {
     },
 
     /**
-     * Báo cáo đầy đủ các lượt làm lại (API ngày 2026-10-11)
+     * Báo cáo đầy đủ các lượt làm lại (API ngày 2026-10-11, bổ sung summary ngày 2026-10-23)
      * GET /api/v1/learning/student/attempts/:attemptId/report?page=1&limit=20
      */
-    async getReport(attemptId: string, page = 1, limit = 20) {
-      const response = await apiClient.get<any>(
+    async getReport(attemptId: string, page = 1, limit = 20): Promise<{ data: AttemptReportData; meta?: any }> {
+      const response = await apiClient.get<ApiEnvelope<AttemptReportData>>(
         `/learning/student/attempts/${attemptId}/report`,
         { params: { page, limit } },
       );
@@ -166,6 +172,21 @@ export const studentLearningService = {
       return {
         data,
         meta: (response.data as any)?.meta || (data as any)?.meta,
+      };
+    },
+
+    /**
+     * Bảng xếp hạng trong phạm vi bài giao (API ngày 2026-10-23)
+     * GET /api/v1/learning/student/attempts/:attemptId/leaderboard?page=1&limit=20
+     */
+    async getLeaderboard(attemptId: string, page = 1, limit = 20): Promise<StudentLeaderboardResponse> {
+      const response = await apiClient.get<ApiEnvelope<StudentLeaderboardData>>(
+        `/learning/student/attempts/${attemptId}/leaderboard`,
+        { params: { page, limit } },
+      );
+      return {
+        data: unwrapData(response),
+        meta: (response.data as any)?.meta || { page, limit, total: 0, totalPages: 1 },
       };
     },
 

@@ -100,6 +100,11 @@ export default function Profile() {
       label: "Learning CMS",
     },
     {
+      key: "assignments",
+      icon: <TeamOutlined />,
+      label: "Giao bài",
+    },
+    {
       key: "ranking",
       icon: <TrophyOutlined />,
       label: "Xếp hạng",
@@ -183,6 +188,8 @@ export default function Profile() {
         return <Leaderboard />;
       case "cms":
         return <LearningCms />;
+      case "assignments":
+        return <TeacherAssignments />;
       case "profile":
         return <UserProfile />;
       case "homepage-cms":
@@ -214,7 +221,7 @@ export default function Profile() {
         }
         if (item.key === "centers") return hasPermission("centers.read");
         if (item.key === "assignments") {
-          return hasPermission("learning.assign");
+          return hasRole("admin") || hasPermission(["learning.assign", "learning.manage"], { mode: "any" });
         }
         if (item.key === "dashboard") {
           return hasPermission(["classes.read", "users.read", "classes.manage"], { mode: "any" });
