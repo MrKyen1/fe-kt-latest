@@ -661,24 +661,6 @@ export interface Attempt {
   taskStatus?: "in_progress" | "finished" | "mastered" | "remediation_required";
 }
 
-export interface ExamAssignmentStudentStat {
-  studentId: string;
-  assignmentStudentId?: string;
-  code?: string;
-  fullName: string;
-  email?: string;
-  status: "assigned" | "in_progress" | "finished" | "submitted" | string;
-  attemptsCount: number;
-  latestScore?: number | null;
-  maxScore?: number | null;
-  latestPercentage?: number | null;
-  bestScore?: number | null;
-  bestPercentage?: number | null;
-  submittedAt?: string | null;
-  durationSeconds?: number | null;
-  latestAttemptId?: string | null;
-}
-
 export interface TeacherAttemptDetailAnswer {
   id: string;
   questionId: string;
@@ -721,49 +703,6 @@ export interface TeacherAttemptDetail {
     };
   };
   answers: TeacherAttemptDetailAnswer[];
-}
-
-export interface ExamAssignmentAnalytics {
-  assignedCount: number;
-  submittedCount: number;
-  notStartedCount?: number;
-  inProgressCount?: number;
-  finishedCount?: number;
-  attemptsCount: number;
-  averageScore: number;
-  bestScore: number;
-  averagePercentage: number;
-  bestPercentage: number;
-  scoreDistribution: Record<string, number>;
-  perQuestion: Array<{
-    questionId: string;
-    orderIndex?: number;
-    prompt?: string;
-    questionType?: string;
-    total: number;
-    correct: number;
-    correctnessRate: number;
-  }>;
-  students?: ExamAssignmentStudentStat[];
-}
-
-export interface CurriculumAssignmentAnalytics {
-  assignedCount: number;
-  completedCount: number;
-  inProgressCount: number;
-  notStartedCount?: number;
-  averageProgress: number;
-  students?: Array<{
-    studentId: string;
-    code?: string;
-    fullName: string;
-    email?: string;
-    status: "assigned" | "in_progress" | "finished" | string;
-    progressPercentage: number;
-    finishedExamsCount: number;
-    totalRequiredExamsCount: number;
-    finishedAt?: string | null;
-  }>;
 }
 
 export interface RequestLog {

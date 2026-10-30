@@ -2,9 +2,7 @@ import { ApiEnvelope } from "../types/api";
 import {
   Attempt,
   CurriculumAssignment,
-  CurriculumAssignmentAnalytics,
   ExamAssignment,
-  ExamAssignmentAnalytics,
   TeacherAttemptDetail,
 } from "../types/backend";
 import {
@@ -132,14 +130,6 @@ export const teacherLearningService = {
         ),
       );
     },
-
-    async analytics(assignmentId: string) {
-      return unwrapData(
-        await apiClient.get<ApiEnvelope<ExamAssignmentAnalytics>>(
-          `/learning/teacher/exam-assignments/${assignmentId}/analytics`,
-        ),
-      );
-    },
   },
 
   /**
@@ -177,14 +167,6 @@ export const teacherLearningService = {
       return unwrapData(
         await apiClient.delete<ApiEnvelope<CurriculumAssignment>>(
           `/learning/teacher/curriculum-assignments/${assignmentId}`,
-        ),
-      );
-    },
-
-    async analytics(assignmentId: string) {
-      return unwrapData(
-        await apiClient.get<ApiEnvelope<CurriculumAssignmentAnalytics>>(
-          `/learning/teacher/curriculum-assignments/${assignmentId}/analytics`,
         ),
       );
     },
