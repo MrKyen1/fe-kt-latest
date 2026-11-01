@@ -1,7 +1,7 @@
 import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
-import { Button, Empty, Pagination, Space, Spin, Tooltip, Typography } from "antd";
+import { Button, Empty, Pagination, Space, Spin, Tag, Tooltip, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { BookOpen, Target } from "lucide-react";
 import { PAGE_SIZE_PASSAGES } from "../constants";
@@ -74,6 +74,12 @@ function buildColumns(
           {val}
         </Paragraph>
       ),
+    },
+    {
+      title: "Trạng thái",
+      key: "passageStatus",
+      width: 150,
+      render: () => <Tag color="success" className="rounded-full border-none text-xs font-semibold whitespace-nowrap">Đang hoạt động</Tag>,
     },
     {
       title: "Thao tác",

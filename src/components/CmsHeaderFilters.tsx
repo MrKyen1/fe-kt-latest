@@ -208,7 +208,7 @@ export function useCmsHeaderFilters<T extends object>(
       1: [relation("examIds", "Đề thi", "exams")],
       2: [statuses, inactive],
     },
-    passages: { 0: [search, inactive] },
+    passages: { 0: [search], 2: [inactive] },
     // The deactivated-records table (InactiveList) keeps the way back.
     inactive: { 0: [search], 1: [inactive] },
     "exam-versions": {
