@@ -18,6 +18,8 @@ interface MediaAsset {
 }
 
 interface Props {
+  /** Active/stopped switch, shown first in the toolbar row. */
+  statusFilter?: React.ReactNode;
   media: MediaAsset[];
   loading?: boolean;
   typeFilter: string;
@@ -50,6 +52,7 @@ function isAudio(asset: MediaAsset): boolean {
  * (images, audio, video) with type filter, pagination, upload, preview, and delete actions.
  */
 export default function MediaTab({
+  statusFilter,
   media,
   loading = false,
   typeFilter,
@@ -65,7 +68,10 @@ export default function MediaTab({
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div className="flex items-center flex-wrap gap-3 min-w-0">
-          <span className="text-sm font-medium text-slate-600">Định dạng tệp:</span>
+          {statusFilter}
+          {/* Label, select and count wrap as one unit. */}
+          <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-600 whitespace-nowrap">Định dạng tệp:</span>
           <Select
             value={typeFilter}
             onChange={onTypeFilterChange}
@@ -80,6 +86,7 @@ export default function MediaTab({
           <span className="text-xs text-slate-400">
             ({pagination.total} tệp)
           </span>
+          </div>
         </div>
         <Can perform="learning.media.upload">
           <Button

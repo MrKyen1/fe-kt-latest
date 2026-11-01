@@ -64,6 +64,11 @@ export default function UserProfile() {
       message.error("Chỉ được upload ảnh");
       return Upload.LIST_IGNORE;
     }
+    // Same cap as the server's avatar upload.
+    if (file.size > 5 * 1024 * 1024) {
+      message.error("Ảnh đại diện tối đa 5MB");
+      return Upload.LIST_IGNORE;
+    }
 
     return false;
   };

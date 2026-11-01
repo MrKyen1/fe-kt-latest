@@ -84,7 +84,7 @@ export default function MediaUploadModal({
       okText="Tải lên"
       cancelText="Hủy"
     >
-      <div className="space-y-4 pt-2">
+      <div className="flex flex-col gap-4 pt-2">
         <Upload.Dragger
           beforeUpload={(file) => {
             onFileChange(file);
@@ -102,11 +102,12 @@ export default function MediaUploadModal({
             <p className="text-sm font-semibold text-slate-700 m-0">
               Nhấp để chọn tệp hoặc kéo thả vào đây
             </p>
-            <p className="text-xs text-indigo-600 font-medium m-0 flex items-center gap-1">
+            {/* Phones have no Ctrl+V, so the hint only shows from sm up. */}
+            <p className="hidden sm:block text-xs text-indigo-600 font-medium m-0 text-center">
               ✨ Hoặc chụp màn hình và nhấn <kbd className="px-1.5 py-0.5 bg-white border border-indigo-200 rounded font-mono text-[10px]">Ctrl+V</kbd> để dán ảnh
             </p>
             <p className="text-[11px] text-slate-400 m-0">
-              Hỗ trợ Hình ảnh, Âm thanh hoặc Video (Tối đa 20MB)
+              Hỗ trợ Hình ảnh, Âm thanh hoặc Video (Tối đa 50MB)
             </p>
           </div>
         </Upload.Dragger>
@@ -144,7 +145,7 @@ export default function MediaUploadModal({
           </div>
         )}
 
-        <div className="space-y-1">
+        <div className="flex flex-col gap-1">
           <span className="text-xs text-slate-500 font-medium">Mô tả văn bản thay thế (Alt Text)</span>
           <Input
             placeholder="Mô tả ngắn gọn nội dung tệp..."

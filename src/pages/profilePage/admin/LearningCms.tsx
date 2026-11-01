@@ -1581,16 +1581,17 @@ export default function LearningCms() {
   // ============================================================
 
   // Card views (mobile) and the media grid have no column headers to filter on.
+  const statusSegmented = (
+    <Segmented
+      size="small"
+      value={listingInactive ? "inactive" : "active"}
+      onChange={(value) => applyCmsFilters({ isActive: value === "inactive" ? ["false"] : [] })}
+      options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
+      className="bg-slate-100 p-0.5 rounded-xl text-xs font-semibold whitespace-nowrap"
+    />
+  );
   const inactiveToggle = (always = false) => (always || isMobile) && (
-    <div className="flex justify-end pt-3">
-      <Segmented
-        size="small"
-        value={listingInactive ? "inactive" : "active"}
-        onChange={(value) => applyCmsFilters({ isActive: value === "inactive" ? ["false"] : [] })}
-        options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
-        className="bg-slate-100 p-0.5 rounded-xl text-xs font-semibold whitespace-nowrap"
-      />
-    </div>
+    <div className="flex justify-end pt-3">{statusSegmented}</div>
   );
 
   const tabItems = [
@@ -1633,7 +1634,9 @@ export default function LearningCms() {
     {
       key: "media",
       label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><PictureOutlined /> Media Assets</span>,
-      children: <>{inactiveToggle(true)}{listingInactive ? (
+      // Media has no columns to filter, so the status switch sits in the toolbar row, left, in both states.
+      children: <>{listingInactive ? (<>
+        <div className="flex pt-4">{statusSegmented}</div>
         <InactiveList
           flexible
           rows={media}
@@ -1644,8 +1647,9 @@ export default function LearningCms() {
           confirmNote="Tệp quay lại thư viện media. Các câu hỏi đang dùng tệp này không đổi."
           onDone={loadAllData}
         />
-      ) : (
+      </>) : (
         <MediaTab
+          statusFilter={statusSegmented}
           media={media}
           loading={mediaLoading}
           typeFilter={mediaTypeFilter}
