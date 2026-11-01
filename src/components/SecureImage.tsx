@@ -36,6 +36,11 @@ export const SecureImage: React.FC<SecureImageProps> = ({
       targetUrl = targetUrl.substring(baseURL.length);
     } else if (targetUrl.startsWith("/api/v1")) {
       targetUrl = targetUrl.substring(7);
+    } else if (!targetUrl.startsWith("/") || targetUrl.startsWith("//")) {
+      // Not our API: apiClient would send the login token to that host, so show it as a plain image.
+      setObjectUrl(src);
+      setLoading(false);
+      return;
     }
 
     apiClient
