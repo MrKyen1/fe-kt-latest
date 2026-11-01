@@ -1,4 +1,5 @@
-import { Button, Modal, Table, Tag, message } from "antd";
+import { Button, Modal, Table as AntTable, Tag, message } from "antd";
+import FlexTable from "./Table";
 import dayjs from "dayjs";
 import type { TablePaginationConfig } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -15,12 +16,15 @@ interface InactiveListProps<T extends { id: string; updatedAt?: string }> {
   onDone?: () => void;
   /** What reactivating brings back, shown in the confirm box. */
   confirmNote?: string;
+  /** Table whose body height follows the window (CMS lists); side panels keep the plain table. */
+  flexible?: boolean;
   /** Shows the CMS column header filters, so the status filter can switch back to active records. */
   filterable?: boolean;
 }
 
 /** Deactivated records with the one action they support: bringing them back. */
-export function InactiveList<T extends { id: string; updatedAt?: string }>({ rows, loading, pagination, describe, reactivate, onDone, confirmNote, filterable }: InactiveListProps<T>) {
+export function InactiveList<T extends { id: string; updatedAt?: string }>({ rows, loading, pagination, describe, reactivate, onDone, confirmNote, flexible, filterable }: InactiveListProps<T>) {
+  const Table = flexible ? FlexTable : AntTable;
   const handleReactivate = (row: T) => Modal.confirm({
     title: "Kích hoạt lại mục này?",
     width: 480,
@@ -58,7 +62,8 @@ export function InactiveList<T extends { id: string; updatedAt?: string }>({ row
       title: <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Trạng thái</span>,
       key: "status",
       align: "right",
-      width: 1,
+      // The flexible table uses a fixed layout, so the column needs a real width for the button.
+      width: flexible ? 150 : 1,
       render: (_, row) => reactivate ? (
         <Button size="small" onClick={() => handleReactivate(row)}
           className="!rounded-xl !font-semibold !text-xs !h-8 !px-3 !border-emerald-200 !text-emerald-700 hover:!bg-emerald-50">

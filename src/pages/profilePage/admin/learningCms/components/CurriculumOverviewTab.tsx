@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
+import Table from "../../../../../components/Table";
 import {
   Card,
-  Table,
   Button,
   Tag,
   Space,

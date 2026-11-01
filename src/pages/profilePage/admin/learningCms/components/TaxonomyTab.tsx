@@ -148,7 +148,7 @@ export default function TaxonomyTab({
         loading={loading}
         dataSource={dataSource}
         columns={headerColumns}
-        scroll={{ x: taxTab === "topics" ? 520 : 400 }}
+        scroll={{ x: taxTab === "topics" ? 640 : 520 }}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

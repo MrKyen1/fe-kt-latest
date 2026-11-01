@@ -246,10 +246,12 @@ export default function LearningCms() {
   }, [specializations]);
 
   const handleSubjectChange = (newSubjectId: string) => {
+    setCmsFilters({});
     navigate(`/${rolePrefix}/cms/subjects/${newSubjectId}/${activeTab}${activeTab === "taxonomy" ? `/${taxTab}` : ""}`);
   };
 
   const setActiveTab = (tab: string) => {
+    setCmsFilters({});
     const sId = selectedSpecializationId || (specializations[0]?.id ?? "");
     if (sId) {
       if (tab === "taxonomy") {
@@ -267,6 +269,7 @@ export default function LearningCms() {
   };
 
   const setTaxTab = (subTab: string) => {
+    setCmsFilters({});
     const sId = selectedSpecializationId || (specializations[0]?.id ?? "");
     if (sId) {
       navigate(`/${rolePrefix}/cms/subjects/${sId}/taxonomy/${subTab}`);
@@ -446,6 +449,11 @@ export default function LearningCms() {
           : <span className="text-slate-400">—</span>;
       },
     } : null,
+    {
+      title: "Trạng thái",
+      key: "taxStatus",
+      render: () => <Tag color="success" className="rounded-full border-none text-xs font-semibold whitespace-nowrap">Đang hoạt động</Tag>,
+    },
     {
       title: "Thao tác",
       align: "right" as const,
@@ -1628,6 +1636,7 @@ export default function LearningCms() {
         >
           {listingInactive ? (
             <InactiveList
+              flexible
               filterable={!isMobile}
               rows={getTaxData()}
               loading={resourcePage.loading}
@@ -1645,7 +1654,8 @@ export default function LearningCms() {
       label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><PictureOutlined /> Media Assets</span>,
       children: <>{inactiveToggle(true)}{listingInactive ? (
         <InactiveList
-                    rows={media}
+          flexible
+          rows={media}
           loading={mediaLoading}
           pagination={{ current: mediaPage, pageSize: mediaPageSize, total: mediaTotal, onChange: handleMediaPageChange }}
           describe={(row: any) => row.title || row.originalName || row.storageKey}
@@ -1673,6 +1683,7 @@ export default function LearningCms() {
       label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><ReadOutlined /> Bài đọc</span>,
       children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          flexible
           filterable={!isMobile}
           rows={passages}
           loading={passagesLoading}
@@ -1705,6 +1716,7 @@ export default function LearningCms() {
       ),
       children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          flexible
           filterable={!isMobile}
           rows={questions}
           loading={questionsLoading}
@@ -1744,6 +1756,7 @@ export default function LearningCms() {
       ),
       children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          flexible
           filterable={!isMobile}
           rows={exams}
           loading={examsLoading}
@@ -1783,6 +1796,7 @@ export default function LearningCms() {
       ),
       children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          flexible
           filterable={!isMobile}
           rows={curriculums}
           loading={curriculumsLoading}

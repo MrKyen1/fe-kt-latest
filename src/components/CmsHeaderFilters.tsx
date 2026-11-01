@@ -162,12 +162,13 @@ export function useCmsHeaderFilters<T extends object>(
   const inherited = useContext(CmsHeaderFilterContext);
   const context = override || inherited;
   const config: Record<string, Record<number, Field[]>> = {
-    levels: { 0: [search, inactive] },
-    skills: { 0: [search, inactive] },
-    tags: { 0: [search, inactive] },
+    levels: { 0: [search], 1: [inactive] },
+    skills: { 0: [search], 1: [inactive] },
+    tags: { 0: [search], 1: [inactive] },
     topics: {
-      0: [search, inactive],
+      0: [search],
       1: [relation("parentIds", "Chủ đề cha", "topics")],
+      2: [inactive],
     },
     questions: {
       0: [
