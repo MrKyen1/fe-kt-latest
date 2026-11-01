@@ -1431,7 +1431,7 @@ export default function TeacherAssignments() {
                           title="Giao bài thi cho học sinh"
                           description="Có thể chọn nhiều bài thi cùng lúc. Hãy chọn lớp học trước để hệ thống tự động lọc các đề thi thuộc đúng môn học của lớp."
                         />
-                        <div className="!flex !justify-between !items-center !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                        <div className="!flex !flex-wrap !gap-2 !justify-between !items-center !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
                           <Segmented value={assignmentStatusFilter} onChange={(value) => setAssignmentStatusFilter(value as AssignmentStatus)}
                             options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã huỷ", value: "cancelled" }]}
                             className="bg-slate-100 p-0.5 rounded-xl text-xs font-semibold whitespace-nowrap" />
@@ -1489,7 +1489,7 @@ export default function TeacherAssignments() {
                           title="Giao giáo trình cho học sinh"
                           description="Chọn lớp học và học sinh cụ thể (để trống ô học sinh để giao cho toàn bộ lớp). Hệ thống tự động theo dõi và đo lường tiến độ hoàn thành các bài thi trong giáo trình của từng học sinh."
                         />
-                        <div className="!flex !justify-between !items-center !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
+                        <div className="!flex !flex-wrap !gap-2 !justify-between !items-center !mt-[10px] !mb-4" style={{ marginTop: 10 }}>
                           <Segmented value={assignmentStatusFilter} onChange={(value) => setAssignmentStatusFilter(value as AssignmentStatus)}
                             options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã huỷ", value: "cancelled" }]}
                             className="bg-slate-100 p-0.5 rounded-xl text-xs font-semibold whitespace-nowrap" />
