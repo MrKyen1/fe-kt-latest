@@ -47,10 +47,6 @@ function rbacCrud<TItem, TCreate, TUpdate = Partial<TCreate>>(path: string) {
     async update(id: string, payload: TUpdate): Promise<TItem> {
       return unwrapData(await apiClient.patch<ApiEnvelope<TItem>>(`${path}/${id}`, payload));
     },
-
-    async remove(id: string): Promise<TItem> {
-      return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`));
-    },
   };
 }
 
@@ -60,6 +56,10 @@ export const rbacService = {
 
   rolePermissions: {
     ...rbacCrud<RolePermission, RolePermissionRequest>("/role-permissions"),
+
+    async remove(id: string): Promise<RolePermission> {
+      return unwrapData(await apiClient.delete<ApiEnvelope<RolePermission>>(`/role-permissions/${id}`));
+    },
 
     async matrix(): Promise<RolePermissionMatrix> {
       return unwrapData(

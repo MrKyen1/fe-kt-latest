@@ -455,6 +455,21 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
 }) => {
   const navigate = useNavigate();
   const { courseId, examId: attemptIdParam } = useParams<{ courseId?: string; examId?: string }>();
+  // The class, curriculum, subject or assignment behind this attempt stopped: answers stay saved, work pauses.
+  const closedNoticeShownRef = useRef(false);
+  const handleAttemptClosed = (error: any) => {
+    if (error?.errorCode !== "ATTEMPT_CLOSED") return false;
+    if (!closedNoticeShownRef.current) {
+      closedNoticeShownRef.current = true;
+      Modal.warning({
+        title: "Bài làm đang tạm dừng",
+        content: error.message || "Lớp, giáo trình hoặc lượt giao bài đã ngừng hoạt động. Bài làm của em vẫn được giữ nguyên.",
+        okText: "Quay lại",
+        onOk: () => navigate(-1),
+      });
+    }
+    return true;
+  };
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navPanelOpen, setNavPanelOpen] = useState(true);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -557,7 +572,10 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
     let mounted = true;
     const saver = createAttemptDraftSaver(async (questionId, answer) => {
       if (!draftAllowedRef.current || (examData.expiresAt && Date.now() >= new Date(examData.expiresAt).getTime())) return;
-      await studentLearningService.attempts.saveAnswer(examData.id, questionId, { answer });
+      await studentLearningService.attempts.saveAnswer(examData.id, questionId, { answer }).catch((error) => {
+        handleAttemptClosed(error);
+        throw error;
+      });
     }, () => {}, 600, state => { if (mounted) setDraftState(state); });
     draftSaverRef.current = saver;
     return () => {
@@ -806,6 +824,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       setIsCorrect(calculatedIsCorrect);
       setShowFeedback(true);
     } catch (err: any) {
+      if (handleAttemptClosed(err)) return;
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
       const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("trùng") || err.message.includes("ràng buộc") || err.message.includes("lock") || err.message.includes("already") || err.message.includes("đã được trả lời")));
 
@@ -1063,6 +1082,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
           console.log(`[ExamContainer Debug] BE submit attempt response:`, result);
         } catch (error: any) {
           console.error(`[ExamContainer Debug] BE submit attempt error:`, error);
+          if (error?.errorCode === "ATTEMPT_CLOSED") throw error;
           const statusCode = error?.statusCode ?? error?.body?.statusCode ?? error?.response?.status;
           const is409 = statusCode === 409 || (typeof error?.message === "string" && (error.message.includes("trùng") || error.message.includes("ràng buộc") || error.message.includes("submitted")));
           if (!is409) throw error;
@@ -1085,6 +1105,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
                 newResults[q.id] = res.isCorrect ? "correct" : "wrong";
               }
             } catch (submitErr: any) {
+              if (submitErr?.errorCode === "ATTEMPT_CLOSED") throw submitErr;
               // Bỏ qua lỗi 409 nếu câu đã nộp hoặc attempt đã finalized
             }
           }
@@ -1093,6 +1114,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         try {
           result = await studentLearningService.attempts.submit(examData.id, { answers: [] });
         } catch (err: any) {
+          if (err?.errorCode === "ATTEMPT_CLOSED") throw err;
           // Bỏ qua 409 nếu Backend đã tự động finalize khi submit câu cuối cùng
         }
       }
@@ -1179,6 +1201,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       setIsReviewMode(false);
       setShowFeedback(false);
     } catch (error: any) {
+      if (handleAttemptClosed(error)) return;
       Modal.error({
         title: "Không thể nộp bài",
         content: error instanceof Error ? error.message : "Vui lòng thử lại sau.",
@@ -1403,7 +1426,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
       window.location.reload();
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
-      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      const is409 = statusCode === 409 && err?.errorCode !== "ATTEMPT_CLOSED" && typeof err?.message === "string" && (err.message.includes("submitted") || err.message.includes("đã nộp") || err.message.includes("đã được nộp"));
       if (is409) {
         Modal.warning({
           title: "Không thể tạo lượt làm mới",

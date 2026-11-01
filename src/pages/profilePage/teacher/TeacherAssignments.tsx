@@ -66,6 +66,7 @@ import { getErrorMessage } from "../../../services/apiClient";
 import { Center, Specialization } from "../../../types/backend";
 import { ExamAnalyticsModal } from "./components/ExamAnalyticsModal";
 import TeacherMonthlyReports from "./components/TeacherMonthlyReports";
+import { confirmWithImpact } from "../../../utils/confirmWithImpact";
 
 const { Title, Text } = Typography;
 
@@ -806,24 +807,14 @@ export default function TeacherAssignments() {
     }
   };
 
-  const handleCancelExamAssignment = (id: string) => {
-    Modal.confirm({
-      title: "Huỷ giao bài thi",
-      content: "Học sinh sẽ không thể làm bài mới từ assignment này.",
-      okText: "Huỷ assignment",
-      okButtonProps: { danger: true },
-      cancelText: "Đóng",
-      onOk: async () => {
-        try {
-          await teacherLearningService.examAssignments.cancel(id);
-          message.success("Đã huỷ assignment");
-          loadAll();
-        } catch (err: any) {
-          message.error(getErrorMessage(err, "Huỷ thất bại"), 5);
-        }
-      },
+  const handleCancelExamAssignment = (id: string) =>
+    confirmWithImpact({
+      title: "Huỷ giao bài thi? Học sinh sẽ không làm bài mới được nữa.",
+      okText: "Huỷ giao bài",
+      run: (confirm) => teacherLearningService.examAssignments.cancel(id, confirm),
+      successText: "Đã huỷ giao bài",
+      onDone: loadAll,
     });
-  };
 
   // ==================== CURRICULUM ASSIGNMENT HANDLERS ====================
   const handleCreateCurriculumAssignment = async (values: any) => {
@@ -857,24 +848,14 @@ export default function TeacherAssignments() {
     }
   };
 
-  const handleCancelCurriculumAssignment = (id: string) => {
-    Modal.confirm({
-      title: "Huỷ giao giáo trình học",
-      content: "Học sinh sẽ không còn truy cập giáo trình này.",
-      okText: "Huỷ assignment",
-      okButtonProps: { danger: true },
-      cancelText: "Đóng",
-      onOk: async () => {
-        try {
-          await teacherLearningService.curriculumAssignments.cancel(id);
-          message.success("Đã huỷ assignment");
-          loadAll();
-        } catch (err: any) {
-          message.error(getErrorMessage(err, "Huỷ thất bại"), 5);
-        }
-      },
+  const handleCancelCurriculumAssignment = (id: string) =>
+    confirmWithImpact({
+      title: "Huỷ giao giáo trình? Học sinh sẽ không còn truy cập giáo trình này.",
+      okText: "Huỷ giao giáo trình",
+      run: (confirm) => teacherLearningService.curriculumAssignments.cancel(id, confirm),
+      successText: "Đã huỷ giao giáo trình",
+      onDone: loadAll,
     });
-  };
 
   // ==================== TABLE COLUMNS ====================
   const examAssignmentColumns = [

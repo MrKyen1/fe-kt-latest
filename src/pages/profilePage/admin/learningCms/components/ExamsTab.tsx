@@ -485,7 +485,7 @@ export default function ExamsTab({
                       </Can>
 
                       <Can perform="learning.delete">
-                        <Tooltip title="Xóa">
+                        <Tooltip title="Ngừng hoạt động">
                           <Button
                             type="text"
                             size="middle"

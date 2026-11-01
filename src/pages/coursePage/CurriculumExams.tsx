@@ -250,7 +250,7 @@ export default function CurriculumExams() {
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
       const errorMsg = String(err?.message || "");
-      const is409 = statusCode === 409 || errorMsg.includes("409") || errorMsg.includes("submitted") || errorMsg.includes("đã nộp");
+      const is409 = statusCode === 409 && err?.errorCode !== "ATTEMPT_CLOSED" && (errorMsg.includes("submitted") || errorMsg.includes("đã nộp") || errorMsg.includes("đã được nộp"));
       
       if (is409) {
         message.warning("Bài kiểm tra này đã được nộp.");

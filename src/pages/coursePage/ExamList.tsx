@@ -211,7 +211,7 @@ export default function ExamList() {
       navigate(`/exam/${attemptId}`);
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
-      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      const is409 = statusCode === 409 && err?.errorCode !== "ATTEMPT_CLOSED" && typeof err?.message === "string" && (err.message.includes("submitted") || err.message.includes("đã nộp") || err.message.includes("đã được nộp"));
       if (is409) {
         message.warning("Bài kiểm tra này đã được nộp.");
       } else {
@@ -249,7 +249,7 @@ export default function ExamList() {
       navigate(`/exam/${attemptId}`);
     } catch (err: any) {
       const statusCode = err?.statusCode ?? err?.body?.statusCode ?? err?.response?.status;
-      const is409 = statusCode === 409 || (typeof err?.message === "string" && (err.message.includes("409") || err.message.includes("submitted") || err.message.includes("đã nộp")));
+      const is409 = statusCode === 409 && err?.errorCode !== "ATTEMPT_CLOSED" && typeof err?.message === "string" && (err.message.includes("submitted") || err.message.includes("đã nộp") || err.message.includes("đã được nộp"));
       if (is409) {
         message.warning("Bài kiểm tra này đã được nộp.");
       } else {

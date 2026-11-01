@@ -81,6 +81,7 @@ import {
 import { useResponsive } from "../../../hooks/useResponsive";
 import dayjs from "dayjs";
 import { IMAGE_ACCEPT } from "../../../utils/uploadAccept";
+import { confirmWithImpact } from "../../../utils/confirmWithImpact";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -380,6 +381,13 @@ export default function CenterManagement() {
   const [editingClass, setEditingClass] = useState<any>(null);
   const [editingTeacher, setEditingTeacher] = useState<any>(null);
   const [editingStudent, setEditingStudent] = useState<any>(null);
+  // Classes stopped after the person joined stay on the profile; tell the admin instead of failing the save.
+  const stoppedClassNotice = (profile: any, who: string) => {
+    const names = (profile?.classes || []).filter((c: any) => c?.isActive === false).map((c: any) => c.name);
+    return names.length
+      ? <span className="text-amber-600">{who} đang thuộc lớp đã ngừng hoạt động: {names.join(", ")}. Hồ sơ vẫn lưu được, nhưng lớp này không có bài mới.</span>
+      : undefined;
+  };
   const [editingAdmin, setEditingAdmin] = useState<any>(null);
   const [editingSpecialization, setEditingSpecialization] = useState<any>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<any>(null);
@@ -494,23 +502,13 @@ export default function CenterManagement() {
   const handleCenterDelete = (record: any, e: React.MouseEvent) => {
     if (!hasPermission("classes.manage")) return;
     e.stopPropagation();
-    Modal.confirm({
-      title: "Xóa trung tâm",
-      content: `Bạn có chắc muốn xóa trung tâm ${record.name}? Các lớp học thuộc trung tâm này sẽ bị ảnh hưởng.`,
-      okText: "Xóa",
-      cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await academicService.centers.remove(record.id);
-          message.success("Xóa trung tâm thành công");
-          if (selectedCenterId === record.id) {
-            setSelectedCenterId(null);
-          }
-          loadData();
-        } catch (err) {
-          message.error("Xóa thất bại");
-        }
+    return confirmWithImpact({
+      title: `Ngừng hoạt động trung tâm ${record.name}?`,
+      run: (confirm) => academicService.centers.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động trung tâm",
+      onDone: () => {
+        if (selectedCenterId === record.id) setSelectedCenterId(null);
+        loadData();
       },
     });
   };
@@ -566,9 +564,9 @@ export default function CenterManagement() {
         const centerId = err.details?.id;
         if (centerId) {
           Modal.confirm({
-            title: "Khôi phục trung tâm",
-            content: "Tên trung tâm đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại trung tâm này không?",
-            okText: "Khôi phục",
+            title: "Kích hoạt lại trung tâm",
+            content: "Tên trung tâm đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn kích hoạt lại trung tâm này không?",
+            okText: "Kích hoạt lại",
             cancelText: "Hủy bỏ",
             onOk: async () => {
               try {
@@ -576,7 +574,7 @@ export default function CenterManagement() {
                 await academicService.centers.reactivate(centerId);
                 // 2. Update with current form details
                 await academicService.centers.update(centerId, payload);
-                message.success("Khôi phục và cập nhật trung tâm thành công");
+                message.success("Kích hoạt lại và cập nhật trung tâm thành công");
 
                 loadData();
                 setSelectedCenterId(centerId);
@@ -590,7 +588,7 @@ export default function CenterManagement() {
                   }));
                   centerForm.setFields(fields);
                 } else {
-                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                  message.error(reactivateErr.message || "Kích hoạt lại thất bại");
                 }
               }
             },
@@ -641,21 +639,11 @@ export default function CenterManagement() {
 
   const handleClassDelete = (record: any) => {
     if (!hasPermission("classes.manage")) return;
-    Modal.confirm({
-      title: "Xóa lớp học",
-      content: `Bạn có chắc muốn xóa lớp học ${record.name}?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await academicService.classes.remove(record.id);
-          message.success("Xóa lớp học thành công");
-          loadData();
-        } catch (err) {
-          message.error("Xóa thất bại");
-        }
-      },
+    return confirmWithImpact({
+      title: `Ngừng hoạt động lớp ${record.name}?`,
+      run: (confirm) => academicService.classes.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động lớp học",
+      onDone: loadData,
     });
   };
 
@@ -722,9 +710,9 @@ export default function CenterManagement() {
         const classId = err.details?.id;
         if (classId) {
           Modal.confirm({
-            title: "Khôi phục lớp học",
-            content: "Tên lớp học đã tồn tại trong trung tâm này nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại lớp học này không?",
-            okText: "Khôi phục",
+            title: "Kích hoạt lại lớp học",
+            content: "Tên lớp học đã tồn tại trong trung tâm này nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn kích hoạt lại lớp học này không?",
+            okText: "Kích hoạt lại",
             cancelText: "Hủy bỏ",
             onOk: async () => {
               try {
@@ -735,7 +723,7 @@ export default function CenterManagement() {
                 // 3. Sync curriculum mapping
                 await syncClassCurriculums(classId, curriculumIds);
 
-                message.success("Khôi phục và cập nhật lớp học thành công");
+                message.success("Kích hoạt lại và cập nhật lớp học thành công");
 
                 loadData();
                 setClassModalOpen(false);
@@ -748,7 +736,7 @@ export default function CenterManagement() {
                   }));
                   classForm.setFields(fields);
                 } else {
-                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                  message.error(reactivateErr.message || "Kích hoạt lại thất bại");
                 }
               }
             },
@@ -859,7 +847,7 @@ export default function CenterManagement() {
           setTeachers((prev) => prev.filter((t) => t.id !== record.id));
           message.success("Xóa giáo viên thành công");
         } catch (err) {
-          message.error("Xóa thất bại");
+          message.error(getErrorMessage(err, "Xóa thất bại"), 5);
         }
       },
     });
@@ -1048,7 +1036,7 @@ export default function CenterManagement() {
           setStudents((prev) => prev.filter((s) => s.id !== record.id));
           message.success("Xóa học sinh thành công");
         } catch (err) {
-          message.error("Xóa thất bại");
+          message.error(getErrorMessage(err, "Xóa thất bại"), 5);
         }
       },
     });
@@ -1239,7 +1227,7 @@ export default function CenterManagement() {
           setAdmins((prev) => prev.filter((a) => a.id !== record.id));
           message.success("Xóa quản trị viên thành công");
         } catch (err) {
-          message.error("Xóa thất bại");
+          message.error(getErrorMessage(err, "Xóa thất bại"), 5);
         }
       },
     });
@@ -1350,25 +1338,13 @@ export default function CenterManagement() {
     setSpecializationModalOpen(true);
   };
 
-  const handleSpecializationDelete = (record: any) => {
-    if (!hasPermission("classes.manage")) return;
-    Modal.confirm({
-      title: "Xóa chuyên môn",
-      content: `Bạn có chắc muốn xóa chuyên môn ${record.name}?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await academicService.specializations.remove(record.id);
-          message.success("Xóa chuyên môn thành công");
-          loadData();
-        } catch (err) {
-          message.error("Xóa thất bại");
-        }
-      },
+  const handleSpecializationDelete = (record: any) =>
+    confirmWithImpact({
+      title: `Ngừng hoạt động môn học ${record.name}?`,
+      run: (confirm) => academicService.specializations.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động môn học",
+      onDone: loadData,
     });
-  };
 
   const handleSpecializationSubmit = async (values: any) => {
     try {
@@ -1388,9 +1364,9 @@ export default function CenterManagement() {
         const specId = errObj.details?.id;
         if (specId) {
           Modal.confirm({
-            title: "Khôi phục chuyên môn",
-            content: "Mã hoặc tên chuyên môn đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại chuyên môn này không?",
-            okText: "Khôi phục",
+            title: "Kích hoạt lại chuyên môn",
+            content: "Mã hoặc tên chuyên môn đã tồn tại trong hệ thống nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn kích hoạt lại chuyên môn này không?",
+            okText: "Kích hoạt lại",
             cancelText: "Hủy bỏ",
             onOk: async () => {
               try {
@@ -1398,7 +1374,7 @@ export default function CenterManagement() {
                 await academicService.specializations.reactivate(specId);
                 // 2. Update with current form details
                 await academicService.specializations.update(specId, values);
-                message.success("Khôi phục và cập nhật chuyên môn thành công");
+                message.success("Kích hoạt lại và cập nhật chuyên môn thành công");
 
                 loadData();
                 setSpecializationModalOpen(false);
@@ -1411,7 +1387,7 @@ export default function CenterManagement() {
                   }));
                   specializationForm.setFields(fields);
                 } else {
-                  message.error(reactivateErr.message || "Khôi phục thất bại");
+                  message.error(reactivateErr.message || "Kích hoạt lại thất bại");
                 }
               }
             },
@@ -1620,7 +1596,7 @@ export default function CenterManagement() {
               onClick={() => handleResetPassword(record)}
             />
           ) : (
-            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
+            <Tooltip title="Không thể kích hoạt lại mật khẩu cho tài khoản đã nghỉ">
               <Button
                 type="text"
                 size="small"
@@ -1807,7 +1783,7 @@ export default function CenterManagement() {
               onClick={() => handleResetPassword(record)}
             />
           ) : (
-            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
+            <Tooltip title="Không thể kích hoạt lại mật khẩu cho tài khoản đã nghỉ">
               <Button
                 type="text"
                 size="small"
@@ -2003,7 +1979,7 @@ export default function CenterManagement() {
               onClick={() => handleResetPassword(record)}
             />
           ) : (
-            <Tooltip title="Không thể khôi phục mật khẩu cho tài khoản đã nghỉ">
+            <Tooltip title="Không thể kích hoạt lại mật khẩu cho tài khoản đã nghỉ">
               <Button
                 type="text"
                 size="small"
@@ -2214,7 +2190,7 @@ export default function CenterManagement() {
                               onClick={(e) => handleCenterDelete(selectedCenter, e)}
                               className="rounded-xl"
                             >
-                              Xóa trung tâm
+                              Ngừng hoạt động
                             </Button>
                           </Space>
                         )}
@@ -3306,8 +3282,13 @@ export default function CenterManagement() {
                   <Table size="small" rowKey="id" dataSource={mappingPage.data} loading={mappingPage.loading} pagination={mappingPage.pagination}
                     columns={[{ title: "Giáo trình", key: "curriculum", render: (_, row: any) => row.curriculum?.title },
                       { title: "", key: "action", render: (_, row: any) => <Button danger type="link" onClick={async () => {
-                        try { await teacherLearningService.classCurriculums.remove(row.id); mappingPage.reload(); classList.reload(); }
-                        catch (error) { message.error(getErrorMessage(error)); }
+                        await confirmWithImpact({
+                          title: `Gỡ giáo trình "${row.curriculum?.title ?? ""}" khỏi lớp?`,
+                          okText: "Gỡ",
+                          run: (confirm) => teacherLearningService.classCurriculums.remove(row.id, confirm),
+                          successText: "Đã gỡ giáo trình khỏi lớp",
+                          onDone: () => { mappingPage.reload(); classList.reload(); },
+                        });
                       }}>Gỡ</Button> }]} />
                   <ServerSelect endpoint="/learning/curriculums" query={{ status: "published", specializationId: classSpecializationId }}
                     value={addingCurriculumId} onChange={setAddingCurriculumId} placeholder="Chọn giáo trình để thêm" className="w-full mt-2"
@@ -3565,6 +3546,7 @@ export default function CenterManagement() {
                   name="classIds"
                   label="Lớp học phụ trách"
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
+                  extra={stoppedClassNotice(editingTeacher?.teacherProfile, "Giáo viên")}
                   tooltip="Giáo viên có thể dạy các lớp thuộc các trung tâm đã chọn"
                 >
                   <ServerSelect endpoint="/classes" query={{ centerIds: selectedTeacherCenterIds.length ? selectedTeacherCenterIds.join(",") : undefined }} onRecords={rows => setLookupClasses(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
@@ -3583,7 +3565,7 @@ export default function CenterManagement() {
                       .map((c) => {
                         const centerObj = (c as any).center || centers.find((cen) => cen.id === c.centerId);
                         return {
-                          label: centerObj ? `${c.name} (${centerObj.name})` : c.name,
+                          label: `${centerObj ? `${c.name} (${centerObj.name})` : c.name}${c.isActive === false ? " (Đã ngừng)" : ""}`,
                           value: c.id,
                         };
                       })}
@@ -4009,6 +3991,7 @@ export default function CenterManagement() {
                   name="classIds"
                   label="Lớp học tham gia"
                   rules={[{ required: true, message: "Chọn ít nhất 1 lớp học!" }]}
+                  extra={stoppedClassNotice(editingStudent?.studentProfile, "Học sinh")}
                 >
                   <ServerSelect endpoint="/classes" query={{ centerId: selectedModalCenterId || selectedCenterId }} onRecords={rows => setLookupClasses(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                     mode="multiple"
@@ -4019,7 +4002,7 @@ export default function CenterManagement() {
                     className="rounded-xl"
                     options={classOptions
                       .filter((c) => !selectedModalCenterId || c.centerId === selectedModalCenterId)
-                      .map((c) => ({ label: c.name, value: c.id }))}
+                      .map((c) => ({ label: c.isActive === false ? `${c.name} (Đã ngừng)` : c.name, value: c.id }))}
                   />
                 </Form.Item>
 

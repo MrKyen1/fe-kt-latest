@@ -52,9 +52,12 @@ import { Can } from "../../../components/Can";
 import { getErrorMessage } from "../../../services/apiClient";
 import { formatTextForBackend } from "../../../utils/textFormatters";
 
+import { confirmWithImpact } from "../../../utils/confirmWithImpact";
+
 // ── Constants ────────────────────────────────────────────────
 import {
   CHOICE_TYPES,
+  CONTENT_STATUS_LABELS,
   LIST_LIMIT,
   PAGE_SIZE_CURRICULUMS,
   PAGE_SIZE_DEFAULT,
@@ -119,7 +122,7 @@ export function statusTag(status: string) {
   if (status === "published")
     return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
   if (status === "archived")
-    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">Lưu trữ</Tag>;
+    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.archived}</Tag>;
   return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
 }
 
@@ -307,7 +310,6 @@ export default function LearningCms() {
 
   // ── Editing / selected state ───────────────────────────────
   const [editingItem, setEditingItem] = useState<any>(null);
-  const [editingExamInitialCurriculumId, setEditingExamInitialCurriculumId] = useState<string | undefined>(undefined);
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [selectedCurriculum, setSelectedCurriculum] = useState<any>(null);
   const [currentQuestionType, setCurrentQuestionType] = useState<string>("multiple_choice");
@@ -565,24 +567,35 @@ export default function LearningCms() {
     setTaxModalOpen(true);
   };
 
-  const handleTaxDelete = (record: any) => {
+  // A code that belongs to a deactivated exam or curriculum can be brought back instead of retyped.
+  const offerReactivate = (error: any, label: string, reactivate: (id: string) => Promise<unknown>, close: () => void) => {
+    if (error?.errorCode !== "DUPLICATE_INACTIVE_RECORD" || !error.details?.id) return false;
     Modal.confirm({
-      title: "Xóa danh mục",
-      content: `Xóa danh mục "${record.name}"?`,
-      okText: "Xóa",
+      title: `Mã này thuộc một ${label} đã ngừng hoạt động`,
+      content: `Bạn có muốn kích hoạt lại ${label} đó thay vì tạo mới không?`,
+      okText: "Kích hoạt lại",
       cancelText: "Hủy",
-      okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await getTaxService(taxTab).remove(record.id);
-          message.success("Xóa thành công");
+          await reactivate(error.details.id);
+          message.success(`Đã kích hoạt lại ${label}`);
+          close();
           loadAllData();
-        } catch (error: any) {
-          message.error(extractErrorMsg(error, "Xóa thất bại"));
+        } catch (reactivateErr: any) {
+          message.error(extractErrorMsg(reactivateErr, "Kích hoạt lại thất bại"));
         }
       },
     });
+    return true;
   };
+
+  const handleTaxDelete = (record: any) =>
+    confirmWithImpact({
+      title: `Ngừng hoạt động ${getTaxName(taxTab).toLowerCase()} "${record.name}"?`,
+      run: (confirm) => getTaxService(taxTab).remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động",
+      onDone: loadAllData,
+    });
 
   const handleTaxSubmit = async (values: any) => {
     try {
@@ -605,20 +618,20 @@ export default function LearningCms() {
         const taxName = getTaxName(taxTab);
         if (itemId) {
           Modal.confirm({
-            title: `Khôi phục ${taxName}`,
-            content: `"${values.name}" đã tồn tại nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn khôi phục lại không?`,
-            okText: "Khôi phục",
+            title: `Kích hoạt lại ${taxName}`,
+            content: `"${values.name}" đã tồn tại nhưng đang ở trạng thái ngừng hoạt động. Bạn có muốn kích hoạt lại không?`,
+            okText: "Kích hoạt lại",
             cancelText: "Hủy bỏ",
             onOk: async () => {
               try {
                 await getTaxService(taxTab).reactivate(itemId);
                 await getTaxService(taxTab).update(itemId, values);
-                message.success(`Khôi phục và cập nhật ${taxName.toLowerCase()} thành công`);
+                message.success(`Kích hoạt lại và cập nhật ${taxName.toLowerCase()} thành công`);
                 loadAllData();
                 setTaxModalOpen(false);
                 taxForm.resetFields();
               } catch (reactivateErr: any) {
-                message.error(extractErrorMsg(reactivateErr, "Khôi phục thất bại"));
+                message.error(extractErrorMsg(reactivateErr, "Kích hoạt lại thất bại"));
               }
             },
           });
@@ -658,17 +671,17 @@ export default function LearningCms() {
 
   const handleMediaDelete = (record: any) => {
     Modal.confirm({
-      title: "Xóa tệp phương tiện",
-      content: "Bạn có chắc chắn muốn xóa tệp này?",
-      okText: "Xóa", cancelText: "Hủy",
+      title: "Ngừng hoạt động tệp phương tiện",
+      content: "Bạn có chắc chắn muốn ngừng hoạt động tệp này?",
+      okText: "Ngừng hoạt động", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.mediaAssets.remove(record.id);
-          message.success("Xóa tệp thành công");
+          message.success("Đã ngừng hoạt động tệp");
           loadAllData();
         } catch (error: any) {
-          message.error(extractErrorMsg(error, "Xóa thất bại"));
+          message.error(extractErrorMsg(error, "Thao tác thất bại"), 5);
         }
       },
     });
@@ -695,17 +708,17 @@ export default function LearningCms() {
 
   const handlePassageDelete = (record: any) => {
     Modal.confirm({
-      title: "Xóa bài đọc",
-      content: `Xóa bài đọc "${record.title}"?`,
-      okText: "Xóa", cancelText: "Hủy",
+      title: "Ngừng hoạt động bài đọc",
+      content: `Ngừng hoạt động bài đọc "${record.title}"?`,
+      okText: "Ngừng hoạt động", cancelText: "Hủy",
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await learningCmsService.readingPassages.remove(record.id);
-          message.success("Xóa thành công");
+          message.success("Đã ngừng hoạt động bài đọc");
           loadAllData();
         } catch (error: any) {
-          message.error(extractErrorMsg(error, "Xóa thất bại"));
+          message.error(extractErrorMsg(error, "Thao tác thất bại"), 5);
         }
       },
     });
@@ -968,29 +981,21 @@ export default function LearningCms() {
     }
   };
 
-  const handleQuestionDelete = (record: any) => {
-    Modal.confirm({
-      title: "Xóa câu hỏi",
-      content: "Bạn có chắc chắn muốn xóa câu hỏi này?",
-      okText: "Xóa", cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await learningCmsService.questions.remove(record.id);
-          invalidateQuestionDetailCache(record.id);
-          setQuestionDetails((prev) => {
-            const next = { ...prev };
-            delete next[record.id];
-            return next;
-          });
-          message.success("Xóa thành công");
-          loadAllData();
-        } catch (error: any) {
-          message.error(extractErrorMsg(error, "Xóa thất bại"));
-        }
+  const handleQuestionDelete = (record: any) =>
+    confirmWithImpact({
+      title: "Ngừng hoạt động câu hỏi này?",
+      run: (confirm) => learningCmsService.questions.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động câu hỏi",
+      onDone: () => {
+        invalidateQuestionDetailCache(record.id);
+        setQuestionDetails((prev) => {
+          const next = { ...prev };
+          delete next[record.id];
+          return next;
+        });
+        loadAllData();
       },
     });
-  };
 
   const handleQuestionSubmit = async (values: any) => {
     const qType = values.type;
@@ -1211,25 +1216,17 @@ export default function LearningCms() {
 
   const handleExamCreate = () => {
     setEditingItem(null);
-    setEditingExamInitialCurriculumId(undefined);
     examForm.resetFields();
     setExamModalOpen(true);
   };
 
-  const handleExamEdit = async (record: any) => {
+  const handleExamEdit = (record: any) => {
     setEditingItem(record);
-
-    const matches = await learningCmsService.curriculums.list({ examId: record.id, limit: 1 });
-    const currId = matches.data[0]?.id;
-    setEditingExamInitialCurriculumId(currId);
-    if (matches.data[0]) setCurriculums(previous => [...previous.filter(row => row.id !== currId), matches.data[0]]);
-
     examForm.setFieldsValue({
       code: record.code,
       title: record.title,
       examType: record.examType ?? "practice",
       timeLimitMinutes: record.timeLimitSeconds ? Math.round(record.timeLimitSeconds / 60) : undefined,
-      curriculumId: currId,
       description: record.description,
     });
     setExamModalOpen(true);
@@ -1237,23 +1234,13 @@ export default function LearningCms() {
 
   };
 
-  const handleExamDelete = (record: any) => {
-    Modal.confirm({
-      title: "Xóa đề thi",
-      content: `Xóa đề thi "${record.title}"?`,
-      okText: "Xóa", cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await learningCmsService.exams.remove(record.id);
-          message.success("Xóa đề thi thành công");
-          loadAllData();
-        } catch (error: any) {
-          message.error(extractErrorMsg(error, "Xóa thất bại"));
-        }
-      },
+  const handleExamDelete = (record: any) =>
+    confirmWithImpact({
+      title: `Ngừng hoạt động đề thi "${record.title}"?`,
+      run: (confirm) => learningCmsService.exams.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động đề thi",
+      onDone: loadAllData,
     });
-  };
 
   const handleExamSubmit = async (values: any) => {
     if (examSubmitting) return;
@@ -1271,52 +1258,7 @@ export default function LearningCms() {
           description: values.description,
         });
 
-        const newCurriculumId = curriculumId || undefined;
-        if (newCurriculumId !== editingExamInitialCurriculumId) {
-          // 1. Nếu trước đó đã thuộc giáo trình cũ -> gỡ khỏi giáo trình cũ
-          if (editingExamInitialCurriculumId) {
-            try {
-              await learningCmsService.curriculums.removeExam(editingExamInitialCurriculumId, editingItem.id);
-            } catch (removeErr: any) {
-              Modal.warning({
-                title: "Đã cập nhật đề thi, chưa đổi giáo trình",
-                content: `Thông tin đề thi đã được lưu, nhưng chưa xác nhận gỡ khỏi giáo trình cũ (Lý do: ${extractErrorMsg(removeErr)}). Chưa thực hiện gắn vào giáo trình mới. Vui lòng kiểm tra lại quan hệ trong tab Giáo trình.`,
-              });
-              loadAllData();
-              return;
-            }
-          }
-
-          // 2. Nếu người dùng chọn giáo trình mới -> gắn vào giáo trình mới
-          if (newCurriculumId) {
-            try {
-              const currDetail = await learningCmsService.curriculums.get(newCurriculumId);
-              const currExams = (currDetail as any)?.exams ?? [];
-              const maxOrderIndex = currExams.reduce(
-                (max: number, item: any) => Math.max(max, Number(item.orderIndex) || 0),
-                -1
-              );
-              const nextOrderIndex = maxOrderIndex + 1;
-
-              await learningCmsService.curriculums.attachExam(newCurriculumId, {
-                examId: editingItem.id,
-                orderIndex: nextOrderIndex,
-                isRequired: true,
-              });
-              message.success("Cập nhật đề thi và gắn vào giáo trình thành công!");
-            } catch (attachErr: any) {
-              console.error("Lỗi khi gắn đề thi vào giáo trình mới:", attachErr);
-              Modal.warning({
-                title: "Đã cập nhật đề thi",
-                content: `Đề thi "${values.title || editingItem.title}" đã được lưu.${editingExamInitialCurriculumId ? " Đã gỡ khỏi giáo trình cũ." : ""} Chưa thể gắn vào giáo trình mới (Lý do: ${extractErrorMsg(attachErr)}). Bạn có thể vào tab Giáo trình để cấu hình lại.`,
-              });
-            }
-          } else {
-            message.success("Cập nhật đề thi và đã gỡ khỏi giáo trình cũ");
-          }
-        } else {
-          message.success("Cập nhật đề thi thành công");
-        }
+        message.success("Cập nhật đề thi thành công");
       } else {
         const newExam = await learningCmsService.exams.create({
           ...rest,
@@ -1358,21 +1300,25 @@ export default function LearningCms() {
       loadAllData();
       setExamModalOpen(false);
     } catch (error: any) {
+      if (offerReactivate(error, "đề thi", learningCmsService.exams.reactivate, () => setExamModalOpen(false))) return;
       message.error(extractErrorMsg(error));
     } finally {
       setExamSubmitting(false);
     }
   };
 
-  const handleToggleExamStatus = async (record: any) => {
+  const handleToggleExamStatus = (record: any) => {
     const nextStatus = record.status === "published" ? "draft" : "published";
-    try {
-      await learningCmsService.exams.updateStatus(record.id, { status: nextStatus, expectedUpdatedAt: record.updatedAt });
-      message.success(`Chuyển trạng thái sang ${nextStatus === "published" ? "Đang phát hành" : "Nháp"}`);
-      loadAllData();
-    } catch (err: any) {
-      message.error(extractErrorMsg(err, "Đổi trạng thái thất bại"));
-    }
+    const run = (confirm: boolean) =>
+      learningCmsService.exams.updateStatus(record.id, { status: nextStatus, expectedUpdatedAt: record.updatedAt }, confirm);
+    const successText = `Chuyển trạng thái sang ${nextStatus === "published" ? "Đang phát hành" : "Nháp"}`;
+    return confirmWithImpact({
+      title: `Chuyển đề thi "${record.title}" về Nháp?`,
+      okText: "Chuyển về Nháp",
+      run,
+      successText,
+      onDone: loadAllData,
+    });
   };
 
   const handleRepublishExam = async (record: any) => {
@@ -1517,23 +1463,13 @@ export default function LearningCms() {
     setCurriculumModalOpen(true);
   };
 
-  const handleCurriculumDelete = (record: any) => {
-    Modal.confirm({
-      title: "Xóa giáo trình",
-      content: `Xóa giáo trình "${record.title}"?`,
-      okText: "Xóa", cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await learningCmsService.curriculums.remove(record.id);
-          message.success("Xóa giáo trình thành công");
-          loadAllData();
-        } catch (error: any) {
-          message.error(extractErrorMsg(error, "Xóa thất bại"));
-        }
-      },
+  const handleCurriculumDelete = (record: any) =>
+    confirmWithImpact({
+      title: `Ngừng hoạt động giáo trình "${record.title}"?`,
+      run: (confirm) => learningCmsService.curriculums.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động giáo trình",
+      onDone: loadAllData,
     });
-  };
 
   const handleCurriculumSubmit = async (values: any) => {
     try {
@@ -1557,6 +1493,7 @@ export default function LearningCms() {
       loadAllData();
       setCurriculumModalOpen(false);
     } catch (error: any) {
+      if (offerReactivate(error, "giáo trình", learningCmsService.curriculums.reactivate, () => setCurriculumModalOpen(false))) return;
       message.error(extractErrorMsg(error));
     }
   };
@@ -1613,17 +1550,20 @@ export default function LearningCms() {
     }
   };
 
-  const handleRemoveExamFromCurriculum = async (examId: string) => {
+  const handleRemoveExamFromCurriculum = (examId: string) => {
     if (!selectedCurriculum) return;
-    try {
-      await learningCmsService.curriculums.removeExam(selectedCurriculum.id, examId);
-      message.success("Gỡ đề thi thành công");
-      const updated = await learningCmsService.curriculums.get(selectedCurriculum.id);
-      setSelectedCurriculum(updated);
-      setCurriculums((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-    } catch (error: any) {
-      message.error(extractErrorMsg(error, "Gỡ đề thi thất bại"));
-    }
+    const curriculumId = selectedCurriculum.id;
+    return confirmWithImpact({
+      title: "Gỡ đề thi khỏi giáo trình?",
+      okText: "Gỡ",
+      run: (confirm) => learningCmsService.curriculums.removeExam(curriculumId, examId, confirm),
+      successText: "Gỡ đề thi thành công",
+      onDone: async () => {
+        const updated = await learningCmsService.curriculums.get(curriculumId);
+        setSelectedCurriculum(updated);
+        setCurriculums((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      },
+    });
   };
 
   const handleReorderCurriculumExams = async (index: number, direction: "up" | "down") => {

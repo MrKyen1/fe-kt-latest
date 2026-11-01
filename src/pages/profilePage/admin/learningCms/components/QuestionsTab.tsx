@@ -364,7 +364,7 @@ export default function QuestionsTab({
                     </Tooltip>
 
                     <Can perform="learning.delete">
-                      <Tooltip title="Xóa">
+                      <Tooltip title="Ngừng hoạt động">
                         <Button
                           type="text"
                           size="middle"

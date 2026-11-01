@@ -61,8 +61,8 @@ function paginatedCrud<TItem, TCreate = Partial<TItem>, TUpdate = Partial<TCreat
       return unwrapData(await apiClient.patch<ApiEnvelope<TItem>>(`${path}/${id}`, payload));
     },
 
-    async remove(id: string): Promise<TItem> {
-      return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`));
+    async remove(id: string, confirm = false): Promise<TItem> {
+      return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`, confirm ? { params: { confirm: true } } : undefined));
     },
 
     async reactivate(id: string): Promise<TItem> {
@@ -196,9 +196,9 @@ export const learningCmsService = {
   exams: {
     ...paginatedCrud<Exam, CreateExamRequest, UpdateExamRequest>("/learning/exams"),
 
-    async updateStatus(id: string, payload: StatusUpdateRequest): Promise<Exam> {
+    async updateStatus(id: string, payload: StatusUpdateRequest, confirm = false): Promise<Exam> {
       return unwrapData(
-        await apiClient.patch<ApiEnvelope<Exam>>(`/learning/exams/${id}/status`, payload),
+        await apiClient.patch<ApiEnvelope<Exam>>(`/learning/exams/${id}/status`, payload, confirm ? { params: { confirm: true } } : undefined),
       );
     },
 
@@ -413,10 +413,11 @@ export const learningCmsService = {
       );
     },
 
-    async removeExam(curriculumId: string, examId: string): Promise<Curriculum> {
+    async removeExam(curriculumId: string, examId: string, confirm = false): Promise<Curriculum> {
       return unwrapData(
         await apiClient.delete<ApiEnvelope<Curriculum>>(
           `/learning/curriculums/${curriculumId}/exams/${examId}`,
+          confirm ? { params: { confirm: true } } : undefined,
         ),
       );
     },

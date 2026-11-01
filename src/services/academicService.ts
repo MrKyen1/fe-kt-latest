@@ -37,8 +37,8 @@ function crudService<TItem, TCreate, TUpdate>(path: string) {
       return unwrapData(await apiClient.patch<ApiEnvelope<TItem>>(`${path}/${id}`, payload));
     },
 
-    async remove(id: string): Promise<TItem> {
-      return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`));
+    async remove(id: string, confirm = false): Promise<TItem> {
+      return unwrapData(await apiClient.delete<ApiEnvelope<TItem>>(`${path}/${id}`, confirm ? { params: { confirm: true } } : undefined));
     },
   };
 }

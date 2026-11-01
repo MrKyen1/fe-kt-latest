@@ -63,10 +63,11 @@ export const teacherLearningService = {
       );
     },
 
-    async remove(id: string): Promise<ClassCurriculum> {
+    async remove(id: string, confirm = false): Promise<ClassCurriculum> {
       return unwrapData(
         await apiClient.delete<ApiEnvelope<ClassCurriculum>>(
           `/learning/teacher/class-curriculums/${id}`,
+          confirm ? { params: { confirm: true } } : undefined,
         ),
       );
     },
@@ -103,10 +104,11 @@ export const teacherLearningService = {
       );
     },
 
-    async cancel(assignmentId: string) {
+    async cancel(assignmentId: string, confirm = false) {
       return unwrapData(
         await apiClient.delete<ApiEnvelope<ExamAssignment>>(
           `/learning/teacher/exam-assignments/${assignmentId}`,
+          confirm ? { params: { confirm: true } } : undefined,
         ),
       );
     },
@@ -163,10 +165,11 @@ export const teacherLearningService = {
       );
     },
 
-    async cancel(assignmentId: string) {
+    async cancel(assignmentId: string, confirm = false) {
       return unwrapData(
         await apiClient.delete<ApiEnvelope<CurriculumAssignment>>(
           `/learning/teacher/curriculum-assignments/${assignmentId}`,
+          confirm ? { params: { confirm: true } } : undefined,
         ),
       );
     },

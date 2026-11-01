@@ -107,7 +107,8 @@ export default function ExamFormModal({
           </Form.Item>
         )}
 
-        {(
+        {/* An exam can sit in several curricula; links are edited in the Curriculum tab only. */}
+        {!isEditing && (
           <Form.Item
             name="curriculumId"
             label={
