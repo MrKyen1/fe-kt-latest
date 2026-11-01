@@ -134,11 +134,6 @@ export const userService = {
     return mapUserResponse(data);
   },
 
-  async remove(id: string): Promise<User> {
-    const data = unwrapData(await apiClient.delete<ApiEnvelope<User>>(`/users/${id}`));
-    return mapUserResponse(data);
-  },
-
   async uploadTeacherDegreeImages(files: File[]): Promise<string[]> {
     const formData = new FormData();
     files.forEach((file) => {

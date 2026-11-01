@@ -843,25 +843,6 @@ export default function CenterManagement() {
     setTeacherModalOpen(true);
   };
 
-  const handleTeacherDelete = (record: any) => {
-    if (!hasPermission("users.manage")) return;
-    Modal.confirm({
-      title: "Xóa giáo viên",
-      content: `Bạn có chắc chắn muốn xóa giáo viên ${record.fullName}?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await userService.remove(record.id);
-          setTeachers((prev) => prev.filter((t) => t.id !== record.id));
-          message.success("Xóa giáo viên thành công");
-        } catch (err) {
-          message.error(getErrorMessage(err, "Xóa thất bại"), 5);
-        }
-      },
-    });
-  };
 
   const executeTeacherSubmit = async (values: TeacherFormValues) => {
     try {
@@ -1032,25 +1013,6 @@ export default function CenterManagement() {
     setStudentModalOpen(true);
   };
 
-  const handleStudentDelete = (record: any) => {
-    if (!hasPermission("students.manage")) return;
-    Modal.confirm({
-      title: "Xóa học sinh",
-      content: `Bạn có chắc chắn muốn xóa học sinh ${record.fullName}?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await userService.remove(record.id);
-          setStudents((prev) => prev.filter((s) => s.id !== record.id));
-          message.success("Xóa học sinh thành công");
-        } catch (err) {
-          message.error(getErrorMessage(err, "Xóa thất bại"), 5);
-        }
-      },
-    });
-  };
 
   const handleStudentSubmit = async (values: StudentFormValues) => {
     try {
@@ -1223,25 +1185,6 @@ export default function CenterManagement() {
     setAdminModalOpen(true);
   };
 
-  const handleAdminDelete = (record: any) => {
-    if (!hasPermission("users.manage")) return;
-    Modal.confirm({
-      title: "Xóa quản trị viên",
-      content: `Bạn có chắc chắn muốn xóa quản trị viên ${record.fullName}?`,
-      okText: "Xóa",
-      cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await userService.remove(record.id);
-          setAdmins((prev) => prev.filter((a) => a.id !== record.id));
-          message.success("Xóa quản trị viên thành công");
-        } catch (err) {
-          message.error(getErrorMessage(err, "Xóa thất bại"), 5);
-        }
-      },
-    });
-  };
 
   const handleAdminSubmit = async (values: any) => {
     try {
