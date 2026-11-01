@@ -478,7 +478,7 @@ export default function QuestionVersionsModal({
             overlayStyle={{ maxWidth: 420 }}
           >
             <div
-              className="text-xs text-slate-700 line-clamp-2 font-medium cursor-pointer hover:text-indigo-600 transition leading-relaxed max-w-xs"
+              className="text-xs text-slate-700 line-clamp-2 whitespace-pre-line font-medium cursor-pointer hover:text-indigo-600 transition leading-relaxed max-w-xs"
             >
               {promptText}
             </div>

@@ -96,7 +96,7 @@ function buildColumns(
               placement="right"
             >
               <div
-                className="font-semibold text-slate-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 transition-colors w-fit max-w-full"
+                className="font-semibold text-slate-800 text-sm line-clamp-2 whitespace-pre-line cursor-pointer hover:text-indigo-600 transition-colors w-fit max-w-full"
               >
                 {val}
               </div>
@@ -305,7 +305,7 @@ export default function QuestionsTab({
                     placement="bottom"
                   >
                     <div
-                      className="font-semibold text-slate-800 text-sm leading-relaxed cursor-pointer hover:text-indigo-600 transition-colors line-clamp-3"
+                      className="font-semibold text-slate-800 text-sm leading-relaxed cursor-pointer hover:text-indigo-600 transition-colors line-clamp-3 whitespace-pre-line"
                     >
                       {record.prompt || <em>Không có đề bài văn bản</em>}
                     </div>
