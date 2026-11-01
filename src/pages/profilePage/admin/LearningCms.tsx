@@ -679,23 +679,13 @@ export default function LearningCms() {
     return asset;
   };
 
-  const handleMediaDelete = (record: any) => {
-    Modal.confirm({
-      title: "Ngừng hoạt động tệp phương tiện",
-      content: "Bạn có chắc chắn muốn ngừng hoạt động tệp này?",
-      okText: "Ngừng hoạt động", cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await learningCmsService.mediaAssets.remove(record.id);
-          message.success("Đã ngừng hoạt động tệp");
-          loadAllData();
-        } catch (error: any) {
-          message.error(extractErrorMsg(error, "Thao tác thất bại"), 5);
-        }
-      },
+  const handleMediaDelete = (record: any) =>
+    confirmWithImpact({
+      title: "Ngừng hoạt động tệp phương tiện này?",
+      run: (confirm) => learningCmsService.mediaAssets.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động tệp",
+      onDone: loadAllData,
     });
-  };
 
   // ============================================================
   // READING PASSAGES CRUD
@@ -716,23 +706,13 @@ export default function LearningCms() {
     setPassageModalOpen(true);
   };
 
-  const handlePassageDelete = (record: any) => {
-    Modal.confirm({
-      title: "Ngừng hoạt động bài đọc",
-      content: `Ngừng hoạt động bài đọc "${record.title}"?`,
-      okText: "Ngừng hoạt động", cancelText: "Hủy",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await learningCmsService.readingPassages.remove(record.id);
-          message.success("Đã ngừng hoạt động bài đọc");
-          loadAllData();
-        } catch (error: any) {
-          message.error(extractErrorMsg(error, "Thao tác thất bại"), 5);
-        }
-      },
+  const handlePassageDelete = (record: any) =>
+    confirmWithImpact({
+      title: `Ngừng hoạt động bài đọc "${record.title}"?`,
+      run: (confirm) => learningCmsService.readingPassages.remove(record.id, confirm),
+      successText: "Đã ngừng hoạt động bài đọc",
+      onDone: loadAllData,
     });
-  };
 
   const handlePassageSubmit = async (values: any) => {
     try {
@@ -1659,6 +1639,9 @@ export default function LearningCms() {
           loading={mediaLoading}
           pagination={{ current: mediaPage, pageSize: mediaPageSize, total: mediaTotal, onChange: handleMediaPageChange }}
           describe={(row: any) => row.title || row.originalName || row.storageKey}
+          reactivate={hasPermission("learning.delete") ? learningCmsService.mediaAssets.reactivate : undefined}
+          confirmNote="Tệp quay lại thư viện media. Các câu hỏi đang dùng tệp này không đổi."
+          onDone={loadAllData}
         />
       ) : (
         <MediaTab
@@ -1689,6 +1672,9 @@ export default function LearningCms() {
           loading={passagesLoading}
           pagination={{ current: passagesPage, pageSize: passagesPageSize, total: passagesTotal, onChange: handlePassagesPageChange }}
           describe={(row: any) => row.title}
+          reactivate={hasPermission("learning.delete") ? learningCmsService.readingPassages.reactivate : undefined}
+          confirmNote="Bài đọc quay lại thư viện. Các câu hỏi đang dùng bài đọc này không đổi."
+          onDone={loadAllData}
         />
       ) : (
         <PassagesTab

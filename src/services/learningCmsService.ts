@@ -128,9 +128,15 @@ export const learningCmsService = {
       );
     },
 
-    async remove(id: string): Promise<MediaAsset> {
+    async remove(id: string, confirm = false): Promise<MediaAsset> {
       return unwrapData(
-        await apiClient.delete<ApiEnvelope<MediaAsset>>(`/learning/media-assets/${id}`),
+        await apiClient.delete<ApiEnvelope<MediaAsset>>(`/learning/media-assets/${id}`, confirm ? { params: { confirm: true } } : undefined),
+      );
+    },
+
+    async reactivate(id: string): Promise<MediaAsset> {
+      return unwrapData(
+        await apiClient.patch<ApiEnvelope<MediaAsset>>(`/learning/media-assets/${id}/reactivate`),
       );
     },
   },
