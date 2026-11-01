@@ -3705,6 +3705,8 @@ export default function CenterManagement() {
                                     const urls = await userService.uploadTeacherDegreeImages([file as File]);
                                     onSuccess!({ url: urls[0] });
                                   } catch (err) {
+                                    // Say why (too large, too many tries...), not just a red tile.
+                                    message.error(getErrorMessage(err, "Tải ảnh bằng cấp thất bại"));
                                     onError!(err as Error);
                                   }
                                 }}
