@@ -461,10 +461,12 @@ export default function LearningCms() {
             />
           </Can>
           <Can perform="learning.delete">
-            <Button type="text" size="small" danger
-              icon={<Trash2 size={14} className="text-slate-400 hover:text-rose-600" />}
-              onClick={() => handleTaxDelete(record)}
-            />
+            <Tooltip title="Ngừng hoạt động">
+              <Button aria-label="Ngừng hoạt động" type="text" size="small" danger
+                icon={<Trash2 size={14} className="text-slate-400 hover:text-rose-600" />}
+                onClick={() => handleTaxDelete(record)}
+              />
+            </Tooltip>
           </Can>
         </Space>
       ),
@@ -480,16 +482,17 @@ export default function LearningCms() {
   const filterScope = JSON.stringify([selectedSpecializationId, resource]);
   const appliedCmsFilters = cmsFilters[filterScope] || {};
   const applyCmsFilters = (patch: CmsFilters) => setCmsFilters(previous => ({ ...previous, [filterScope]: { ...previous[filterScope], ...patch } }));
-  const cmsQuery = Object.fromEntries(Object.entries(appliedCmsFilters).filter(([, value]) => value.length > 0).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : value]));
   // Lists show active records; the status header filter (or the in-tab toggle where there is no header) switches to deactivated ones.
   const canShowInactive = activeTab !== "curriculum-overview";
   const listingInactive = canShowInactive && String(appliedCmsFilters.isActive || "") === "false";
+  // The deactivated list only has a search box, so other filters would hide records with no visible reason.
+  const cmsQuery = Object.fromEntries(Object.entries(appliedCmsFilters).filter(([key, value]) => value.length > 0 && (!listingInactive || key === "search")).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : value]));
   const { isMobile } = useResponsive();
   const resourcePage = useServerPagination(`/learning/${resource}`, {
     specializationId: resource === "tags" ? undefined : selectedSpecializationId,
     category: resource === "media-assets" ? "question" : undefined,
     ...cmsQuery,
-    type: activeTab === "media" && mediaTypeFilter !== "all" ? mediaTypeFilter : undefined,
+    type: activeTab === "media" && mediaTypeFilter !== "all" && !listingInactive ? mediaTypeFilter : undefined,
     isActive: listingInactive ? false : undefined,
   }, PAGE_SIZE_DEFAULT, subjectsLoaded && !!selectedSpecializationId);
   useEffect(() => {
@@ -1614,7 +1617,7 @@ export default function LearningCms() {
     {
       key: "taxonomy",
       label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><OrderedListOutlined /> Taxonomy</span>,
-      children: (
+      children: <>{inactiveToggle()}
         <TaxonomyTab
           taxTab={taxTab}
           onTaxTabChange={setTaxTab}
@@ -1640,12 +1643,11 @@ export default function LearningCms() {
               pagination={{ current: taxPage, pageSize: taxPageSize, total: taxTotal, onChange: handleTaxPageChange }}
               describe={(row: any) => <span><b>{row.name}</b> <span className="text-slate-400">{row.code}</span></span>}
               reactivate={hasPermission("learning.write") ? getTaxService(taxTab).reactivate : undefined}
-                                        confirmNote={taxTab === "topics" || taxTab === "skills" || taxTab === "levels" || taxTab === "tags" ? "Các câu hỏi đã được gỡ nhãn này khi ngừng sẽ không tự gắn lại." : undefined}
+          confirmNote={taxTab === "topics" || taxTab === "skills" || taxTab === "levels" || taxTab === "tags" ? "Các câu hỏi đã được gỡ nhãn này khi ngừng sẽ không tự gắn lại." : undefined}
               onDone={loadAllData}
             />
           ) : undefined}
-        </TaxonomyTab>
-      ),
+        </TaxonomyTab></>,
     },
     {
       key: "media",
@@ -1756,8 +1758,8 @@ export default function LearningCms() {
           loading={examsLoading}
           pagination={{ current: examsPage, pageSize: examsPageSize, total: examsTotal, onChange: handleExamsPageChange }}
           describe={(row: any) => <span><b>{row.title}</b> <span className="text-slate-400">{row.code}</span></span>}
-          reactivate={learningCmsService.exams.reactivate}
-                                        confirmNote="Đề thi được gắn lại vào các giáo trình cũ. Đề ở trạng thái đã phát hành mới hiện cho học sinh."
+          reactivate={hasPermission("learning.write") ? learningCmsService.exams.reactivate : undefined}
+          confirmNote="Đề thi được gắn lại vào các giáo trình cũ. Đề ở trạng thái đã phát hành mới hiện cho học sinh."
           onDone={loadAllData}
         />
       ) : (
@@ -1795,8 +1797,8 @@ export default function LearningCms() {
           loading={curriculumsLoading}
           pagination={{ current: curriculumsPage, pageSize: curriculumsPageSize, total: curriculumsTotal, onChange: handleCurriculumsPageChange }}
           describe={(row: any) => <span><b>{row.title}</b> <span className="text-slate-400">{row.code}</span></span>}
-          reactivate={learningCmsService.curriculums.reactivate}
-                                        confirmNote="Học sinh và lớp đã được giao giáo trình này thấy lại giáo trình, tiến độ cũ được giữ."
+          reactivate={hasPermission("learning.write") ? learningCmsService.curriculums.reactivate : undefined}
+          confirmNote="Học sinh và lớp đã được giao giáo trình này thấy lại giáo trình, tiến độ cũ được giữ."
           onDone={loadAllData}
         />
       ) : (

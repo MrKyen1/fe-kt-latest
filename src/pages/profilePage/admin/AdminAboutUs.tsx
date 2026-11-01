@@ -49,7 +49,7 @@ export default function AdminAboutUs() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Current Info Preview */}
       {aboutUs && (
         <Card title="Thông tin Hiện tại">

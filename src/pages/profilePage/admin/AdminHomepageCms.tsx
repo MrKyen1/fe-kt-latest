@@ -825,7 +825,7 @@ export default function AdminHomepageCms() {
                 </Card>
               </Col>
 
-              <Col xs={24} lg={10} className="space-y-6">
+              <Col xs={24} lg={10} className="flex flex-col gap-6">
                 {/* Image selector */}
                 <Card className="rounded-2xl border-slate-200/80 shadow-none bg-slate-50/40 p-5">
                   <div className="font-semibold text-slate-700 mb-2">Ảnh đại diện About</div>
@@ -1348,7 +1348,7 @@ export default function AdminHomepageCms() {
                 </Card>
               </Col>
 
-              <Col xs={24} lg={10} className="space-y-6">
+              <Col xs={24} lg={10} className="flex flex-col gap-6">
                 {/* Social Links List */}
                 <Card className="rounded-2xl border-slate-200/80 shadow-none bg-slate-50/40 p-5">
                   <div className="font-semibold text-slate-700 mb-3">

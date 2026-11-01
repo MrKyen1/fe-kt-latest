@@ -352,7 +352,7 @@ export default function StudentMyExams() {
     }
 
     return (
-      <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-col gap-4 sm:gap-5">
         {/* Top Filter and Search Bar */}
         <Card className="rounded-2xl border border-slate-200/80 shadow-sm bg-white p-2">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">

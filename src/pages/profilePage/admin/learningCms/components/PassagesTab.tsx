@@ -1,7 +1,7 @@
 import { useCmsHeaderFilters } from "../../../../../components/CmsHeaderFilters";
 import { PagedCollection } from "../../../../../components/PagedCollection";
 import Table from "../../../../../components/Table";
-import { Button, Empty, Pagination, Space, Spin, Typography } from "antd";
+import { Button, Empty, Pagination, Space, Spin, Tooltip, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { BookOpen, Target } from "lucide-react";
 import { PAGE_SIZE_PASSAGES } from "../constants";
@@ -89,13 +89,15 @@ function buildColumns(
             />
           </Can>
           <Can perform="learning.delete">
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-              onClick={() => onDelete(record)}
-            />
+            <Tooltip title="Ngừng hoạt động">
+              <Button aria-label="Ngừng hoạt động"
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+                onClick={() => onDelete(record)}
+              />
+            </Tooltip>
           </Can>
         </Space>
       ),

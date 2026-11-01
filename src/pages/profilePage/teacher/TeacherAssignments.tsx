@@ -177,21 +177,21 @@ function CurriculumAnalyticsModal({
       styles={{ body: { maxHeight: "74vh", overflowY: "auto", padding: "16px 24px" } }}
     >
       {loading && !data ? <ContentSkeleton variant="stats" /> : data ? (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <Row gutter={[16, 16]}>
-            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-purple-50 text-center">
+            <Col xs={12} md={6}><Card className="rounded-2xl border-slate-100 bg-purple-50 text-center">
               <Statistic title="Học sinh được giao" value={data.assignedCount ?? studentsList.length}
                 prefix={<TeamOutlined className="text-purple-500" />} valueStyle={{ color: "#7c3aed" }} />
             </Card></Col>
-            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center">
+            <Col xs={12} md={6}><Card className="rounded-2xl border-slate-100 bg-emerald-50 text-center">
               <Statistic title="Đã hoàn thành" value={data.completedCount ?? 0}
                 prefix={<CheckCircleOutlined className="text-emerald-500" />} valueStyle={{ color: "#10b981" }} />
             </Card></Col>
-            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-amber-50 text-center">
+            <Col xs={12} md={6}><Card className="rounded-2xl border-slate-100 bg-amber-50 text-center">
               <Statistic title="Đang học" value={data.inProgressCount ?? 0}
                 prefix={<ClockCircleOutlined className="text-amber-500" />} valueStyle={{ color: "#f59e0b" }} />
             </Card></Col>
-            <Col span={6}><Card className="rounded-2xl border-slate-100 bg-slate-50 text-center">
+            <Col xs={12} md={6}><Card className="rounded-2xl border-slate-100 bg-slate-50 text-center">
               <Statistic title="Tiến độ TB" value={`${data.averageProgress?.toFixed(1) ?? "0"}%`}
                 prefix={<BarChartOutlined className="text-slate-500" />} valueStyle={{ color: "#475569" }} />
             </Card></Col>

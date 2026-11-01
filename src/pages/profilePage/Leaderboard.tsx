@@ -114,7 +114,7 @@ interface MyRankWidgetProps {
 function MyRankWidget({ summary, loading }: MyRankWidgetProps) {
   if (loading) {
     return (
-      <Card className="rounded-2xl border border-indigo-100 shadow-sm mb-6">
+      <Card className="rounded-2xl border border-indigo-100 shadow-sm !mb-6">
         <div className="flex justify-center py-6"><Spin /></div>
       </Card>
     );
@@ -648,7 +648,7 @@ export default function Leaderboard() {
 
       {/* Bảng xếp hạng accuracy trống với thông điệp */}
       {!loading && leaderboard?.entries?.length === 0 && (
-        <Card className="rounded-2xl border border-slate-100 shadow-sm mt-3">
+        <Card className="rounded-2xl border border-slate-100 shadow-sm !mt-3">
           <Empty
             description={
               <div className="text-center">
@@ -666,7 +666,7 @@ export default function Leaderboard() {
 
       {/* Table / Mobile List */}
       {(loading || (leaderboard?.entries?.length ?? 0) > 0) && (
-        <Card className="rounded-2xl border border-slate-100 shadow-sm mt-3" bodyStyle={{ padding: "0" }}>
+        <Card className="rounded-2xl border border-slate-100 shadow-sm !mt-3" bodyStyle={{ padding: "0" }}>
           {isMobile ? <PagedCollection loading={loading} hasData={(leaderboard?.entries?.length ?? 0) > 0} variant="list" footer={<div className="p-3 flex justify-center">
                 <Pagination
                   current={page}

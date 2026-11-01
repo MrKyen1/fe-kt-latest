@@ -177,7 +177,7 @@ function buildColumns(
             />
           </Tooltip>
           <Can perform="learning.delete">
-            <Tooltip title="Xóa câu hỏi">
+            <Tooltip title="Ngừng hoạt động">
               <Button
                 type="text"
                 size="small"

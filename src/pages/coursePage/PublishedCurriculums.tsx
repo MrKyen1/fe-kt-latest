@@ -56,7 +56,7 @@ export default function PublishedCurriculums() {
           </Text>
         </div>
 
-        {error && <Alert type="error" showIcon className="mb-8" message={error} />}
+        {error && <Alert type="error" showIcon className="!mb-8" message={error} />}
 
         <PagedCollection loading={isLoading} hasData={curriculums.length > 0} variant="cards" footer={catalog.total > 12 && <Pagination {...catalog.pagination} showSizeChanger={false} className="mt-6 text-center" />}>{curriculums.length === 0 ? (
           <div className="bg-white p-16 rounded-3xl shadow-sm border border-slate-100 text-center">

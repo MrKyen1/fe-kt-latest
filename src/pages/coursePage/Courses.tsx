@@ -101,7 +101,7 @@ export default function Courses() {
 
   return (
     <div className="w-full bg-slate-50 py-12 px-6 md:px-16 min-h-screen">
-      <div className="max-w-7xl mx-auto space-y-12">
+      <div className="max-w-7xl mx-auto flex flex-col gap-12">
         
         {/* ============================================================ */}
         {/* HERO / SEARCH HEADER                                         */}

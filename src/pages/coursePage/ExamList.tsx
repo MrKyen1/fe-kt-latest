@@ -296,7 +296,7 @@ export default function ExamList() {
           </Text>
         </div>
 
-        {error && <Alert type="error" showIcon className="mb-8" message={error} />}
+        {error && <Alert type="error" showIcon className="!mb-8" message={error} />}
 
         <PagedCollection loading={isLoading} hasData={curriculums.length > 0 || items.length > 0} variant="cards" footer={!selectedCurriculum && <Pagination {...listPage.pagination} className="mt-4" />}>{isCurriculum && !selectedCurriculum ? (
           // CURRICULUMS LIST VIEW

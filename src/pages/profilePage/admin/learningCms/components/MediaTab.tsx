@@ -1,5 +1,5 @@
 import { PagedCollection } from "../../../../../components/PagedCollection";
-import { Button, Card, Col, Empty, Pagination, Row, Select, Space, Spin } from "antd";
+import { Button, Card, Col, Empty, Pagination, Row, Select, Space, Spin, Tooltip } from "antd";
 import { DeleteOutlined, PlayCircleOutlined, SoundOutlined, UploadOutlined } from "@ant-design/icons";
 import { Video } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../services/apiClient";
@@ -186,16 +186,18 @@ export default function MediaTab({
                       </span>
                       <Space size={2}>
                         <Can perform="learning.delete">
-                          <Button
-                            type="text"
-                            size="small"
-                            danger
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteClick(asset);
-                            }}
-                          />
+                          <Tooltip title="Ngừng hoạt động">
+                            <Button aria-label="Ngừng hoạt động"
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteClick(asset);
+                              }}
+                            />
+                          </Tooltip>
                         </Can>
                       </Space>
                     </div>

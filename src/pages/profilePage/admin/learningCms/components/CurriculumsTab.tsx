@@ -224,14 +224,16 @@ function buildColumns(
             />
           </Can>
           <Can perform="learning.delete">
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
-              onClick={() => onDelete(record)}
-              className="shrink-0"
-            />
+            <Tooltip title="Ngừng hoạt động">
+              <Button aria-label="Ngừng hoạt động"
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined className="text-slate-400 hover:text-rose-600" />}
+                onClick={() => onDelete(record)}
+                className="shrink-0"
+              />
+            </Tooltip>
           </Can>
         </Space>
       ),
