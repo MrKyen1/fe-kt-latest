@@ -107,7 +107,7 @@ export default function MediaTab({
       )}>
 <Row gutter={[16, 16]} style={{ marginInline: 0 }}>
           {media.map((asset) => (
-            <Col xs={12} sm={8} md={6} lg={4} key={asset.id}>
+            <Col xs={12} sm={8} md={6} xl={4} key={asset.id}>
               <Card
                 hoverable
                 styles={{ body: { padding: 12 } }}
