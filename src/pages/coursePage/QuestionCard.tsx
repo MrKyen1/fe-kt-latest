@@ -1624,7 +1624,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
             <span className="font-semibold block mb-1">Đề bài:</span>
-            <div dangerouslySetInnerHTML={{ __html: question.questionContent }} className="font-medium text-slate-700 whitespace-pre-wrap" />
+            <div className="font-medium text-slate-700 whitespace-pre-wrap">{question.questionContent}</div>
           </div>
           <Form form={regradeForm} layout="vertical" onFinish={handleRegradeSubmit}>
             {CHOICE_TYPES.includes(question.type) && question.options && (

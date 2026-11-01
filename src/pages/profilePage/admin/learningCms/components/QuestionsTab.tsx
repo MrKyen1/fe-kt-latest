@@ -97,8 +97,9 @@ function buildColumns(
             >
               <div
                 className="font-semibold text-slate-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 transition-colors w-fit max-w-full"
-                dangerouslySetInnerHTML={{ __html: val }}
-              />
+              >
+                {val}
+              </div>
             </QuestionPopover>
             <Tag
               color={QUESTION_TYPE_COLORS[record.type] ?? "default"}
@@ -305,8 +306,9 @@ export default function QuestionsTab({
                   >
                     <div
                       className="font-semibold text-slate-800 text-sm leading-relaxed cursor-pointer hover:text-indigo-600 transition-colors line-clamp-3"
-                      dangerouslySetInnerHTML={{ __html: record.prompt || "<em>Không có đề bài văn bản</em>" }}
-                    />
+                    >
+                      {record.prompt || <em>Không có đề bài văn bản</em>}
+                    </div>
                   </QuestionPopover>
 
                   {/* Taxonomy chips */}

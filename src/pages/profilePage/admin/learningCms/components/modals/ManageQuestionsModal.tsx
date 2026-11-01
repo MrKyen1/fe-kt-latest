@@ -414,8 +414,9 @@ export default function ManageQuestionsModal({
                           title={
                             <div
                               className="text-xs font-semibold line-clamp-1 text-slate-800"
-                              dangerouslySetInnerHTML={{ __html: q?.prompt ?? "(Câu hỏi không tìm thấy)" }}
-                            />
+                            >
+                              {q?.prompt ?? "(Câu hỏi không tìm thấy)"}
+                            </div>
                           }
                           description={
                             q && (

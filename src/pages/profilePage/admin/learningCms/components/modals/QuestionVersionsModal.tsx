@@ -479,8 +479,9 @@ export default function QuestionVersionsModal({
           >
             <div
               className="text-xs text-slate-700 line-clamp-2 font-medium cursor-pointer hover:text-indigo-600 transition leading-relaxed max-w-xs"
-              dangerouslySetInnerHTML={{ __html: promptText }}
-            />
+            >
+              {promptText}
+            </div>
           </Popover>
         );
       },

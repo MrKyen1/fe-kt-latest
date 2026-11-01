@@ -80,10 +80,9 @@ export default function QuestionRowItem({
             )}
             <div
               className="text-xs text-slate-800 line-clamp-1 flex-1 min-w-0 font-normal"
-              dangerouslySetInnerHTML={{
-                __html: prompt || `Câu hỏi #${question?.id}`,
-              }}
-            />
+            >
+              {prompt || `Câu hỏi #${question?.id}`}
+            </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {isMismatched && (

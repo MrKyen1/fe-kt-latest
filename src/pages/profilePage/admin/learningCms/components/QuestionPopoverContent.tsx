@@ -297,8 +297,9 @@ export default function QuestionPopoverContent({
         )}
         <div
           className="font-semibold text-slate-800 leading-snug whitespace-pre-line"
-          dangerouslySetInnerHTML={{ __html: normalizeLineBreaks(question.prompt ?? "(Không có đề bài)") }}
-        />
+        >
+          {normalizeLineBreaks(question.prompt ?? "(Không có đề bài)")}
+        </div>
 
         {/* Câu bổ sung (nếu câu cũ có sourceSentence tách rời prompt) & Từ gợi ý */}
         {question.detail?.sourceSentence &&
