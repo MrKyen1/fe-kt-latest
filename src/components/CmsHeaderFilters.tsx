@@ -28,6 +28,12 @@ const statuses: Field = {
   ],
 };
 const search: Field = { key: "search", label: "Tìm kiếm", text: true };
+// Lists show active records unless this is ticked; it sends isActive=false.
+const inactive: Field = {
+  key: "isActive",
+  label: "Hoạt động",
+  options: [{ value: "false", label: "Chỉ hiện mục đã ngừng hoạt động" }],
+};
 const relation = (key: string, label: string, resource: string): Field => ({
   key,
   label,
@@ -157,10 +163,13 @@ export function useCmsHeaderFilters<T extends object>(
   const inherited = useContext(CmsHeaderFilterContext);
   const context = override || inherited;
   const config: Record<string, Record<number, Field[]>> = {
-    levels: { 0: [search] },
-    skills: { 0: [search] },
-    tags: { 0: [search] },
-    topics: { 0: [search], 1: [relation("parentIds", "Chủ đề cha", "topics")] },
+    levels: { 0: [search, inactive] },
+    skills: { 0: [search, inactive] },
+    tags: { 0: [search, inactive] },
+    topics: {
+      0: [search, inactive],
+      1: [relation("parentIds", "Chủ đề cha", "topics")],
+    },
     questions: {
       0: [
         search,
@@ -178,7 +187,7 @@ export function useCmsHeaderFilters<T extends object>(
         relation("topicIds", "Chủ đề", "topics"),
         relation("tagIds", "Tags", "tags"),
       ],
-      2: [statuses],
+      2: [statuses, inactive],
     },
     exams: {
       0: [search],
@@ -192,14 +201,16 @@ export function useCmsHeaderFilters<T extends object>(
           ],
         },
       ],
-      3: [statuses],
+      3: [statuses, inactive],
     },
     curriculums: {
       0: [search],
       1: [relation("examIds", "Đề thi", "exams")],
-      2: [statuses],
+      2: [statuses, inactive],
     },
-    passages: { 0: [search] },
+    passages: { 0: [search, inactive] },
+    // The deactivated-records table (InactiveList) keeps the way back.
+    inactive: { 0: [search], 1: [inactive] },
     "exam-versions": {
       0: [{ key: "versionNumber", label: "Số phiên bản", number: true }],
     },

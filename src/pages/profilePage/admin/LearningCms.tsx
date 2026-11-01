@@ -1,6 +1,7 @@
 import { CmsHeaderFilterContext, type CmsFilters } from "../../../components/CmsHeaderFilters";
 import { useLearningCmsSummary } from "../../../hooks/useLearningCmsSummary";
 import { useServerPagination } from "../../../hooks/useServerPagination";
+import { useResponsive } from "../../../hooks/useResponsive";
 import { ServerSelect, LearningLookupScope } from "../../../components/ServerSelect";
 import { ResponsiveTabs } from "../../../components/ResponsiveTabs";
 // ============================================================
@@ -480,11 +481,10 @@ export default function LearningCms() {
   const appliedCmsFilters = cmsFilters[filterScope] || {};
   const applyCmsFilters = (patch: CmsFilters) => setCmsFilters(previous => ({ ...previous, [filterScope]: { ...previous[filterScope], ...patch } }));
   const cmsQuery = Object.fromEntries(Object.entries(appliedCmsFilters).filter(([, value]) => value.length > 0).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : value]));
-  // Every list shows active records by default; the filter switches to deactivated ones.
+  // Lists show active records; the status header filter (or the in-tab toggle where there is no header) switches to deactivated ones.
   const canShowInactive = activeTab !== "curriculum-overview";
-  const [showInactive, setShowInactive] = useState(false);
-  useEffect(() => { setShowInactive(false); }, [resource]);
-  const listingInactive = canShowInactive && showInactive;
+  const listingInactive = canShowInactive && String(appliedCmsFilters.isActive || "") === "false";
+  const { isMobile } = useResponsive();
   const resourcePage = useServerPagination(`/learning/${resource}`, {
     specializationId: resource === "tags" ? undefined : selectedSpecializationId,
     category: resource === "media-assets" ? "question" : undefined,
@@ -1597,6 +1597,19 @@ export default function LearningCms() {
   // RENDER
   // ============================================================
 
+  // Card views (mobile) and the media grid have no column headers to filter on.
+  const inactiveToggle = (always = false) => (always || isMobile) && (
+    <div className="flex justify-end pt-3">
+      <Segmented
+        size="small"
+        value={listingInactive ? "inactive" : "active"}
+        onChange={(value) => applyCmsFilters({ isActive: value === "inactive" ? ["false"] : [] })}
+        options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
+        className="bg-slate-100 p-0.5 rounded-xl text-xs font-semibold whitespace-nowrap"
+      />
+    </div>
+  );
+
   const tabItems = [
     {
       key: "taxonomy",
@@ -1621,11 +1634,13 @@ export default function LearningCms() {
         >
           {listingInactive ? (
             <InactiveList
+              filterable={!isMobile}
               rows={getTaxData()}
               loading={taxLoading || resourcePage.loading}
               pagination={{ current: taxPage, pageSize: taxPageSize, total: taxTotal, onChange: handleTaxPageChange }}
               describe={(row: any) => <span><b>{row.name}</b> <span className="text-slate-400">{row.code}</span></span>}
               reactivate={hasPermission("learning.write") ? getTaxService(taxTab).reactivate : undefined}
+                                        confirmNote={taxTab === "topics" || taxTab === "skills" || taxTab === "levels" || taxTab === "tags" ? "Các câu hỏi đã được gỡ nhãn này khi ngừng sẽ không tự gắn lại." : undefined}
               onDone={loadAllData}
             />
           ) : undefined}
@@ -1635,9 +1650,9 @@ export default function LearningCms() {
     {
       key: "media",
       label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><PictureOutlined /> Media Assets</span>,
-      children: listingInactive ? (
+      children: <>{inactiveToggle(true)}{listingInactive ? (
         <InactiveList
-          rows={media}
+                    rows={media}
           loading={mediaLoading}
           pagination={{ current: mediaPage, pageSize: mediaPageSize, total: mediaTotal, onChange: handleMediaPageChange }}
           describe={(row: any) => row.title || row.originalName || row.storageKey}
@@ -1658,13 +1673,14 @@ export default function LearningCms() {
           onDeleteClick={handleMediaDelete}
           onPreviewClick={handlePreviewAsset}
         />
-      ),
+      )}</>,
     },
     {
       key: "passages",
       label: <span className="flex items-center gap-2 px-1 py-1.5 text-sm font-bold"><ReadOutlined /> Bài đọc</span>,
-      children: listingInactive ? (
+      children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          filterable={!isMobile}
           rows={passages}
           loading={passagesLoading}
           pagination={{ current: passagesPage, pageSize: passagesPageSize, total: passagesTotal, onChange: handlePassagesPageChange }}
@@ -1684,7 +1700,7 @@ export default function LearningCms() {
           onEditClick={handlePassageEdit}
           onDeleteClick={handlePassageDelete}
         />
-      ),
+      )}</>,
     },
     {
       key: "questions",
@@ -1694,8 +1710,9 @@ export default function LearningCms() {
           <Badge count={tabCount("questions")} showZero overflowCount={9999} title={cmsSummary.error ? "Không tải được số lượng" : undefined} color="indigo" style={{ marginLeft: 4 }} />
         </span>
       ),
-      children: listingInactive ? (
+      children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          filterable={!isMobile}
           rows={questions}
           loading={questionsLoading}
           pagination={{ current: questionsPage, pageSize: questionsPageSize, total: questionsTotal, onChange: handleQuestionsPageChange }}
@@ -1722,7 +1739,7 @@ export default function LearningCms() {
           onDeleteClick={handleQuestionDelete}
           onViewVersions={handleViewQuestionVersions}
         />
-      ),
+      )}</>,
     },
     {
       key: "exams",
@@ -1732,13 +1749,15 @@ export default function LearningCms() {
           <Badge count={tabCount("exams")} showZero overflowCount={9999} title={cmsSummary.error ? "Không tải được số lượng" : undefined} color="blue" style={{ marginLeft: 4 }} />
         </span>
       ),
-      children: listingInactive ? (
+      children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          filterable={!isMobile}
           rows={exams}
           loading={examsLoading}
           pagination={{ current: examsPage, pageSize: examsPageSize, total: examsTotal, onChange: handleExamsPageChange }}
           describe={(row: any) => <span><b>{row.title}</b> <span className="text-slate-400">{row.code}</span></span>}
           reactivate={learningCmsService.exams.reactivate}
+                                        confirmNote="Đề thi được gắn lại vào các giáo trình cũ. Đề ở trạng thái đã phát hành mới hiện cho học sinh."
           onDone={loadAllData}
         />
       ) : (
@@ -1759,7 +1778,7 @@ export default function LearningCms() {
           onConfigQuestions={handleOpenQuestions}
           onViewVersions={handleViewExamVersions}
         />
-      ),
+      )}</>,
     },
     {
       key: "curriculums",
@@ -1769,13 +1788,15 @@ export default function LearningCms() {
           <Badge count={tabCount("curriculums")} showZero overflowCount={9999} title={cmsSummary.error ? "Không tải được số lượng" : undefined} color="purple" style={{ marginLeft: 4 }} />
         </span>
       ),
-      children: listingInactive ? (
+      children: <>{inactiveToggle()}{listingInactive ? (
         <InactiveList
+          filterable={!isMobile}
           rows={curriculums}
           loading={curriculumsLoading}
           pagination={{ current: curriculumsPage, pageSize: curriculumsPageSize, total: curriculumsTotal, onChange: handleCurriculumsPageChange }}
           describe={(row: any) => <span><b>{row.title}</b> <span className="text-slate-400">{row.code}</span></span>}
           reactivate={learningCmsService.curriculums.reactivate}
+                                        confirmNote="Học sinh và lớp đã được giao giáo trình này thấy lại giáo trình, tiến độ cũ được giữ."
           onDone={loadAllData}
         />
       ) : (
@@ -1795,7 +1816,7 @@ export default function LearningCms() {
           onToggleStatus={handleToggleCurriculumStatus}
           onConfigExams={handleOpenExams}
         />
-      ),
+      )}</>,
     },
     {
       key: "curriculum-overview",
@@ -1886,14 +1907,6 @@ export default function LearningCms() {
                 )}
 
                 <div className="flex gap-3 items-center">
-                  {canShowInactive && (
-                    <Segmented
-                      value={showInactive ? "inactive" : "active"}
-                      onChange={(value) => setShowInactive(value === "inactive")}
-                      options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
-                      className="bg-slate-100 p-0.5 rounded-xl text-xs font-semibold whitespace-nowrap"
-                    />
-                  )}
                   <Badge count={tabCount("draftExams")} showZero overflowCount={9999} color="blue">
                     <div className="bg-blue-50/80 border border-blue-100 text-blue-700 px-3.5 py-2 rounded-xl text-xs font-bold">
                       Đề thi nháp

@@ -2018,13 +2018,14 @@ export default function CenterManagement() {
                   />
                   <Segmented size="small" value={centerStatusFilter} onChange={(value) => setCenterStatusFilter(value as "active" | "inactive")}
                       block options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
-                      className="bg-slate-100 p-0.5 rounded-xl text-xs [&_.ant-segmented-item-label]:!px-1.5 [&_.ant-segmented-item-label]:!whitespace-normal [&_.ant-segmented-item-label]:!leading-tight [&_.ant-segmented-item-label]:!py-1" />
+                      className="!mb-4 bg-slate-100 p-0.5 rounded-xl text-xs [&_.ant-segmented-item-label]:!px-1.5 [&_.ant-segmented-item-label]:!whitespace-normal [&_.ant-segmented-item-label]:!leading-tight [&_.ant-segmented-item-label]:!py-1" />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
                     {centerStatusFilter === "inactive" ? (
                     <InactiveList rows={centerPage.data} loading={centerPage.loading} pagination={centerPage.pagination}
                       describe={(row: any) => row.name}
                       reactivate={hasPermission("classes.manage") ? academicService.centers.reactivate : undefined}
+                                        confirmNote="Các lớp do việc ngừng trung tâm này đóng sẽ được mở lại. Lớp bạn đã tự ngừng trước đó vẫn giữ nguyên."
                       onDone={() => { centerPage.reload(); loadData(); }} />
                   ) : (
                     <PagedCollection region="center-list" loading={centerPage.loading} hasData={centers.length > 0} variant="centers" footer={centerPage.total > 10 && <Pagination {...centerPage.pagination} size="small" showSizeChanger={false} />}>
@@ -2340,6 +2341,7 @@ export default function CenterManagement() {
                         <InactiveList rows={classList.data} loading={classList.loading} pagination={classList.pagination}
                           describe={(row: any) => row.name}
                           reactivate={hasPermission("classes.manage") ? academicService.classes.reactivate : undefined}
+                                        confirmNote="Học sinh trong lớp làm được bài trở lại. Bài đang làm dở được làm tiếp, tiến độ được giữ nguyên."
                           onDone={() => { classList.reload(); loadData(); }} />
                       ) : (
                       <PagedCollection region="classes" loading={classList.loading} hasData={classes.length > 0} variant="classes" footer={classList.total > CLASSES_PAGE_SIZE && (
@@ -2896,6 +2898,7 @@ export default function CenterManagement() {
                                   <InactiveList rows={specializationList.data} loading={specializationList.loading} pagination={specializationList.pagination}
                                     describe={(row: any) => row.name}
                                     reactivate={hasPermission("classes.manage") ? academicService.specializations.reactivate : undefined}
+                                        confirmNote="Các lớp do việc ngừng môn này đóng sẽ được mở lại, nội dung của môn được mở khóa."
                                     onDone={() => { specializationList.reload(); loadData(); }} />
                                 ) : (<>
                                 {isMobile ? <PagedCollection loading={specializationList.loading} hasData={specializations.length > 0} variant="list" footer={specializationList.total > 5 && (
