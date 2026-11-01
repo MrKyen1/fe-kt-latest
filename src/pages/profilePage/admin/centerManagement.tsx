@@ -240,6 +240,8 @@ export default function CenterManagement() {
   }, [isTeacher, user, classes, teachers]);
 
   const visibleCenters = centers;
+  // The lists can be switched to "Đã ngừng"; pickers must never offer a stopped center or subject.
+  const isLive = (row: any) => row?.isActive !== false;
 
   // ================= UI STATE =================
   const location = useLocation();
@@ -375,7 +377,6 @@ export default function CenterManagement() {
   // Dynamic filter state for modal inputs
   const [selectedModalCenterId, setSelectedModalCenterId] = useState<string | undefined>(undefined);
   const [selectedTeacherCenterIds, setSelectedTeacherCenterIds] = useState<string[]>([]);
-  const [classPage, setClassPage] = useState<number>(1);
   const [showAllCenterImages, setShowAllCenterImages] = useState<boolean>(false);
 
   // ================= FORMS =================
@@ -3248,7 +3249,7 @@ export default function CenterManagement() {
                   rules={[{ required: true, message: "Vui lòng chọn trung tâm!" }]}
                 >
                   <ServerSelect endpoint="/centers" placeholder="Chọn trung tâm" className="rounded-xl"
-                    options={[...centers, ...classLookupCenters, selectedCenter, editingClass?.center].filter(Boolean)
+                    options={[...centers.filter(isLive), ...classLookupCenters, selectedCenter, editingClass?.center].filter(Boolean)
                       .map(center => ({ value: center.id, label: center.name }))}
                     onRecords={rows => setClassLookupCenters(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))} />
                 </Form.Item>
@@ -3259,7 +3260,7 @@ export default function CenterManagement() {
                   rules={[{ required: true, message: "Vui lòng chọn môn học cho lớp!" }]}
                 >
                   <ServerSelect endpoint="/specializations" placeholder="Chọn môn học" className="rounded-xl" disabled={!!editingClass}
-                    options={[...specializations, ...classLookupSpecializations, editingClass?.specialization].filter(Boolean)
+                    options={[...specializations.filter(isLive), ...classLookupSpecializations, editingClass?.specialization].filter(Boolean)
                       .map(spec => ({ value: spec.id, label: spec.name }))}
                     onRecords={rows => setClassLookupSpecializations(previous => Array.from(new Map([...previous, ...rows].map(row => [row.id, row])).values()))}
                     onChange={() => classForm.setFieldValue("curriculumIds", [])} />
@@ -3515,7 +3516,7 @@ export default function CenterManagement() {
                           });
                           teacherForm.setFieldsValue({ classIds: validClassIds });
                         }}
-                        options={[...centers, selectedCenter, ...(editingTeacher?.teacherProfile?.classes || []).map((cls: any) => cls.center)]
+                        options={[...centers.filter(isLive), selectedCenter, ...(editingTeacher?.teacherProfile?.classes || []).map((cls: any) => cls.center)]
                           .filter(Boolean).map((c) => ({ label: c.name, value: c.id }))}
                       />
                     </Form.Item>
@@ -3572,7 +3573,7 @@ export default function CenterManagement() {
                     placeholder="Chọn chuyên môn"
                     style={{ width: "100%" }}
                     className="rounded-xl"
-                    options={[...(editingTeacher?.teacherProfile?.specializations || []), ...specializations]
+                    options={[...(editingTeacher?.teacherProfile?.specializations || []), ...specializations.filter(isLive)]
                       .map((s) => ({ label: s.name, value: s.id }))}
                   />
                 </Form.Item>

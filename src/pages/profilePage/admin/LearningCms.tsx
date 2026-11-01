@@ -278,7 +278,6 @@ export default function LearningCms() {
   };
 
   // ── Taxonomy search / filter ───────────────────────────────
-  const [taxLoading, setTaxLoading] = useState(false);
   const [filteredLevels, setFilteredLevels] = useState<any[]>([]);
   const [filteredSkills, setFilteredSkills] = useState<any[]>([]);
   const [filteredTopics, setFilteredTopics] = useState<any[]>([]);
@@ -520,12 +519,6 @@ export default function LearningCms() {
         setCurriculums(data); setCurriculumsPage(current); setCurriculumsPageSize(pageSize); setCurriculumsTotal(resourcePage.total); break;
     }
   }, [resourcePage.data, resourcePage.total, resourcePage.loading, resourcePage.error, activeTab, taxTab]);
-  const loadTaxonomyData = async (_tab: string, _search = "", page = taxPage, size = taxPageSize) => resourcePage.pagination.onChange(page, size);
-  const loadMediaData = async (page = mediaPage, size = mediaPageSize) => resourcePage.pagination.onChange(page, size);
-  const loadQuestionsData = async (page = questionsPage, size = questionsPageSize) => resourcePage.pagination.onChange(page, size);
-  const loadPassagesData = async (page = passagesPage, size = passagesPageSize) => resourcePage.pagination.onChange(page, size);
-  const loadExamsData = async (page = examsPage, size = examsPageSize) => resourcePage.pagination.onChange(page, size);
-  const loadCurriculumsData = async (page = curriculumsPage, size = curriculumsPageSize) => resourcePage.pagination.onChange(page, size);
   const handleQuestionsPageChange = (page: number, size: number) => resourcePage.pagination.onChange(page, size);
   const handlePassagesPageChange = handleQuestionsPageChange;
   const handleExamsPageChange = handleQuestionsPageChange;
@@ -1626,7 +1619,7 @@ export default function LearningCms() {
           searchPlaceholder={getSearchPlaceholder()}
           columns={taxColumns}
           dataSource={getTaxData()}
-          loading={taxLoading || (activeTab === "taxonomy" && resourcePage.loading)}
+          loading={activeTab === "taxonomy" && resourcePage.loading}
           pagination={{
             current: taxPage,
             pageSize: taxPageSize,
@@ -1639,7 +1632,7 @@ export default function LearningCms() {
             <InactiveList
               filterable={!isMobile}
               rows={getTaxData()}
-              loading={taxLoading || resourcePage.loading}
+              loading={resourcePage.loading}
               pagination={{ current: taxPage, pageSize: taxPageSize, total: taxTotal, onChange: handleTaxPageChange }}
               describe={(row: any) => <span><b>{row.name}</b> <span className="text-slate-400">{row.code}</span></span>}
               reactivate={hasPermission("learning.write") ? getTaxService(taxTab).reactivate : undefined}

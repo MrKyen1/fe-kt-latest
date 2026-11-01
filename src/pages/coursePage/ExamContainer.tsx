@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { PATHS } from "../../routes/paths";
 import { QuestionCard } from "./QuestionCard";
 import { ExamData } from "../../types";
 import { ClockCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
@@ -465,7 +466,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         title: "Bài làm đang tạm dừng",
         content: error.message || "Lớp, giáo trình hoặc lượt giao bài đã ngừng hoạt động. Bài làm của em vẫn được giữ nguyên.",
         okText: "Quay lại",
-        onOk: () => navigate(-1),
+        // A deep link opened in a new tab has no page behind it to go back to.
+        onOk: () => (window.history.length > 1 ? navigate(-1) : navigate(PATHS.STUDENT.MY_EXAMS)),
       });
     }
     return true;
