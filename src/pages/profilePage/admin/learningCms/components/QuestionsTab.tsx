@@ -60,8 +60,6 @@ interface Props {
 function StatusTag({ status }: { status: string }) {
   if (status === "published")
     return <Tag color="success" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.published}</Tag>;
-  if (status === "archived")
-    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.archived}</Tag>;
   return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS[status] || status}</Tag>;
 }
 

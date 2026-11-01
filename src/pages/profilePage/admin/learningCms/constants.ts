@@ -82,5 +82,4 @@ export const LIST_LIMIT = 100;
 export const CONTENT_STATUS_LABELS: Record<string, string> = {
   draft: "Nháp",
   published: "Đang phát hành",
-  archived: "Ngừng phát hành",
 };

@@ -24,7 +24,6 @@ const statuses: Field = {
   options: [
     { value: "draft", label: CONTENT_STATUS_LABELS.draft },
     { value: "published", label: CONTENT_STATUS_LABELS.published },
-    { value: "archived", label: CONTENT_STATUS_LABELS.archived },
   ],
 };
 const search: Field = { key: "search", label: "Tìm kiếm", text: true };

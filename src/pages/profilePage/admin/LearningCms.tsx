@@ -124,8 +124,6 @@ const ANT_THEME = {
 export function statusTag(status: string) {
   if (status === "published")
     return <Tag color="success" className="rounded-full border-none text-xs font-semibold">Đã duyệt</Tag>;
-  if (status === "archived")
-    return <Tag color="default" className="rounded-full border-none text-xs font-semibold">{CONTENT_STATUS_LABELS.archived}</Tag>;
   return <Tag color="warning" className="rounded-full border-none text-xs font-semibold">Nháp</Tag>;
 }
 

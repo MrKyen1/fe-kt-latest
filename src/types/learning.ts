@@ -14,7 +14,7 @@ export type QuestionType =
   | "error_correction"
   | "matching";
 
-export type LearningStatus = "draft" | "published" | "archived";
+export type LearningStatus = "draft" | "published";
 export type AssignmentStatus = "active" | "cancelled";
 export type AttemptStatus = "in_progress" | "submitted";
 

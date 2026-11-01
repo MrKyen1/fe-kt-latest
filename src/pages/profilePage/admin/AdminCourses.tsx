@@ -259,7 +259,6 @@ export default function AdminCourses() {
                 options={[
                   { value: "draft", label: "Draft" },
                   { value: "published", label: "Published" },
-                  { value: "archived", label: "Archived" },
                 ]}
               />
             </Form.Item>
