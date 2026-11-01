@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PATHS } from "../../routes/paths";
 import { QuestionCard } from "./QuestionCard";
 import { ExamData } from "../../types";
@@ -455,6 +455,7 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
   examData,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { courseId, examId: attemptIdParam } = useParams<{ courseId?: string; examId?: string }>();
   // The class, curriculum, subject or assignment behind this attempt stopped: answers stay saved, work pauses.
   const closedNoticeShownRef = useRef(false);
@@ -466,8 +467,8 @@ const ExamContainer: React.FC<ExamContainerProps> = ({
         title: "Bài làm đang tạm dừng",
         content: error.message || "Lớp, giáo trình hoặc lượt giao bài đã ngừng hoạt động. Bài làm của em vẫn được giữ nguyên.",
         okText: "Quay lại",
-        // A deep link opened in a new tab has no page behind it to go back to.
-        onOk: () => (window.history.length > 1 ? navigate(-1) : navigate(PATHS.STUDENT.MY_EXAMS)),
+        // "default" is the first page the app showed: a deep link has no page of ours behind it.
+        onOk: () => (location.key === "default" ? navigate(PATHS.STUDENT.MY_EXAMS) : navigate(-1)),
       });
     }
     return true;

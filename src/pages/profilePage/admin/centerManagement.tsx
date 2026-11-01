@@ -1508,7 +1508,7 @@ export default function CenterManagement() {
         if (isScheduled) {
           return (
             <Tooltip title={`Sẽ ngừng hoạt động vào ${endDate!.format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
-              <div className="space-y-1">
+              <div className="flex flex-col items-start gap-1">
                 <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
                   Đang hoạt động
                 </Tag>
@@ -1695,7 +1695,7 @@ export default function CenterManagement() {
         if (isScheduled) {
           return (
             <Tooltip title={`Sẽ ngừng hoạt động vào ${dayjs(record.endDate).format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
-              <div className="space-y-1">
+              <div className="flex flex-col items-start gap-1">
                 <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
                   Đang hoạt động
                 </Tag>
@@ -1892,7 +1892,7 @@ export default function CenterManagement() {
         if (isScheduled) {
           return (
             <Tooltip title={`Sẽ ngừng hoạt động vào ${endDate!.format("DD/MM/YYYY")} (còn ${daysLeft} ngày)`}>
-              <div className="space-y-1">
+              <div className="flex flex-col items-start gap-1">
                 <Tag color="success" className="border-none rounded-full px-2.5 py-0.5 text-xs font-semibold">
                   Đang hoạt động
                 </Tag>
