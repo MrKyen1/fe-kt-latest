@@ -1748,7 +1748,7 @@ export default function LearningCms() {
           loading={examsLoading}
           pagination={{ current: examsPage, pageSize: examsPageSize, total: examsTotal, onChange: handleExamsPageChange }}
           describe={(row: any) => <span><b>{row.title}</b> <span className="text-slate-400">{row.code}</span></span>}
-          reactivate={hasPermission("learning.write") ? learningCmsService.exams.reactivate : undefined}
+          reactivate={hasPermission("learning.delete") ? learningCmsService.exams.reactivate : undefined}
           confirmNote="Đề thi được gắn lại vào các giáo trình cũ. Đề ở trạng thái đã phát hành mới hiện cho học sinh."
           onDone={loadAllData}
         />
@@ -1788,7 +1788,7 @@ export default function LearningCms() {
           loading={curriculumsLoading}
           pagination={{ current: curriculumsPage, pageSize: curriculumsPageSize, total: curriculumsTotal, onChange: handleCurriculumsPageChange }}
           describe={(row: any) => <span><b>{row.title}</b> <span className="text-slate-400">{row.code}</span></span>}
-          reactivate={hasPermission("learning.write") ? learningCmsService.curriculums.reactivate : undefined}
+          reactivate={hasPermission("learning.delete") ? learningCmsService.curriculums.reactivate : undefined}
           confirmNote="Học sinh và lớp đã được giao giáo trình này thấy lại giáo trình, tiến độ cũ được giữ."
           onDone={loadAllData}
         />
