@@ -172,7 +172,8 @@
 @media (max-width: 767.98px) {
   /* Chống tràn ngang 100% toàn bộ trang trên điện thoại */
   html, body, #root {
-    overflow-x: hidden !important;
+    /* clip, not hidden: hidden turns these into scroll boxes, which breaks every position: sticky */
+    overflow-x: clip !important;
     max-width: 100vw !important;
     width: 100% !important;
   }
@@ -288,7 +289,9 @@
 html,
 body,
 #root {
-  overflow-x: hidden !important;
+  /* clip, not hidden: hidden makes #root a scroll box that never scrolls, so
+     the header, side panels and every other position: sticky stop sticking. */
+  overflow-x: clip !important;
   max-width: 100vw !important;
   -webkit-text-size-adjust: 100%;
   background-color: #f8fafc;
