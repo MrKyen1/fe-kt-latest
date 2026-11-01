@@ -1,5 +1,5 @@
 import { PagedCollection } from "../../../../../components/PagedCollection";
-import { Button, Card, Col, Empty, Pagination, Row, Select, Space, Spin, Tooltip } from "antd";
+import { Button, Card, Col, Empty, Pagination, Row, Select, Space, Spin, Tag, Tooltip } from "antd";
 import { DeleteOutlined, PlayCircleOutlined, SoundOutlined, UploadOutlined } from "@ant-design/icons";
 import { Video } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../services/apiClient";
@@ -110,6 +110,7 @@ export default function MediaTab({
             <Col xs={12} sm={8} md={6} lg={4} key={asset.id}>
               <Card
                 hoverable
+                styles={{ body: { padding: 12 } }}
                 className="overflow-hidden border-slate-100 rounded-2xl relative group"
                 cover={
                   <div className="h-32 bg-slate-50 flex items-center justify-center overflow-hidden relative">
@@ -180,7 +181,9 @@ export default function MediaTab({
                     </span>
                   }
                   description={
-                    <div className="flex justify-between items-center mt-1">
+                    <div className="flex flex-col gap-1 mt-1">
+                      <Tag color="success" className="!m-0 self-start rounded-full border-none !text-[10px] !leading-5 !px-2 font-semibold whitespace-nowrap">Đang hoạt động</Tag>
+                    <div className="flex justify-between items-center">
                       <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 uppercase font-medium">
                         {asset.type ?? "File"}
                       </span>
@@ -200,6 +203,7 @@ export default function MediaTab({
                           </Tooltip>
                         </Can>
                       </Space>
+                    </div>
                     </div>
                   }
                 />

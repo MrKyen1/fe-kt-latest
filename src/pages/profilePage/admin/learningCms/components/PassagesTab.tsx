@@ -175,8 +175,11 @@ export default function PassagesTab({
                 key={item.id}
                 className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3"
               >
-                <div className="font-bold text-slate-800 text-base">
-                  {item.title}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-bold text-slate-800 text-base min-w-0 break-words">
+                    {item.title}
+                  </div>
+                  <Tag color="success" className="!m-0 shrink-0 rounded-full border-none text-xs font-semibold whitespace-nowrap">Đang hoạt động</Tag>
                 </div>
 
                 <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
