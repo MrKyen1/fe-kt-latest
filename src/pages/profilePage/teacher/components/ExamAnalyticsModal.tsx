@@ -17,7 +17,9 @@ import {
   message,
   Button,
   Pagination,
-  Alert} from "antd";
+  Alert,
+  Dropdown,
+} from "antd";
 import {
   BarChartOutlined,
   TeamOutlined,
@@ -31,6 +33,7 @@ import {
   CloseOutlined,
   BookOutlined,
   UserOutlined,
+  DownOutlined,
 } from "@ant-design/icons";
 import { teacherLearningService } from "../../../../services/teacherLearningService";
 import { learningCmsService } from "../../../../services/learningCmsService";
@@ -38,6 +41,299 @@ import { useAuth } from "../../../../contexts/AuthContext";
 import { getErrorMessage } from "../../../../services/apiClient";
 import { TeacherAttemptDetailModal, formatDateTime, formatDuration } from "./TeacherAttemptDetailModal";
 import { formatScore, formatPercentage } from "../../../../utils/studentExamUtils";
+
+// ==================== HELPER COMPONENTS CHO GIAO DIỆN HỌC SINH & ĐỀ THI ====================
+
+function StudentStatusTag({ status, percentage }: { status: string; percentage?: number | null }) {
+  if (status === "finished") {
+    return (
+      <Tag color="success" className="border-none rounded-full text-[10px] font-medium m-0 px-1.5">
+        ✓ 100%
+      </Tag>
+    );
+  }
+  if (status === "submitted") {
+    return (
+      <Tag color="gold" className="border-none rounded-full text-[10px] font-medium m-0 px-1.5">
+        {percentage != null ? `${Math.round(percentage)}%` : "Đã nộp"}
+      </Tag>
+    );
+  }
+  if (status === "in_progress") {
+    return (
+      <Tag color="warning" className="border-none rounded-full text-[10px] font-medium m-0 px-1.5">
+        Đang làm
+      </Tag>
+    );
+  }
+  return (
+    <Tag color="default" className="border-none rounded-full text-[10px] text-slate-400 m-0 px-1.5">
+      Chưa làm
+    </Tag>
+  );
+}
+
+function StudentListWithOverflow({
+  students = [],
+  maxVisible = 3,
+  examTitle,
+  onSwitchToStudentTab,
+}: {
+  students: any[];
+  maxVisible?: number;
+  examTitle?: string;
+  onSwitchToStudentTab?: () => void;
+}) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const safeStudents = Array.isArray(students) ? students : [];
+
+  const filteredInPopover = useMemo(() => {
+    if (!searchTerm.trim()) return safeStudents;
+    const lower = searchTerm.toLowerCase();
+    return safeStudents.filter(
+      (s: any) =>
+        s.fullName?.toLowerCase().includes(lower) ||
+        s.code?.toLowerCase().includes(lower)
+    );
+  }, [safeStudents, searchTerm]);
+
+  if (safeStudents.length === 0) {
+    return <span className="text-xs text-slate-400 italic">Chưa có học sinh</span>;
+  }
+
+  const visible = safeStudents.slice(0, maxVisible);
+  const remaining = safeStudents.length - maxVisible;
+
+  const finishedCount = safeStudents.filter((s: any) => s.examStatus === "finished").length;
+  const submittedCount = safeStudents.filter((s: any) => s.examStatus === "submitted").length;
+  const inProgressCount = safeStudents.filter((s: any) => s.examStatus === "in_progress").length;
+  const notStartedCount = safeStudents.filter((s: any) => s.examStatus === "not_started").length;
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {visible.map((st: any) => (
+        <div
+          key={st.studentId}
+          className="inline-flex items-center gap-1.5 bg-white border border-slate-200/90 px-2 py-0.5 rounded-md text-xs shadow-2xs"
+        >
+          <UserOutlined className="text-slate-400 text-[11px]" />
+          <span className="font-semibold text-slate-700 truncate max-w-[130px]" title={st.fullName}>
+            {st.fullName}
+          </span>
+          <StudentStatusTag status={st.examStatus} percentage={st.bestPercentage} />
+        </div>
+      ))}
+
+      {remaining > 0 && (
+        <Popover
+          open={popoverOpen}
+          onOpenChange={(open) => {
+            setPopoverOpen(open);
+            if (!open) setSearchTerm("");
+          }}
+          trigger="click"
+          placement="bottomLeft"
+          content={
+            <div className="w-80 flex flex-col -m-1 p-2">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <TeamOutlined className="text-indigo-500" />
+                  <span className="text-xs font-bold text-slate-800">
+                    Học sinh được giao ({students.length})
+                  </span>
+                </div>
+                {onSwitchToStudentTab && (
+                  <button
+                    type="button"
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                    onClick={() => {
+                      setPopoverOpen(false);
+                      onSwitchToStudentTab();
+                    }}
+                  >
+                    Xem chi tiết →
+                  </button>
+                )}
+              </div>
+
+              {/* Status summary pill counts */}
+              <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-2 bg-slate-50 px-2 py-1 rounded-md justify-between">
+                <span className="text-emerald-600 font-semibold">✓ {finishedCount} đạt 100%</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-amber-600 font-semibold">{submittedCount + inProgressCount} đang làm</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-400 font-semibold">{notStartedCount} chưa làm</span>
+              </div>
+
+              {students.length > 5 && (
+                <div className="mb-2">
+                  <Input
+                    size="small"
+                    placeholder="Tìm tên học sinh..."
+                    prefix={<SearchOutlined className="text-slate-400 text-xs" />}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    allowClear
+                    className="rounded-lg text-xs"
+                  />
+                </div>
+              )}
+
+              {/* Scrollable student list */}
+              <div className="max-h-56 overflow-y-auto space-y-1 pr-1 divide-y divide-slate-100">
+                {filteredInPopover.length > 0 ? (
+                  filteredInPopover.map((st: any) => (
+                    <div
+                      key={st.studentId}
+                      className="flex items-center justify-between gap-2 pt-1 text-xs hover:bg-slate-50 px-1 py-1 rounded transition-colors"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <UserOutlined className="text-slate-400 text-[11px] shrink-0" />
+                        <span className="font-medium text-slate-800 truncate" title={st.fullName}>
+                          {st.fullName}
+                        </span>
+                      </div>
+                      <StudentStatusTag status={st.examStatus} percentage={st.bestPercentage} />
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-xs text-slate-400">Không tìm thấy học sinh nào</div>
+                )}
+              </div>
+            </div>
+          }
+        >
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/90 px-2 py-0.5 rounded-md text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
+            title="Nhấn để xem toàn bộ học sinh"
+          >
+            <span>+{remaining} học sinh khác</span>
+            <DownOutlined className="text-[9px]" />
+          </button>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+function ExamFilterBar({
+  questionGroups,
+  selectedExamFilter,
+  onSelectExam,
+}: {
+  questionGroups: any[];
+  selectedExamFilter: string;
+  onSelectExam: (examId: string) => void;
+}) {
+  const MAX_VISIBLE = 2; // Hiển thị "Tất cả đề" + tối đa 2 đề, còn lại gom vào dropdown +X đề khác
+
+  if (!questionGroups || questionGroups.length <= 1) return null;
+
+  const visibleGroups = questionGroups.slice(0, MAX_VISIBLE);
+  const remainingGroups = questionGroups.slice(MAX_VISIBLE);
+
+  const isRemainingSelected = remainingGroups.some((g) => (g.examId || "") === selectedExamFilter);
+  const selectedRemainingGroup = remainingGroups.find((g) => (g.examId || "") === selectedExamFilter);
+
+  const remainingMenuItems = remainingGroups.map((g, idx) => ({
+    key: g.examId || `exam_${MAX_VISIBLE + idx}`,
+    label: (
+      <div className="flex items-center justify-between gap-3 min-w-[200px] py-0.5">
+        <span className="font-medium text-xs text-slate-800 truncate max-w-[220px]" title={g.examTitle}>
+          {g.examTitle}
+        </span>
+        <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+          {g.questions.length} câu
+        </span>
+      </div>
+    ),
+    icon: <FileTextOutlined className={selectedExamFilter === g.examId ? "text-indigo-600" : "text-slate-400"} />,
+  }));
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Pill: Tất cả đề */}
+      <button
+        type="button"
+        onClick={() => onSelectExam("all")}
+        className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+          selectedExamFilter === "all"
+            ? "bg-indigo-600 text-white shadow-xs"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
+        }`}
+      >
+        <span>Tất cả đề</span>
+        <span
+          className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+            selectedExamFilter === "all" ? "bg-white/20 text-white" : "bg-slate-200/80 text-slate-600"
+          }`}
+        >
+          {questionGroups.length}
+        </span>
+      </button>
+
+      {/* Visible exam pills */}
+      {visibleGroups.map((g) => {
+        const isSelected = selectedExamFilter === g.examId;
+        return (
+          <button
+            key={g.examId}
+            type="button"
+            onClick={() => onSelectExam(g.examId)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all max-w-[200px] ${
+              isSelected
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
+            }`}
+            title={g.examTitle}
+          >
+            <span className="truncate">{g.examTitle}</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono shrink-0 ${
+                isSelected ? "bg-white/20 text-white" : "bg-slate-200/80 text-slate-600"
+              }`}
+            >
+              {g.questions.length}
+            </span>
+          </button>
+        );
+      })}
+
+      {/* Overflow Dropdown: +X đề khác */}
+      {remainingGroups.length > 0 && (
+        <Dropdown
+          trigger={["click"]}
+          placement="bottomRight"
+          menu={{
+            items: remainingMenuItems,
+            onClick: ({ key }) => onSelectExam(key),
+            selectedKeys: isRemainingSelected ? [selectedExamFilter] : [],
+          }}
+        >
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all border ${
+              isRemainingSelected
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                : "bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:border-slate-300 shadow-2xs"
+            }`}
+          >
+            <FileTextOutlined className={isRemainingSelected ? "text-white" : "text-indigo-500"} />
+            <span className="max-w-[150px] truncate">
+              {isRemainingSelected
+                ? `${selectedRemainingGroup?.examTitle} (${selectedRemainingGroup?.questions.length})`
+                : `+${remainingGroups.length} đề khác`}
+            </span>
+            <DownOutlined className="text-[9px]" />
+          </button>
+        </Dropdown>
+      )}
+    </div>
+  );
+}
 
 export function ExamAnalyticsModal({
   assignmentId,
@@ -340,7 +636,10 @@ export function ExamAnalyticsModal({
     return questionPage.total;
   }, [questionPage.total]);
 
-  const filteredQuestionGroups = questionGroups;
+  const filteredQuestionGroups = useMemo(() => {
+    if (selectedExamFilter === "all") return questionGroups;
+    return questionGroups.filter((g) => (g.examId || "") === selectedExamFilter);
+  }, [questionGroups, selectedExamFilter]);
 
   // Map assigned students and their specific progress per exam
   const examStudentAssignments = questionGroups.map(group => ({ ...group,
@@ -585,52 +884,13 @@ export function ExamAnalyticsModal({
                                     </span>
                                   </div>
 
-                                  <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-200/70">
-                                    {eg.students.map((st: any) => (
-                                      <div
-                                        key={st.studentId}
-                                        className="inline-flex items-center gap-1.5 bg-white border border-slate-200/90 px-2 py-1 rounded-md text-xs shadow-2xs"
-                                      >
-                                        <UserOutlined className="text-slate-400 text-[11px]" />
-                                        <span className="font-semibold text-slate-700">
-                                          {st.fullName}
-                                        </span>
-                                        {st.examStatus === "finished" && (
-                                          <Tag
-                                            color="success"
-                                            className="border-none rounded-full text-[10px] font-medium m-0 px-1.5"
-                                          >
-                                            ✓ 100%
-                                          </Tag>
-                                        )}
-                                        {st.examStatus === "submitted" && (
-                                          <Tag
-                                            color="gold"
-                                            className="border-none rounded-full text-[10px] font-medium m-0 px-1.5"
-                                          >
-                                            {st.bestPercentage != null
-                                              ? `${Math.round(st.bestPercentage)}%`
-                                              : "Đã nộp"}
-                                          </Tag>
-                                        )}
-                                        {st.examStatus === "in_progress" && (
-                                          <Tag
-                                            color="warning"
-                                            className="border-none rounded-full text-[10px] font-medium m-0 px-1.5"
-                                          >
-                                            Đang làm
-                                          </Tag>
-                                        )}
-                                        {st.examStatus === "not_started" && (
-                                          <Tag
-                                            color="default"
-                                            className="border-none rounded-full text-[10px] text-slate-400 m-0 px-1.5"
-                                          >
-                                            Chưa làm
-                                          </Tag>
-                                        )}
-                                      </div>
-                                    ))}
+                                  <div className="pt-2 border-t border-slate-200/70">
+                                    <StudentListWithOverflow
+                                      students={eg.students}
+                                      maxVisible={3}
+                                      examTitle={eg.examTitle}
+                                      onSwitchToStudentTab={() => setActiveTab("students")}
+                                    />
                                   </div>
                                 </div>
                               );
@@ -655,17 +915,10 @@ export function ExamAnalyticsModal({
                           </div>
 
                           {questionGroups.length > 1 && (
-                            <Segmented
-                              size="small"
-                              value={selectedExamFilter}
-                              onChange={(val: any) => setSelectedExamFilter(val)}
-                              options={[
-                                { label: `Tất cả đề (${questionGroups.length})`, value: "all" },
-                                ...questionGroups.map((g, idx) => ({
-                                  label: `${g.examTitle} (${g.questions.length})`,
-                                  value: g.examId || `exam_${idx}`,
-                                })),
-                              ]}
+                            <ExamFilterBar
+                              questionGroups={questionGroups}
+                              selectedExamFilter={selectedExamFilter}
+                              onSelectExam={(val: string) => setSelectedExamFilter(val)}
                             />
                           )}
                         </div>
@@ -718,52 +971,12 @@ export function ExamAnalyticsModal({
                                           <TeamOutlined className="text-slate-400 text-xs" />
                                           Học sinh được giao ({students.length}):
                                         </span>
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          {students.map((st: any) => (
-                                            <span
-                                              key={st.studentId}
-                                              className="inline-flex items-center gap-1 bg-white border border-slate-200/80 px-2 py-0.5 rounded-md text-xs"
-                                            >
-                                              <span className="font-semibold text-slate-700">
-                                                {st.fullName}
-                                              </span>
-                                              {st.examStatus === "finished" && (
-                                                <Tag
-                                                  color="success"
-                                                  className="border-none rounded-full text-[10px] font-medium m-0 px-1"
-                                                >
-                                                  100%
-                                                </Tag>
-                                              )}
-                                              {st.examStatus === "submitted" && (
-                                                <Tag
-                                                  color="orange"
-                                                  className="border-none rounded-full text-[10px] font-medium m-0 px-1"
-                                                >
-                                                  {st.bestPercentage != null
-                                                    ? `${st.bestPercentage}%`
-                                                    : "Đã nộp"}
-                                                </Tag>
-                                              )}
-                                              {st.examStatus === "in_progress" && (
-                                                <Tag
-                                                  color="warning"
-                                                  className="border-none rounded-full text-[10px] font-medium m-0 px-1"
-                                                >
-                                                  Đang làm
-                                                </Tag>
-                                              )}
-                                              {st.examStatus === "not_started" && (
-                                                <Tag
-                                                  color="default"
-                                                  className="border-none rounded-full text-[10px] text-slate-400 m-0 px-1"
-                                                >
-                                                  Chưa làm
-                                                </Tag>
-                                              )}
-                                            </span>
-                                          ))}
-                                        </div>
+                                        <StudentListWithOverflow
+                                          students={students}
+                                          maxVisible={3}
+                                          examTitle={group.examTitle}
+                                          onSwitchToStudentTab={() => setActiveTab("students")}
+                                        />
                                       </div>
                                     );
                                   })()}
