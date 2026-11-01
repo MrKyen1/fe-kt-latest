@@ -5,6 +5,8 @@ import type { TablePaginationConfig } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { getErrorMessage } from "../services/apiClient";
 import { useCmsHeaderFilters } from "./CmsHeaderFilters";
+import { ColumnCards } from "./ColumnCards";
+import { useResponsive } from "../hooks/useResponsive";
 
 interface InactiveListProps<T extends { id: string; updatedAt?: string }> {
   rows: T[];
@@ -25,6 +27,7 @@ interface InactiveListProps<T extends { id: string; updatedAt?: string }> {
 /** Deactivated records with the one action they support: bringing them back. */
 export function InactiveList<T extends { id: string; updatedAt?: string }>({ rows, loading, pagination, describe, reactivate, onDone, confirmNote, flexible, filterable }: InactiveListProps<T>) {
   const Table = flexible ? FlexTable : AntTable;
+  const { isMobile } = useResponsive();
   const handleReactivate = (row: T) => Modal.confirm({
     title: "Kích hoạt lại mục này?",
     width: 480,
@@ -75,6 +78,9 @@ export function InactiveList<T extends { id: string; updatedAt?: string }>({ row
     },
   ];
   const headerColumns = useCmsHeaderFilters(columns, filterable ? "inactive" : "");
+  if (isMobile) {
+    return <ColumnCards columns={columns} rows={rows} loading={loading} pagination={pagination} emptyText="Không có mục nào đã ngừng hoạt động" />;
+  }
   return (
     <Table<T>
       rowKey="id"

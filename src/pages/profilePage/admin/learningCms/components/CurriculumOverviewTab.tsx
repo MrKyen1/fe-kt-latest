@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Table from "../../../../../components/Table";
+import { ColumnCards } from "../../../../../components/ColumnCards";
+import { useResponsive } from "../../../../../hooks/useResponsive";
 import {
   Card,
   Button,
@@ -66,6 +68,7 @@ export const CurriculumOverviewTab: React.FC<Props> = ({
   onOpenQuestionFullEdit,
   lastSavedQuestion,
 }) => {
+  const { isMobile } = useResponsive();
   // Selected Curriculum state
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<string | null>(null);
   const [curriculumDetail, setCurriculumDetail] = useState<Curriculum | null>(null);
@@ -1145,16 +1148,20 @@ export const CurriculumOverviewTab: React.FC<Props> = ({
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-xs overflow-hidden">
-        <Table
-          columns={curriculumColumns}
-          dataSource={curriculums}
-          rowKey="id"
-          loading={loading}
-          pagination={pagination}
-          scroll={{ x: 1100 }}
-          className="rounded-2xl overflow-hidden"
-        />
+      <div className="bg-white border border-slate-200/80 rounded-3xl p-3 sm:p-6 shadow-xs overflow-hidden">
+        {isMobile ? (
+          <ColumnCards columns={curriculumColumns} rows={curriculums} loading={loading} pagination={pagination} headingCount={2} emptyText="Chưa có giáo trình nào" />
+        ) : (
+          <Table
+            columns={curriculumColumns}
+            dataSource={curriculums}
+            rowKey="id"
+            loading={loading}
+            pagination={pagination}
+            scroll={{ x: 1100 }}
+            className="rounded-2xl overflow-hidden"
+          />
+        )}
       </div>
     </div>
   );

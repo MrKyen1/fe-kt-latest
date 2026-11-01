@@ -7,6 +7,8 @@ import { Target, Sparkles, Folder, Tag as TagIcon } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import { PAGE_SIZE_DEFAULT } from "../constants";
 import { Can } from "../../../../../components/Can";
+import { ColumnCards } from "../../../../../components/ColumnCards";
+import { useResponsive } from "../../../../../hooks/useResponsive";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -107,6 +109,7 @@ export default function TaxonomyTab({
   children,
 }: Props) {
   const headerColumns = useCmsHeaderFilters(columns, taxTab);
+  const { isMobile } = useResponsive();
   return (
     <div className="space-y-4 pt-4">
       {/* Header row: inner tabs + search + create */}
@@ -143,7 +146,9 @@ export default function TaxonomyTab({
       </div>
 
       {/* Data table */}
-      {children ?? <Table
+      {children ?? (isMobile ? (
+        <ColumnCards columns={columns} rows={dataSource} loading={loading} pagination={pagination} emptyText="Không tìm thấy danh mục nào" />
+      ) : <Table
         rowKey="id"
         loading={loading}
         dataSource={dataSource}
@@ -160,7 +165,7 @@ export default function TaxonomyTab({
         }}
         locale={{ emptyText: "Không tìm thấy danh mục nào" }}
         className="border border-slate-100 rounded-2xl overflow-hidden"
-      />}
+      />)}
     </div>
   );
 }
