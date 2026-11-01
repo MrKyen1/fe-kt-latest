@@ -1,3 +1,4 @@
+import { message } from "antd";
 import {
   createContext,
   useContext,
@@ -150,6 +151,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Subscribe to automatic logout when refresh token fails
     const unsubscribe = subscribeToAuthFailure(() => {
+      // The server ended this session (password changed or reset, signed out
+      // everywhere, or it expired): say so instead of a silent jump to login.
+      message.warning({
+        key: "session-ended",
+        duration: 6,
+        content: "Phiên đăng nhập đã kết thúc (mật khẩu đã đổi, đã đăng xuất trên mọi thiết bị hoặc phiên hết hạn). Vui lòng đăng nhập lại.",
+      });
       setUser(null);
     });
 

@@ -178,6 +178,17 @@ export function normalizeUser(user: BackendUser) {
   };
 }
 
+// Answers that never reach the API (nginx pages, timeouts) carry no JSON
+// message: still tell the user what happened and what to do.
+const STATUS_MESSAGES: Record<number, string> = {
+  408: "Yêu cầu xử lý quá thời gian. Hãy thu hẹp bộ lọc rồi thử lại.",
+  413: "Tệp quá lớn so với giới hạn cho phép. Hãy giảm dung lượng tệp rồi tải lại.",
+  429: "Bạn thao tác quá nhanh. Vui lòng chờ một lát rồi thử lại.",
+  502: "Máy chủ đang khởi động lại. Vui lòng thử lại sau ít phút.",
+  503: "Máy chủ đang bận. Vui lòng thử lại sau ít phút.",
+  504: "Máy chủ phản hồi quá lâu. Hãy thu hẹp bộ lọc rồi thử lại.",
+};
+
 export function normalizeApiError(error: unknown) {
   if (axios.isAxiosError<ApiErrorBody>(error)) {
     const body = error.response?.data;
@@ -187,7 +198,7 @@ export function normalizeApiError(error: unknown) {
     }
 
     if (error.response?.status) {
-      return new ApiError(error.message, {
+      return new ApiError(STATUS_MESSAGES[error.response.status] ?? error.message, {
         statusCode: error.response.status,
         errorCode: "HTTP_ERROR",
       });
@@ -207,7 +218,11 @@ export function getErrorMessage(error: unknown, fallback = "Đã có lỗi xảy
   const anyErr = error as any;
 
   const fieldErrors = anyErr?.fieldErrors || anyErr?.response?.data?.fieldErrors;
-  const rawMsg = anyErr?.response?.data?.message || anyErr?.message;
+  // The server's own message wins; the status fallback only replaces axios'
+  // generic "Request failed with status code ..." text.
+  const ownMsg = anyErr?.response?.data?.message
+    || (/^Request failed with status code/.test(anyErr?.message ?? "") ? undefined : anyErr?.message);
+  const rawMsg = ownMsg || STATUS_MESSAGES[anyErr?.response?.status ?? anyErr?.statusCode];
   const mainMsg = Array.isArray(rawMsg)
     ? rawMsg.join(", ")
     : (rawMsg ? String(rawMsg) : fallback);
