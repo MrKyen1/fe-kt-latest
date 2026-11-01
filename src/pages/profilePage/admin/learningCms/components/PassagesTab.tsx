@@ -225,7 +225,7 @@ export default function PassagesTab({
                       onClick={() => onDeleteClick(item)}
                       className="rounded-xl font-semibold text-xs h-9 px-3.5"
                     >
-                      Xóa
+                      Ngừng hoạt động
                     </Button>
                   </Can>
                 </div>

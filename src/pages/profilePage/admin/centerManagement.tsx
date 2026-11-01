@@ -2952,7 +2952,7 @@ export default function CenterManagement() {
                                                   onClick={() => handleSpecializationDelete(record)}
                                                   className="rounded-xl font-semibold text-xs h-8 px-3"
                                                 >
-                                                  Xóa
+                                                  Ngừng hoạt động
                                                 </Button>
                                               </div>
                                             )}

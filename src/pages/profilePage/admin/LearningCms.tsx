@@ -56,6 +56,7 @@ import { formatTextForBackend } from "../../../utils/textFormatters";
 
 import { confirmWithImpact } from "../../../utils/confirmWithImpact";
 import { InactiveList } from "../../../components/InactiveList";
+import { MediaFileCell } from "./learningCms/components/MediaFileCell";
 
 // ── Constants ────────────────────────────────────────────────
 import {
@@ -1638,7 +1639,7 @@ export default function LearningCms() {
           rows={media}
           loading={mediaLoading}
           pagination={{ current: mediaPage, pageSize: mediaPageSize, total: mediaTotal, onChange: handleMediaPageChange }}
-          describe={(row: any) => row.title || row.originalName || row.storageKey}
+          describe={(row: any) => <MediaFileCell asset={row} />}
           reactivate={hasPermission("learning.delete") ? learningCmsService.mediaAssets.reactivate : undefined}
           confirmNote="Tệp quay lại thư viện media. Các câu hỏi đang dùng tệp này không đổi."
           onDone={loadAllData}
@@ -1859,8 +1860,8 @@ export default function LearningCms() {
 
             {/* ── Tab section ───────────────────────────────── */}
             <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-              {/* Subject selector + quick stats */}
-              <div className="flex flex-wrap items-center gap-4">
+              {/* Subject selector + quick stats (the phone tab dropdown has no top padding, so keep a gap) */}
+              <div className="flex flex-wrap items-center gap-4 mb-4 md:mb-0">
                 {specializations.length > 0 && (
                   <div className="flex items-center gap-3 w-full sm:w-auto max-w-full bg-slate-50/80 p-2 rounded-2xl border border-slate-200/60 shadow-2xs">
                     <div className="flex shrink-0 items-center gap-2.5 px-2">

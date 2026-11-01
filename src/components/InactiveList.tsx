@@ -78,10 +78,12 @@ export function InactiveList<T extends { id: string; updatedAt?: string }>({ row
     },
   ];
   const headerColumns = useCmsHeaderFilters(columns, filterable ? "inactive" : "");
+  // CMS lists (flexible) sit right under a tab strip or filter, so they carry their own top space like the active tabs do.
+  const spaced = (body: React.ReactNode) => flexible ? <div className="pt-4">{body}</div> : body;
   if (isMobile) {
-    return <ColumnCards columns={columns} rows={rows} loading={loading} pagination={pagination} emptyText="Không có mục nào đã ngừng hoạt động" />;
+    return spaced(<ColumnCards columns={columns} rows={rows} loading={loading} pagination={pagination} emptyText="Không có mục nào đã ngừng hoạt động" />);
   }
-  return (
+  return spaced(
     <Table<T>
       rowKey="id"
       size="small"
@@ -92,6 +94,6 @@ export function InactiveList<T extends { id: string; updatedAt?: string }>({ row
       className="border border-slate-100 rounded-2xl overflow-hidden"
       locale={{ emptyText: <span className="text-slate-400 text-sm">Không có mục nào đã ngừng hoạt động</span> }}
       columns={headerColumns}
-    />
+    />,
   );
 }
