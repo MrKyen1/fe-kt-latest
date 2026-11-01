@@ -172,8 +172,6 @@
 @media (max-width: 767.98px) {
   /* Chống tràn ngang 100% toàn bộ trang trên điện thoại */
   html, body, #root {
-    /* clip, not hidden: hidden turns these into scroll boxes, which breaks every position: sticky */
-    overflow-x: clip !important;
     max-width: 100vw !important;
     width: 100% !important;
   }
@@ -289,12 +287,18 @@
 html,
 body,
 #root {
-  /* clip, not hidden: hidden makes #root a scroll box that never scrolls, so
-     the header, side panels and every other position: sticky stop sticking. */
-  overflow-x: clip !important;
   max-width: 100vw !important;
   -webkit-text-size-adjust: 100%;
   background-color: #f8fafc;
+}
+
+/* Stop sideways page scroll on #root only. html/body keep their default
+   overflow: any overflow on them changes which box scrolls the page, and then
+   antd's modal scroll lock (overflow: hidden on body) jumps the page to the
+   top. clip, not hidden: hidden would make #root a scroll box and break every
+   position: sticky (header, side navigation, panels). */
+#root {
+  overflow-x: clip !important;
 }
 
 @media (max-width: 768px) {
