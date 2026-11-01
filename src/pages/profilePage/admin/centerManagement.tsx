@@ -1988,8 +1988,8 @@ export default function CenterManagement() {
             <Row gutter={[24, 24]} className="align-start">
 
               {/* LEFT SIDEBAR: CENTERS LIST */}
-              <Col xs={24} lg={6}>
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-[80px] z-10 transition-all">
+              <Col xs={24} xl={6}>
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4 xl:sticky xl:top-[80px] z-10 transition-all">
                   <div className="flex items-center justify-between">
                     <h3 className="text-base font-bold text-slate-800 m-0">
                       Trung tâm ({centerPage.loading ? "…" : centerPage.total})
@@ -2017,8 +2017,8 @@ export default function CenterManagement() {
                     allowClear
                   />
                   <Segmented size="small" value={centerStatusFilter} onChange={(value) => setCenterStatusFilter(value as "active" | "inactive")}
-                      options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
-                      className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap" />
+                      block options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
+                      className="bg-slate-100 p-0.5 rounded-xl text-xs [&_.ant-segmented-item-label]:!whitespace-normal [&_.ant-segmented-item-label]:!leading-tight [&_.ant-segmented-item-label]:!py-1" />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
                     {centerStatusFilter === "inactive" ? (
@@ -2071,7 +2071,7 @@ export default function CenterManagement() {
               </Col>
 
               {/* RIGHT WORKSPACE: DETAIL WORKSPACE */}
-              <Col xs={24} lg={18}>
+              <Col xs={24} xl={18}>
                 {centerDetailLoading || (!selectedCenterId && centerPage.loading) ? (
                   <SectionLoading loading name="center-detail"><></></SectionLoading>
                 ) : !selectedCenterId ? (
@@ -2484,7 +2484,7 @@ export default function CenterManagement() {
                             children: (
                               <div className="space-y-4 pt-3 sm:pt-4">
                                 <div className="flex flex-col gap-3 justify-between items-stretch">
-                                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between flex-1">
+                                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2.5 items-stretch sm:items-center justify-between flex-1">
                                     <Input
                                       placeholder="Tìm kiếm giáo viên theo tên, mã..."
                                       prefix={<SearchOutlined className="text-slate-400" />}
@@ -2493,10 +2493,10 @@ export default function CenterManagement() {
                                         setTeacherSearch(e.target.value);
                                         setMobileTeacherPage(1);
                                       }}
-                                      className="w-full sm:max-w-xs rounded-xl border-slate-200"
+                                      className="w-full sm:flex-1 sm:min-w-[12rem] sm:max-w-xs rounded-xl border-slate-200"
                                       allowClear
                                     />
-                                    <div className="overflow-x-auto max-w-full pb-0.5">
+                                    <div className="overflow-x-auto max-w-full sm:shrink-0 pb-0.5">
                                       <Segmented
                                         value={teacherStatusFilter}
                                         onChange={(val) => {
@@ -2682,7 +2682,7 @@ export default function CenterManagement() {
                             children: (
                               <div className="space-y-4 pt-3 sm:pt-4">
                                 <div className="flex flex-col gap-3 justify-between items-stretch">
-                                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between flex-1">
+                                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2.5 items-stretch sm:items-center justify-between flex-1">
                                     <Input
                                       placeholder="Tìm kiếm học sinh theo tên, mã..."
                                       prefix={<SearchOutlined className="text-slate-400" />}
@@ -2691,10 +2691,10 @@ export default function CenterManagement() {
                                         setStudentSearch(e.target.value);
                                         setMobileStudentPage(1);
                                       }}
-                                      className="w-full sm:max-w-xs rounded-xl border-slate-200"
+                                      className="w-full sm:flex-1 sm:min-w-[12rem] sm:max-w-xs rounded-xl border-slate-200"
                                       allowClear
                                     />
-                                    <div className="overflow-x-auto max-w-full pb-0.5">
+                                    <div className="overflow-x-auto max-w-full sm:shrink-0 pb-0.5">
                                       <Segmented
                                         value={studentStatusFilter}
                                         onChange={(val) => {
