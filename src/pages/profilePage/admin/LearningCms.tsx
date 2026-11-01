@@ -469,26 +469,6 @@ export default function LearningCms() {
       ),
     },
   ].filter(Boolean) as any[];
-  const inactiveTaxColumns = [
-    { title: "Đã ngừng hoạt động", dataIndex: "name", render: (name: string, record: any) => <span><b>{name}</b> <span className="text-slate-400">{record.code}</span></span> },
-    {
-      title: "",
-      align: "right" as const,
-      render: (_: any, record: any) => (
-        <Can perform="learning.write">
-          <Button size="small" onClick={async () => {
-            try {
-              await getTaxService(taxTab).reactivate(record.id);
-              message.success("Đã kích hoạt lại");
-              loadAllData();
-            } catch (error: any) {
-              message.error(extractErrorMsg(error, "Kích hoạt lại thất bại"), 5);
-            }
-          }}>Kích hoạt lại</Button>
-        </Can>
-      ),
-    },
-  ];
 
   // ============================================================
   // DATA LOADING
@@ -1628,7 +1608,7 @@ export default function LearningCms() {
           taxSearch={String(appliedCmsFilters.search || "")}
           onTaxSearchChange={value => applyCmsFilters({ search: value })}
           searchPlaceholder={getSearchPlaceholder()}
-          columns={listingInactive ? inactiveTaxColumns : taxColumns}
+          columns={taxColumns}
           dataSource={getTaxData()}
           loading={taxLoading || (activeTab === "taxonomy" && resourcePage.loading)}
           pagination={{
@@ -1638,7 +1618,18 @@ export default function LearningCms() {
             onChange: handleTaxPageChange,
           }}
           onCreateClick={handleTaxCreate}
-        />
+        >
+          {listingInactive ? (
+            <InactiveList
+              rows={getTaxData()}
+              loading={taxLoading || resourcePage.loading}
+              pagination={{ current: taxPage, pageSize: taxPageSize, total: taxTotal, onChange: handleTaxPageChange }}
+              describe={(row: any) => <span><b>{row.name}</b> <span className="text-slate-400">{row.code}</span></span>}
+              reactivate={hasPermission("learning.write") ? getTaxService(taxTab).reactivate : undefined}
+              onDone={loadAllData}
+            />
+          ) : undefined}
+        </TaxonomyTab>
       ),
     },
     {

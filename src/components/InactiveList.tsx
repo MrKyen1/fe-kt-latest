@@ -33,30 +33,29 @@ export function InactiveList<T extends { id: string; updatedAt?: string }>({ row
       pagination={pagination}
       className="border border-slate-100 rounded-2xl overflow-hidden"
       locale={{ emptyText: <span className="text-slate-400 text-sm">Không có mục nào đã ngừng hoạt động</span> }}
+      showHeader={false}
       columns={[
         {
-          title: <span className="text-xs font-semibold text-slate-500">Đã ngừng hoạt động</span>,
           key: "name",
-          render: (_, row) => <span className="text-sm font-semibold text-slate-700">{describe(row)}</span>,
+          // The stop time sits under the name so the list also fits narrow side panels.
+          render: (_, row) => (
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-700 break-words">{describe(row)}</div>
+              {row.updatedAt && <div className="text-xs text-slate-400 mt-0.5">Ngừng lúc {dayjs(row.updatedAt).format("DD/MM/YYYY HH:mm")}</div>}
+            </div>
+          ),
         },
-        {
-          title: <span className="text-xs font-semibold text-slate-500">Ngừng lúc</span>,
-          key: "updatedAt",
-          width: 150,
-          responsive: ["sm"],
-          render: (_, row) => <span className="text-xs text-slate-400">{row.updatedAt ? dayjs(row.updatedAt).format("DD/MM/YYYY HH:mm") : "—"}</span>,
-        },
-        {
-          title: "",
+        ...(reactivate ? [{
           key: "action",
-          align: "right",
-          render: (_, row) => reactivate && (
+          align: "right" as const,
+          width: 1,
+          render: (_: unknown, row: T) => (
             <Button size="small" onClick={() => handleReactivate(row)}
               className="!rounded-xl !font-semibold !text-xs !h-8 !px-3 !border-emerald-200 !text-emerald-700 hover:!bg-emerald-50">
               Kích hoạt lại
             </Button>
           ),
-        },
+        }] : []),
       ]}
     />
   );

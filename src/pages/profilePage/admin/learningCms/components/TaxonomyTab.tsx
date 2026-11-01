@@ -28,6 +28,8 @@ interface Props {
   searchPlaceholder: string;
 
   columns: ColumnsType<TaxItem>;
+  /** Replaces the table, e.g. with the list of deactivated items. */
+  children?: React.ReactNode;
   dataSource: TaxItem[];
   loading: boolean;
   pagination: {
@@ -102,6 +104,7 @@ export default function TaxonomyTab({
   loading,
   pagination,
   onCreateClick,
+  children,
 }: Props) {
   const headerColumns = useCmsHeaderFilters(columns, taxTab);
   return (
@@ -140,7 +143,7 @@ export default function TaxonomyTab({
       </div>
 
       {/* Data table */}
-      <Table
+      {children ?? <Table
         rowKey="id"
         loading={loading}
         dataSource={dataSource}
@@ -157,7 +160,7 @@ export default function TaxonomyTab({
         }}
         locale={{ emptyText: "Không tìm thấy danh mục nào" }}
         className="border border-slate-100 rounded-2xl overflow-hidden"
-      />
+      />}
     </div>
   );
 }

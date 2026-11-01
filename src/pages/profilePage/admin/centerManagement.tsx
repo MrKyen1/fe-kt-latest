@@ -2018,7 +2018,7 @@ export default function CenterManagement() {
                   />
                   <Segmented size="small" value={centerStatusFilter} onChange={(value) => setCenterStatusFilter(value as "active" | "inactive")}
                       block options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
-                      className="bg-slate-100 p-0.5 rounded-xl text-xs [&_.ant-segmented-item-label]:!whitespace-normal [&_.ant-segmented-item-label]:!leading-tight [&_.ant-segmented-item-label]:!py-1" />
+                      className="bg-slate-100 p-0.5 rounded-xl text-xs [&_.ant-segmented-item-label]:!px-1.5 [&_.ant-segmented-item-label]:!whitespace-normal [&_.ant-segmented-item-label]:!leading-tight [&_.ant-segmented-item-label]:!py-1" />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
                     {centerStatusFilter === "inactive" ? (
