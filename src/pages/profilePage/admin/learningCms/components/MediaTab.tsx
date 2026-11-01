@@ -5,6 +5,7 @@ import { Video } from "lucide-react";
 import { resolveMediaUrl } from "../../../../../services/apiClient";
 import { AppImage } from "../../../../../components/AppImagePreview";
 import { Can } from "../../../../../components/Can";
+import { useResponsive } from "../../../../../hooks/useResponsive";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export default function MediaTab({
   onDeleteClick,
   onPreviewClick,
 }: Props) {
+  const { isMobile } = useResponsive();
   return (
     <div className="space-y-4 pt-4">
       {/* Header */}
@@ -93,15 +95,17 @@ export default function MediaTab({
 
       {/* Gallery grid */}
       <PagedCollection loading={loading} hasData={media.length > 0} variant="media" footer={pagination.total > 0 && (
-        <div className="flex justify-end pt-2">
+        <div className="flex flex-col items-center gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
+          <span className="text-xs text-slate-400">Tổng cộng {pagination.total} tệp</span>
           <Pagination
             current={pagination.current}
             pageSize={pagination.pageSize}
             total={pagination.total}
             onChange={pagination.onChange}
-            showSizeChanger
+            size={isMobile ? "small" : undefined}
+            showLessItems={isMobile}
+            showSizeChanger={!isMobile}
             pageSizeOptions={["10", "20", "50", "100"]}
-            showTotal={(total) => `Tổng cộng ${total} tệp`}
           />
         </div>
       )}>
