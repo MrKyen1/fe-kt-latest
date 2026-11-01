@@ -82,6 +82,7 @@ import { useResponsive } from "../../../hooks/useResponsive";
 import dayjs from "dayjs";
 import { IMAGE_ACCEPT } from "../../../utils/uploadAccept";
 import { confirmWithImpact } from "../../../utils/confirmWithImpact";
+import { InactiveList } from "../../../components/InactiveList";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -298,8 +299,13 @@ export default function CenterManagement() {
   const [teacherSearch, setTeacherSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [adminSearch, setAdminSearch] = useState("");
-  const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  // Every list shows active records by default; the filter switches to deactivated ones.
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [studentStatusFilter, setStudentStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [adminStatusFilter, setAdminStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [centerStatusFilter, setCenterStatusFilter] = useState<"active" | "inactive">("active");
+  const [classStatusFilter, setClassStatusFilter] = useState<"active" | "inactive">("active");
+  const [specializationStatusFilter, setSpecializationStatusFilter] = useState<"active" | "inactive">("active");
   const [isExportingStudent, setIsExportingStudent] = useState(false);
 
   const [studentClassIds, setStudentClassIds] = useState<string[]>([]);
@@ -308,8 +314,8 @@ export default function CenterManagement() {
   const [centerDetailRequest, setCenterDetailRequest] = useState<{ id: string | null; version: string; pending: boolean }>({ id: null, version: "", pending: false });
   const centerDetailLoading = !!selectedCenterId && hasPermission("centers.read") &&
     (centerDetailRequest.id !== selectedCenterId || centerDetailRequest.version !== centerVersion || centerDetailRequest.pending);
-  const centerPage = useServerPagination("/centers", { search: centerSearch || undefined }, 10, hasPermission("centers.read"));
-  const classList = useServerPagination("/classes", { centerId: selectedCenterId }, CLASSES_PAGE_SIZE, !!selectedCenterId && hasPermission("classes.read"));
+  const centerPage = useServerPagination("/centers", { search: centerSearch || undefined, isActive: centerStatusFilter === "inactive" ? false : undefined }, 10, hasPermission("centers.read"));
+  const classList = useServerPagination("/classes", { centerId: selectedCenterId, isActive: classStatusFilter === "inactive" ? false : undefined }, CLASSES_PAGE_SIZE, !!selectedCenterId && hasPermission("classes.read"));
   const teacherList = useServerPagination("/users", {
     roleCode: "teacher", centerId: selectedCenterId, search: teacherSearch || undefined,
     includeInactive: teacherStatusFilter === "all", isActive: teacherStatusFilter === "all" ? undefined : teacherStatusFilter === "active",
@@ -319,9 +325,12 @@ export default function CenterManagement() {
     classIds: studentClassIds.length ? studentClassIds.join(",") : undefined,
     includeInactive: studentStatusFilter === "all", isActive: studentStatusFilter === "all" ? undefined : studentStatusFilter === "active",
   }, 5, !!selectedCenterId && hasPermission("users.read") && activeSubTab === "students", mapUserResponse);
-  const adminList = useServerPagination("/users", { roleCode: "admin", includeInactive: true, search: adminSearch || undefined }, 5,
+  const adminList = useServerPagination("/users", {
+    roleCode: "admin", search: adminSearch || undefined,
+    includeInactive: adminStatusFilter === "all", isActive: adminStatusFilter === "all" ? undefined : adminStatusFilter === "active",
+  }, 5,
     !isTeacher && hasPermission("users.read") && activeSubTab === "admins", mapUserResponse);
-  const specializationList = useServerPagination("/specializations", {}, 5, hasPermission("specializations.read") && activeSubTab === "specializations");
+  const specializationList = useServerPagination("/specializations", { isActive: specializationStatusFilter === "inactive" ? false : undefined }, 5, hasPermission("specializations.read") && activeSubTab === "specializations");
   const specializationCount = useServerPagination("/specializations", {}, 1, hasPermission("specializations.read"));
   const adminCount = useServerPagination("/users", { roleCode: "admin", includeInactive: true }, 1, !isTeacher && hasPermission("users.read"));
   const teacherCount = useServerPagination("/users", { roleCode: "teacher", centerId: selectedCenterId, includeInactive: true }, 1, !!selectedCenterId && hasPermission("users.read"));
@@ -334,15 +343,16 @@ export default function CenterManagement() {
   useEffect(() => { setAdmins(adminList.data); }, [adminList.data]);
   useEffect(() => { setSpecializations(specializationList.data); }, [specializationList.data]);
   useEffect(() => {
-    if (!selectedCenterId && centerPage.data.length) setSelectedCenterId(centerPage.data[0].id);
-  }, [centerPage.data, selectedCenterId]);
+    if (!selectedCenterId && centerStatusFilter === "active" && centerPage.data.length) setSelectedCenterId(centerPage.data[0].id);
+  }, [centerPage.data, selectedCenterId, centerStatusFilter]);
   useEffect(() => { setStudentClassIds([]); }, [selectedCenterId]);
   useEffect(() => {
     let current = true;
     if (selectedCenterId && hasPermission("centers.read")) {
       setCenterDetailRequest({ id: selectedCenterId, version: centerVersion, pending: true });
       academicService.centers.get(selectedCenterId).then(value => { if (current) setSelectedCenterDetail(value); })
-        .catch(() => { if (current) message.error("Không thể tải trung tâm"); })
+        // 404 right after deactivating the selected center is expected; the selection is being cleared.
+        .catch((error) => { if (current && error?.statusCode !== 404) message.error("Không thể tải trung tâm"); })
         .finally(() => { if (current) setCenterDetailRequest({ id: selectedCenterId, version: centerVersion, pending: false }); });
     }
     return () => { current = false; };
@@ -2063,8 +2073,17 @@ export default function CenterManagement() {
                     className="rounded-xl border-slate-200"
                     allowClear
                   />
+                  <Segmented size="small" value={centerStatusFilter} onChange={(value) => setCenterStatusFilter(value as "active" | "inactive")}
+                      options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
+                      className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap" />
 
                   <div className="space-y-2 max-h-[calc(100vh-240px)] min-h-[200px] overflow-y-auto pr-1">
+                    {centerStatusFilter === "inactive" ? (
+                    <InactiveList rows={centerPage.data} loading={centerPage.loading} pagination={centerPage.pagination}
+                      describe={(row: any) => row.name}
+                      reactivate={hasPermission("classes.manage") ? academicService.centers.reactivate : undefined}
+                      onDone={() => { centerPage.reload(); loadData(); }} />
+                  ) : (
                     <PagedCollection region="center-list" loading={centerPage.loading} hasData={centers.length > 0} variant="centers" footer={centerPage.total > 10 && <Pagination {...centerPage.pagination} size="small" showSizeChanger={false} />}>
                     {filteredCenters.map((center, idx) => {
                       const isSelected = center.id === selectedCenterId;
@@ -2103,6 +2122,7 @@ export default function CenterManagement() {
                       </div>
                     )}
                     </PagedCollection>
+                  )}
                   </div>
                 </div>
               </Col>
@@ -2352,10 +2372,13 @@ export default function CenterManagement() {
 
                     {/* CLASSES GRID SECTION */}
                     <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div className="flex flex-wrap items-center gap-2">
                           <GraduationCap size={18} className="text-slate-500" />
-                          <h3 className="text-base font-bold text-slate-800 m-0">Lớp học thuộc trung tâm</h3>
+                          <h3 className="text-base font-bold text-slate-800 m-0 whitespace-nowrap">Lớp học thuộc trung tâm</h3>
+                          <Segmented size="small" value={classStatusFilter} onChange={(value) => setClassStatusFilter(value as "active" | "inactive")}
+                      options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
+                      className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap" />
                         </div>
                         {!isTeacher && (
                           <Button
@@ -2370,6 +2393,12 @@ export default function CenterManagement() {
                         )}
                       </div>
 
+                      {classStatusFilter === "inactive" ? (
+                        <InactiveList rows={classList.data} loading={classList.loading} pagination={classList.pagination}
+                          describe={(row: any) => row.name}
+                          reactivate={hasPermission("classes.manage") ? academicService.classes.reactivate : undefined}
+                          onDone={() => { classList.reload(); loadData(); }} />
+                      ) : (
                       <PagedCollection region="classes" loading={classList.loading} hasData={classes.length > 0} variant="classes" footer={classList.total > CLASSES_PAGE_SIZE && (
                         <div className="mt-5 flex justify-end">
                           <Pagination
@@ -2469,6 +2498,7 @@ export default function CenterManagement() {
 
 
                       </PagedCollection>
+                      )}
                     </div>
 
                     {/* GOOGLE MAP EMBED (If exists) */}
@@ -2902,7 +2932,9 @@ export default function CenterManagement() {
                             children: (
                               <div className="space-y-4 pt-3 sm:pt-4">
                                 <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
-                                  <div className="text-slate-400 text-xs sm:text-sm">Danh sách các Chuyên môn học thuật khả dụng</div>
+                                  <Segmented size="small" value={specializationStatusFilter} onChange={(value) => setSpecializationStatusFilter(value as "active" | "inactive")}
+                      options={[{ label: "Đang hoạt động", value: "active" }, { label: "Đã ngừng", value: "inactive" }]}
+                      className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap" />
                                   {!isTeacher && (
                                     <Button
                                       type="primary"
@@ -2917,6 +2949,12 @@ export default function CenterManagement() {
                                 </div>
 
                                 <SectionLoading loading={false} name="specializations">
+                                {specializationStatusFilter === "inactive" ? (
+                                  <InactiveList rows={specializationList.data} loading={specializationList.loading} pagination={specializationList.pagination}
+                                    describe={(row: any) => row.name}
+                                    reactivate={hasPermission("classes.manage") ? academicService.specializations.reactivate : undefined}
+                                    onDone={() => { specializationList.reload(); loadData(); }} />
+                                ) : (<>
                                 {isMobile ? <PagedCollection loading={specializationList.loading} hasData={specializations.length > 0} variant="list" footer={specializationList.total > 5 && (
                                       <div className="pt-2 flex justify-center">
                                         <Pagination
@@ -2989,6 +3027,7 @@ export default function CenterManagement() {
                                     className="border border-slate-100 rounded-2xl overflow-hidden"
                                   />
                                 )}
+                              </>)}
                               </SectionLoading>
                               </div>
 
@@ -3018,6 +3057,9 @@ export default function CenterManagement() {
                                           className="w-full sm:max-w-md rounded-xl border-slate-200"
                                           allowClear
                                         />
+                                        <Segmented value={adminStatusFilter} onChange={(value) => setAdminStatusFilter(value as any)}
+                                          options={[{ label: "Tất cả", value: "all" }, { label: "Đang hoạt động", value: "active" }, { label: "Đã nghỉ", value: "inactive" }]}
+                                          className="bg-slate-100 p-0.5 rounded-xl text-xs whitespace-nowrap" />
                                         <Button
                                           type="primary"
                                           icon={<PlusOutlined />}
