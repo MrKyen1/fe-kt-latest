@@ -1,5 +1,6 @@
 import axios, {
   AxiosError,
+  AxiosInstance,
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from "axios";
@@ -66,12 +67,6 @@ export function showMaintenance(reload = false) {
   maintenanceListeners.forEach((listener) => listener());
 }
 
-function flagMaintenance(error: unknown) {
-  if (axios.isAxiosError(error) && error.response?.status === 503 && error.response.headers["retry-after"]) {
-    showMaintenance();
-  }
-}
-
 export async function isApiReady() {
   try {
     return (await fetch(`${API_BASE_URL}/health/ready`, { cache: "no-store" })).ok;
@@ -79,6 +74,51 @@ export async function isApiReady() {
     return false;
   }
 }
+
+const READY_POLL_MS = 15_000;
+let apiBack: { promise: Promise<void>; check: () => Promise<void> } | null = null;
+
+/** Resolves once the API answers again; every waiter shares one polling loop. */
+export function waitForApi() {
+  if (!apiBack) {
+    let resolve!: () => void;
+    let timer = 0;
+    let running: Promise<void> | null = null;
+    const promise = new Promise<void>((done) => { resolve = done; });
+    const check = () => running ??= (async () => {
+      window.clearTimeout(timer);
+      if (await isApiReady()) {
+        apiBack = null;
+        resolve();
+      } else {
+        timer = window.setTimeout(() => void check(), READY_POLL_MS);
+      }
+      running = null;
+    })();
+    apiBack = { promise, check };
+    timer = window.setTimeout(() => void check(), READY_POLL_MS);
+  }
+  return apiBack.promise;
+}
+
+/** Check right away instead of waiting for the next poll. */
+export const checkApiNow = () => apiBack?.check() ?? Promise.resolve();
+
+const isMaintenanceError = (error: unknown): error is AxiosError =>
+  axios.isAxiosError(error) && error.response?.status === 503 && !!error.response.headers["retry-after"];
+
+/**
+ * Nginx rejects these before proxying, so the API never saw the request: holding
+ * and resending it is safe even for writes, and the page keeps all its state.
+ */
+async function resendAfterMaintenance(client: AxiosInstance, error: AxiosError) {
+  showMaintenance();
+  await waitForApi();
+  return client(error.config!);
+}
+
+refreshClient.interceptors.response.use(undefined, (error) =>
+  isMaintenanceError(error) && error.config ? resendAfterMaintenance(refreshClient, error) : Promise.reject(error));
 
 // Authentication failure event subscription to notify the UI context
 type AuthFailureListener = () => void;
@@ -121,7 +161,6 @@ export function refreshAuthSession(refreshToken = tokenStorage.getRefreshToken()
       return session;
     })
     .catch(error => {
-      flagMaintenance(error);
       if (stillCurrent() && !isTransientApiError(error)) {
         tokenStorage.clear();
         notifyAuthFailure();
@@ -147,7 +186,7 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiErrorBody>) => {
-    flagMaintenance(error);
+    if (isMaintenanceError(error) && error.config) return resendAfterMaintenance(apiClient, error);
     // File endpoints still return JSON on authentication/validation failures.
     // Decode a small error body before normalization so password errors remain useful.
     const errorBody: unknown = error.response?.data;

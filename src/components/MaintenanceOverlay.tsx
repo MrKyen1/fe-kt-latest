@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import { Button } from "antd";
 import {
-  isApiReady,
+  checkApiNow,
   maintenanceNeedsReload,
   subscribeToMaintenance,
+  waitForApi,
 } from "../services/apiClient";
 
-const POLL_MS = 15_000;
-
 /**
- * Covers an already-open app while a deploy runs. Unlike a reload (which shows
- * Nginx's maintenance page), it keeps unsaved page state such as exam answers.
+ * Covers an already-open app while a deploy runs. Blocked requests are held by
+ * apiClient and resent afterwards, so the page underneath keeps all its state.
  */
 export default function MaintenanceOverlay() {
   const [active, setActive] = useState(false);
@@ -18,24 +17,25 @@ export default function MaintenanceOverlay() {
 
   useEffect(() => subscribeToMaintenance(() => setActive(true)), []);
 
-  const resume = () => {
-    if (maintenanceNeedsReload()) window.location.reload();
-    else setActive(false);
-  };
-
   useEffect(() => {
     if (!active) return;
-    const timer = window.setInterval(() => {
-      void isApiReady().then((ready) => ready && resume());
-    }, POLL_MS);
-    return () => window.clearInterval(timer);
+    let mounted = true;
+    void waitForApi().then(() => {
+      if (!mounted) return;
+      // A page chunk failed to load: only a reload can fetch it.
+      if (maintenanceNeedsReload()) window.location.reload();
+      else setActive(false);
+    });
+    return () => {
+      mounted = false;
+    };
   }, [active]);
 
   if (!active) return null;
 
   const checkNow = async () => {
     setChecking(true);
-    if (await isApiReady()) resume();
+    await checkApiNow();
     setChecking(false);
   };
 
@@ -75,12 +75,11 @@ export default function MaintenanceOverlay() {
         >
           <p>
             Hệ thống sẽ hoạt động lại sau vài phút. Đừng đóng hoặc tải lại
-            trang: nội dung bạn đang nhập vẫn còn nguyên khi màn hình này biến
-            mất.
+            trang: nội dung bạn đang nhập vẫn còn nguyên.
           </p>
           <p>
-            Nếu vừa bấm lưu hoặc nộp bài, hãy bấm lại sau khi hệ thống hoạt động
-            lại.
+            Thao tác bạn vừa thực hiện (lưu, nộp bài…) sẽ tự được gửi lại khi hệ
+            thống hoạt động trở lại.
           </p>
           <p className="text-sm text-slate-500">
             Trang tự kiểm tra lại mỗi 15 giây.
