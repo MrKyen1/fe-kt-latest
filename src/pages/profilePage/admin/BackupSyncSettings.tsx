@@ -95,7 +95,7 @@ export default function BackupSyncSettings({ enabled }: { enabled: boolean }) {
             {
               title: "Tải và chạy bộ cài Windows",
               content:
-                "Tải file bên dưới. Mở PowerShell trong thư mục tải về và chạy lệnh hướng dẫn; bộ cài hỏi mã đồng bộ và thư mục lưu.",
+                "Tải file bên dưới, bấm chuột phải vào file và chọn Run with PowerShell (Windows 11: chọn Show more options trước). Cửa sổ cài đặt hiện ra để dán mã đồng bộ và chọn thư mục lưu.",
             },
             {
               title: "Để Windows tải tự động",
@@ -125,6 +125,10 @@ export default function BackupSyncSettings({ enabled }: { enabled: boolean }) {
             Tải bộ cài Windows
           </Button>
         </Space>
+        <Typography.Text type="secondary">
+          Không thấy mục Run with PowerShell? Mở PowerShell trong thư mục tải về
+          và chạy lệnh:
+        </Typography.Text>
         <Typography.Paragraph
           copyable={{
             text: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\kata-backup-windows.ps1",
@@ -231,6 +235,10 @@ export default function BackupSyncSettings({ enabled }: { enabled: boolean }) {
           title="Mã chỉ hiển thị một lần"
           description="Giữ kín mã: người có mã có thể tải toàn bộ backup. Copy và dán vào bộ cài Windows; nếu mất mã, hãy thu hồi rồi tạo mã mới."
         />
+        <Typography.Text type="secondary">
+          Không thấy mục Run with PowerShell? Mở PowerShell trong thư mục tải về
+          và chạy lệnh:
+        </Typography.Text>
         <Typography.Paragraph
           copyable={{ text: issued?.token }}
           style={{ marginTop: 16, overflowWrap: "anywhere" }}
