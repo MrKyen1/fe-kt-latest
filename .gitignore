@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Frontend release archives built by scripts/build-release.sh
+release/
+kata-web-*.tar.gz

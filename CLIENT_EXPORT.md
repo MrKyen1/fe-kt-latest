@@ -132,7 +132,19 @@ git ls-remote client
 
 ## 10. Deploy
 
-FE build trên máy dev rồi upload lên VPS (xem `README_DEPLOYMENT.md` trong repo BE, mục 7.3). Repo khách FE không có CI build.
+Repo khách FE không có CI build. Sau khi giao code (mục 5), build và đưa lên VPS:
+
+```bash
+scripts/build-release.sh kata-edu@103.9.78.148     # build, nén, scp lên VPS; in lệnh cần chạy trên VPS
+```
+
+Trên VPS:
+
+```bash
+cd /opt/kata-edu/be && sudo make fe-release FILE=~/kata-web-<YYYYMMDD>-<commit>.tar.gz
+```
+
+Tên phiên bản FE tự lấy theo ngày và commit; có code chưa commit thì thêm đuôi `-dirty` (nên commit trước khi build). Quay lại bản cũ: `sudo make fe-list` rồi `sudo make fe-rollback VERSION=<tên>`. Chi tiết: `README_DEPLOYMENT.md` trong repo BE, mục 12.2.
 
 ## 11. Những điều không được làm
 
