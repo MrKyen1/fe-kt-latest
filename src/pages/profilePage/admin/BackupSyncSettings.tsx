@@ -79,9 +79,9 @@ export default function BackupSyncSettings({ enabled }: { enabled: boolean }) {
     <Card title="Tự động tải về máy Windows" size="small">
       <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
         <Typography.Paragraph>
-          Cài một lần để máy Windows tự kiểm tra và tải bản mới nhất mỗi giờ, kể
-          cả khi đóng trình duyệt. Máy cần bật, đã đăng nhập Windows và có mạng.
-          Không lưu mật khẩu quản trị trong công cụ.
+          Cài một lần để máy Windows tự kiểm tra mỗi giờ và tải về khi có bản
+          backup mới, kể cả khi đóng trình duyệt. Máy cần bật, đã đăng nhập
+          Windows và có mạng. Không lưu mật khẩu quản trị trong công cụ.
         </Typography.Paragraph>
         <Steps
           size="small"
