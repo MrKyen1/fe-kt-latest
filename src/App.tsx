@@ -20,6 +20,7 @@ const ForgotPassword = lazy(() => import("./pages/loginPage/ForgotPassword"));
 const Profile = lazy(() => import("./pages/profilePage/Profile"));
 const UserProfile = lazy(() => import("./pages/profilePage/userProfile"));
 const AdminDashboard = lazy(() => import("./pages/profilePage/admin/AdminDashboard"));
+const AdminBackups = lazy(() => import("./pages/profilePage/admin/AdminBackups"));
 const LearningCms = lazy(() => import("./pages/profilePage/admin/LearningCms"));
 const AdminHomepageCms = lazy(() => import("./pages/profilePage/admin/AdminHomepageCms"));
 const TeacherAssignments = lazy(() => import("./pages/profilePage/teacher/TeacherAssignments"));
@@ -110,6 +111,7 @@ export default function App() {
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="profile" element={<UserProfile />} />
               <Route path="dashboard/*" element={<AdminDashboard />} />
+              <Route path="backups" element={<AdminBackups />} />
               <Route
                 path="cms/*"
                 element={

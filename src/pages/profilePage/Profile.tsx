@@ -9,11 +9,13 @@ import {
   TeamOutlined,
   TrophyOutlined,
   BankOutlined,
+  DatabaseOutlined,
 } from "@ant-design/icons";
 
 import { useAuth } from "../../contexts/AuthContext";
 
 import AdminDashboard from "./admin/AdminDashboard";
+import AdminBackups from "./admin/AdminBackups";
 import AdminHomepageCms from "./admin/AdminHomepageCms";
 import LearningCms from "./admin/LearningCms";
 import CenterManagement from "./admin/centerManagement";
@@ -84,6 +86,11 @@ export default function Profile() {
   ===================================================== */
 
   const adminMenu = [
+    {
+      key: "backups",
+      icon: <DatabaseOutlined />,
+      label: "Sao lưu dữ liệu",
+    },
     {
       key: "profile",
       icon: <ProfileOutlined />,
@@ -182,6 +189,8 @@ export default function Profile() {
 
   const renderAdminContent = () => {
     switch (menuKey) {
+      case "backups":
+        return <AdminBackups />;
       case "dashboard":
         return <AdminDashboard />;
       case "ranking":

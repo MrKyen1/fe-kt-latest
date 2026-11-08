@@ -112,6 +112,20 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiErrorBody>) => {
+    // File endpoints still return JSON on authentication/validation failures.
+    // Decode a small error body before normalization so password errors remain useful.
+    const errorBody: unknown = error.response?.data;
+    if (
+      error.response && typeof Blob !== "undefined" &&
+      errorBody instanceof Blob && errorBody.size <= 65_536 &&
+      errorBody.type.includes("json")
+    ) {
+      try {
+        error.response.data = JSON.parse(await errorBody.text()) as ApiErrorBody;
+      } catch {
+        // Fall back to the HTTP status if the response is not valid JSON.
+      }
+    }
     const originalRequest = error.config as RetryConfig | undefined;
     const status = error.response?.status;
     const refreshToken = tokenStorage.getRefreshToken();

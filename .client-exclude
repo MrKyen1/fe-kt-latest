@@ -1,0 +1,29 @@
+# Paths not published to the client repository (git glob pathspecs). Used by scripts/export-client.sh.
+# A line starting with ! keeps that path even if a pattern above matches it.
+**/*.md
+!README_DEPLOYMENT.md
+**/*.doc
+**/*.docx
+**/*.xls
+**/*.xlsx
+**/*.ppt
+**/*.pptx
+**/*.odt
+**/*.ods
+**/*.odp
+.agents/**
+.codex/**
+.claude/**
+.cursor/**
+.cursorrules
+.windsurf/**
+.windsurfrules
+.gemini/**
+.aider*
+.clinerules
+.continue/**
+.kiro/**
+.github/copilot-instructions.md
+.env
+diff.txt
+docs/**
