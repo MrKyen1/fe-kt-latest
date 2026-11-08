@@ -86,8 +86,6 @@ import { InactiveList } from "../../../components/InactiveList";
 
 const { Title, Text, Paragraph } = Typography;
 
-const DEFAULT_STUDENT_PASSWORD = import.meta.env.VITE_DEFAULT_STUDENT_PASSWORD || "12345678";
-const DEFAULT_TEACHER_PASSWORD = import.meta.env.VITE_DEFAULT_TEACHER_PASSWORD || "Demo@123456";
 const CLASSES_PAGE_SIZE = 6;
 
 interface TeacherFormValues {
@@ -909,7 +907,7 @@ export default function CenterManagement() {
         );
       } else {
         const createdUser = await userService.create({
-          password: values.password || DEFAULT_TEACHER_PASSWORD,
+          // No password: the server applies its private default for teachers.
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
@@ -1053,7 +1051,7 @@ export default function CenterManagement() {
         );
       } else {
         const createdUser = await userService.create({
-          password: values.password || DEFAULT_STUDENT_PASSWORD,
+          // No password: the server applies its private default for students.
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
@@ -1216,7 +1214,7 @@ export default function CenterManagement() {
           return;
         }
         const createdUser = await userService.create({
-          password: values.password || "Admin@123456",
+          password: values.password, // required by the admin form
           fullName: values.fullName,
           email: cleanEmail,
           phone: values.phone,
