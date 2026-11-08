@@ -46,6 +46,40 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// While a deploy runs, Nginx answers every API call with 503 + Retry-After (the API never sends it).
+type MaintenanceListener = () => void;
+const maintenanceListeners = new Set<MaintenanceListener>();
+
+export const subscribeToMaintenance = (listener: MaintenanceListener) => {
+  maintenanceListeners.add(listener);
+  return () => {
+    maintenanceListeners.delete(listener);
+  };
+};
+
+let reloadWhenReady = false;
+/** True when a page failed to load during maintenance: only a reload can recover it. */
+export const maintenanceNeedsReload = () => reloadWhenReady;
+
+export function showMaintenance(reload = false) {
+  reloadWhenReady ||= reload;
+  maintenanceListeners.forEach((listener) => listener());
+}
+
+function flagMaintenance(error: unknown) {
+  if (axios.isAxiosError(error) && error.response?.status === 503 && error.response.headers["retry-after"]) {
+    showMaintenance();
+  }
+}
+
+export async function isApiReady() {
+  try {
+    return (await fetch(`${API_BASE_URL}/health/ready`, { cache: "no-store" })).ok;
+  } catch {
+    return false;
+  }
+}
+
 // Authentication failure event subscription to notify the UI context
 type AuthFailureListener = () => void;
 const authFailureListeners = new Set<AuthFailureListener>();
@@ -87,7 +121,8 @@ export function refreshAuthSession(refreshToken = tokenStorage.getRefreshToken()
       return session;
     })
     .catch(error => {
-      if (stillCurrent()) {
+      flagMaintenance(error);
+      if (stillCurrent() && !isTransientApiError(error)) {
         tokenStorage.clear();
         notifyAuthFailure();
       }
@@ -112,6 +147,7 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiErrorBody>) => {
+    flagMaintenance(error);
     // File endpoints still return JSON on authentication/validation failures.
     // Decode a small error body before normalization so password errors remain useful.
     const errorBody: unknown = error.response?.data;
@@ -192,6 +228,12 @@ export function normalizeUser(user: BackendUser) {
   };
 }
 
+/** Outages, maintenance and throttling say nothing about the session: keep the user signed in. */
+export function isTransientApiError(error: unknown) {
+  const status = axios.isAxiosError(error) ? error.response?.status : (error as ApiError | undefined)?.statusCode;
+  return status === undefined || status >= 500 || status === 408 || status === 429;
+}
+
 // Answers that never reach the API (nginx pages, timeouts) carry no JSON
 // message: still tell the user what happened and what to do.
 const STATUS_MESSAGES: Record<number, string> = {
@@ -208,7 +250,8 @@ export function normalizeApiError(error: unknown) {
     const body = error.response?.data;
     if (body?.message) {
       const msg = Array.isArray(body.message) ? (body.message as string[]).join(", ") : String(body.message);
-      return new ApiError(msg, body);
+      // Nginx maintenance JSON has a message but no statusCode field.
+      return new ApiError(msg, { statusCode: error.response?.status, ...body });
     }
 
     if (error.response?.status) {

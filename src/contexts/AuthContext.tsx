@@ -9,7 +9,7 @@ import {
 } from "react";
 import { authService } from "../services/authService";
 import { tokenStorage } from "../services/tokenStorage";
-import { subscribeToAuthFailure } from "../services/apiClient";
+import { isTransientApiError, subscribeToAuthFailure } from "../services/apiClient";
 import { userService, mapUserResponse } from "../services/userService";
 import { TeacherAuthProfile, StudentAuthProfile } from "../types/backend";
 
@@ -186,7 +186,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(mapped);
           fetchAndMergeDetails(mapped);
         })
-        .catch(() => {
+        .catch((error) => {
+          // During deploys/outages keep the stored session; it is still valid afterwards.
+          if (isTransientApiError(error)) return;
           tokenStorage.clear();
           setUser(null);
         })

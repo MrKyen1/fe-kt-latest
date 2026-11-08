@@ -1,32 +1,34 @@
 import { PageSpinner } from "./components/LoadingRegion";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, useEffect } from "react";
+import { lazyPage } from "./utils/lazyPage";
 import { App as AntApp, ConfigProvider } from "antd";
 import Layout from "./components/Layout";
 import ExamLayout from "./pages/coursePage/ExamLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import ScrollToTop from "./components/ScrollToTop";
+import MaintenanceOverlay from "./components/MaintenanceOverlay";
 
 // Lazy load pages
-const Home = lazy(() => import("./pages/homePage/Home"));
-const Courses = lazy(() => import("./pages/coursePage/Courses"));
-const ExamList = lazy(() => import("./pages/coursePage/ExamList"));
-const ExamPage = lazy(() => import("./pages/coursePage/ExamDetail"));
-const PublishedCurriculums = lazy(() => import("./pages/coursePage/PublishedCurriculums"));
-const CurriculumExams = lazy(() => import("./pages/coursePage/CurriculumExams"));
-const Login = lazy(() => import("./pages/loginPage/Login"));
-const Register = lazy(() => import("./pages/loginPage/Register"));
-const ForgotPassword = lazy(() => import("./pages/loginPage/ForgotPassword"));
-const Profile = lazy(() => import("./pages/profilePage/Profile"));
-const UserProfile = lazy(() => import("./pages/profilePage/userProfile"));
-const AdminDashboard = lazy(() => import("./pages/profilePage/admin/AdminDashboard"));
-const AdminBackups = lazy(() => import("./pages/profilePage/admin/AdminBackups"));
-const LearningCms = lazy(() => import("./pages/profilePage/admin/LearningCms"));
-const AdminHomepageCms = lazy(() => import("./pages/profilePage/admin/AdminHomepageCms"));
-const TeacherAssignments = lazy(() => import("./pages/profilePage/teacher/TeacherAssignments"));
-const CenterManagement = lazy(() => import("./pages/profilePage/admin/centerManagement"));
-const StudentMyExams = lazy(() => import("./pages/profilePage/student/StudentMyExams"));
-const Leaderboard = lazy(() => import("./pages/profilePage/Leaderboard"));
+const Home = lazyPage(() => import("./pages/homePage/Home"));
+const Courses = lazyPage(() => import("./pages/coursePage/Courses"));
+const ExamList = lazyPage(() => import("./pages/coursePage/ExamList"));
+const ExamPage = lazyPage(() => import("./pages/coursePage/ExamDetail"));
+const PublishedCurriculums = lazyPage(() => import("./pages/coursePage/PublishedCurriculums"));
+const CurriculumExams = lazyPage(() => import("./pages/coursePage/CurriculumExams"));
+const Login = lazyPage(() => import("./pages/loginPage/Login"));
+const Register = lazyPage(() => import("./pages/loginPage/Register"));
+const ForgotPassword = lazyPage(() => import("./pages/loginPage/ForgotPassword"));
+const Profile = lazyPage(() => import("./pages/profilePage/Profile"));
+const UserProfile = lazyPage(() => import("./pages/profilePage/userProfile"));
+const AdminDashboard = lazyPage(() => import("./pages/profilePage/admin/AdminDashboard"));
+const AdminBackups = lazyPage(() => import("./pages/profilePage/admin/AdminBackups"));
+const LearningCms = lazyPage(() => import("./pages/profilePage/admin/LearningCms"));
+const AdminHomepageCms = lazyPage(() => import("./pages/profilePage/admin/AdminHomepageCms"));
+const TeacherAssignments = lazyPage(() => import("./pages/profilePage/teacher/TeacherAssignments"));
+const CenterManagement = lazyPage(() => import("./pages/profilePage/admin/centerManagement"));
+const StudentMyExams = lazyPage(() => import("./pages/profilePage/student/StudentMyExams"));
+const Leaderboard = lazyPage(() => import("./pages/profilePage/Leaderboard"));
 
 export default function App() {
   useEffect(() => {
@@ -205,6 +207,7 @@ export default function App() {
         </Routes>
       </Suspense>
         </BrowserRouter>
+        <MaintenanceOverlay />
       </AntApp>
     </ConfigProvider>
   );
