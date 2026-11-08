@@ -6,15 +6,15 @@
 
 Mỗi dự án có **2 repo GitHub**:
 
-| Remote | Là gì | Chứa gì |
-| --- | --- | --- |
-| `origin` | Repo cá nhân của team | Toàn bộ lịch sử commit, tài liệu nội bộ, ghi chú, file cấu hình công cụ cá nhân |
-| `client` | Repo trong org `kata-edu` của khách | Chỉ code cần bàn giao, mỗi lần giao là 1 commit, **không** có lịch sử cá nhân |
+| Remote   | Là gì                               | Chứa gì                                                                         |
+| -------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| `origin` | Repo cá nhân của team               | Toàn bộ lịch sử commit, tài liệu nội bộ, ghi chú, file cấu hình công cụ cá nhân |
+| `client` | Repo trong org `kata-edu` của khách | Chỉ code cần bàn giao, mỗi lần giao là 1 commit, **không** có lịch sử cá nhân   |
 
-| Repo | Remote `origin` | Remote `client` | Người export |
-| --- | --- | --- | --- |
-| BE | `git@github.com:h-a-i-gitHub/kata_edu-be.git` | `git@github.com:kata-edu/kata-api.git` | Dev BE |
-| FE | `git@github.com:MrKyen1/fe-kt-latest.git` | `git@github.com:kata-edu/kata-web.git` | Dev FE |
+| Repo | Remote `origin`                               | Remote `client`                        | Người export |
+| ---- | --------------------------------------------- | -------------------------------------- | ------------ |
+| BE   | `git@github.com:h-a-i-gitHub/kata_edu-be.git` | `git@github.com:kata-edu/kata-api.git` | Dev BE       |
+| FE   | `git@github.com:MrKyen1/fe-kt-latest.git`     | `git@github.com:kata-edu/kata-web.git` | Dev FE       |
 
 Quy tắc:
 
@@ -25,11 +25,11 @@ Quy tắc:
 
 ## 2. Các file liên quan
 
-| File | Vai trò |
-| --- | --- |
-| `.client-exclude` | Danh sách đường dẫn **không** gửi khách. Mỗi dòng là một mẫu glob: `docs/**` = cả thư mục, `**/*.md` = mọi file `.md`. Dòng bắt đầu bằng `!` = vẫn giữ file đó (ví dụ `!README_DEPLOYMENT.md`). |
-| `scripts/export-client.sh` | Lọc code theo `.client-exclude` rồi đẩy sang repo khách. Bản thân script và `.client-exclude` không bao giờ được gửi đi. |
-| `CLIENT_EXPORT.md` | File này. |
+| File                       | Vai trò                                                                                                                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.client-exclude`          | Danh sách đường dẫn **không** gửi khách. Mỗi dòng là một mẫu glob: `docs/**` = cả thư mục, `**/*.md` = mọi file `.md`. Dòng bắt đầu bằng `!` = vẫn giữ file đó (ví dụ `!README_DEPLOYMENT.md`). |
+| `scripts/export-client.sh` | Lọc code theo `.client-exclude` rồi đẩy sang repo khách. Bản thân script và `.client-exclude` không bao giờ được gửi đi.                                                                        |
+| `CLIENT_EXPORT.md`         | File này.                                                                                                                                                                                       |
 
 ## 3. Cài đặt lần đầu trên máy (mỗi người làm 1 lần)
 
@@ -48,7 +48,9 @@ git ls-remote client                             # không báo lỗi = có quy�
 ```bash
 git status                                       # mọi thay đổi cần giao đã được commit
 scripts/export-client.sh --dry-run               # xem trước: danh sách file bị loại, số file gửi đi
-scripts/export-client.sh "Initial commit"
+scripts/export-client.sh --commit "Initial commit"   # tạo commit đã lọc trên máy, CHƯA gửi
+git show --stat refs/client-export/pending-main     # xem lại commit sắp gửi
+scripts/export-client.sh --push                       # gửi đúng commit đó lên repo khách
 ```
 
 Kiểm tra trên GitHub repo khách: có 1 commit, không có các file trong danh sách loại trừ.
@@ -65,25 +67,32 @@ git push
 scripts/export-client.sh --pull                  # lấy commit khách tự push (nếu có)
 git push                                         # đẩy các commit vừa lấy về lên repo cá nhân
 scripts/export-client.sh --dry-run
-scripts/export-client.sh "Bản giao: mô tả ngắn thay đổi"
+scripts/export-client.sh --commit "Bản giao: mô tả ngắn thay đổi"
+git show --stat refs/client-export/pending-main     # thay đổi so với lần giao trước
+scripts/export-client.sh --push
+# hoặc gộp 2 bước: scripts/export-client.sh "Bản giao: mô tả ngắn thay đổi"
 ```
+
+`--commit` chỉ tạo commit trên máy (cất ở `refs/client-export/pending-main`), không đổi nhánh làm việc và không gửi gì. Muốn bỏ commit đang chờ: chạy lại `--commit` (ghi đè) hoặc `git update-ref -d refs/client-export/pending-main`.
 
 Script **chỉ gửi code đã commit** (HEAD của nhánh hiện tại). Code chưa commit sẽ không đi theo và script sẽ in nhắc nhở.
 
 ## 6. Các lệnh của script
 
-| Lệnh | Tác dụng | Có push lên khách? |
-| --- | --- | --- |
-| `scripts/export-client.sh --dry-run` | Liệt kê file bị loại, đếm file gửi đi, kiểm tra từ khóa cấm | Không |
-| `scripts/export-client.sh "message"` | Tạo 1 commit chứa code đã lọc, nối tiếp lịch sử bên khách, rồi **push ngay** lên `client/main` | **Có** |
-| `scripts/export-client.sh --pull` | Lấy các commit mới mà người khác push lên repo khách, áp vào nhánh hiện tại bằng cherry-pick | Không (chỉ thay đổi repo trên máy) |
+| Lệnh                                          | Tác dụng                                                                                                  | Có push lên khách?                 |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `scripts/export-client.sh --dry-run`          | Liệt kê file bị loại, đếm file gửi đi, kiểm tra từ khóa cấm                                               | Không                              |
+| `scripts/export-client.sh --commit "message"` | Tạo 1 commit chứa code đã lọc, nối tiếp lịch sử bên khách, cất trên máy chờ gửi                           | Không                              |
+| `scripts/export-client.sh --push`             | Gửi commit đã tạo bằng `--commit` lên `client/main`; dừng nếu repo khách đã thay đổi kể từ lúc `--commit` | **Có**                             |
+| `scripts/export-client.sh "message"`          | Gộp `--commit` và `--push` trong 1 lệnh                                                                   | **Có**                             |
+| `scripts/export-client.sh --pull`             | Lấy các commit mới mà người khác push lên repo khách, áp vào nhánh hiện tại bằng cherry-pick              | Không (chỉ thay đổi repo trên máy) |
 
 Biến môi trường tùy chọn:
 
-| Biến | Mặc định | Dùng khi |
-| --- | --- | --- |
+| Biến            | Mặc định | Dùng khi                                    |
+| --------------- | -------- | ------------------------------------------- |
 | `CLIENT_REMOTE` | `client` | Remote repo khách trên máy bạn đặt tên khác |
-| `CLIENT_BRANCH` | `main` | Khách muốn nhận code ở nhánh khác |
+| `CLIENT_BRANCH` | `main`   | Khách muốn nhận code ở nhánh khác           |
 
 Ví dụ: `CLIENT_REMOTE=khach CLIENT_BRANCH=develop scripts/export-client.sh "..."`.
 
@@ -96,14 +105,16 @@ Ví dụ: `CLIENT_REMOTE=khach CLIENT_BRANCH=develop scripts/export-client.sh ".
 
 ## 8. Khi gặp lỗi
 
-| Thông báo | Nguyên nhân | Cách xử lý |
-| --- | --- | --- |
-| `has commits you have not pulled` | Bên khách có commit mới | `scripts/export-client.sh --pull`, rồi export lại |
-| `No export/pull recorded on this machine` | Máy này chưa từng export/pull repo khách (máy mới, hoặc người khác đã export) | Nếu chắc chắn nhánh của bạn đã có đủ thay đổi bên khách, chạy đúng lệnh `git update-ref ...` mà script in ra; nếu không chắc, hỏi người export trước đó |
-| `Conflict while applying <commit>` | Thay đổi bên khách xung đột với code của bạn | Sửa xung đột, `git add <file>`, `git cherry-pick --continue`, rồi chạy lệnh `git update-ref ... && ... --pull` mà script in ra |
-| `Refusing to export; ... found in:` | Code còn chứa từ khóa cấm | Xóa trong các file được liệt kê, commit, chạy lại |
-| `Commit or stash your changes before --pull` | Còn thay đổi chưa commit | Commit hoặc `git stash` rồi chạy lại |
-| `Permission denied` / `Repository not found` | Chưa có quyền trên repo khách, sai SSH key, hoặc URL repo khách đã đổi | Kiểm tra lời mời vào org, quyền repo, `git remote -v` |
+| Thông báo                                    | Nguyên nhân                                                                   | Cách xử lý                                                                                                                                              |
+| -------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `has commits you have not pulled`            | Bên khách có commit mới                                                       | `scripts/export-client.sh --pull`, rồi export lại                                                                                                       |
+| `No export/pull recorded on this machine`    | Máy này chưa từng export/pull repo khách (máy mới, hoặc người khác đã export) | Nếu chắc chắn nhánh của bạn đã có đủ thay đổi bên khách, chạy đúng lệnh `git update-ref ...` mà script in ra; nếu không chắc, hỏi người export trước đó |
+| `Conflict while applying <commit>`           | Thay đổi bên khách xung đột với code của bạn                                  | Sửa xung đột, `git add <file>`, `git cherry-pick --continue`, rồi chạy lệnh `git update-ref ... && ... --pull` mà script in ra                          |
+| `Refusing to export; ... found in:`          | Code còn chứa từ khóa cấm                                                     | Xóa trong các file được liệt kê, commit, chạy lại                                                                                                       |
+| `Commit or stash your changes before --pull` | Còn thay đổi chưa commit                                                      | Commit hoặc `git stash` rồi chạy lại                                                                                                                    |
+| `Nothing to push`                            | Chưa chạy `--commit`, hoặc commit chờ đã được gửi                             | `scripts/export-client.sh --commit "message"`                                                                                                           |
+| `changed since --commit`                     | Có người push lên repo khách sau khi bạn `--commit`                           | `scripts/export-client.sh --pull`, rồi `--commit` lại và `--push`                                                                                       |
+| `Permission denied` / `Repository not found` | Chưa có quyền trên repo khách, sai SSH key, hoặc URL repo khách đã đổi        | Kiểm tra lời mời vào org, quyền repo, `git remote -v`                                                                                                   |
 
 ## 9. Khi repo khách đổi địa chỉ
 
