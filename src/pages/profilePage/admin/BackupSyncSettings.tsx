@@ -83,22 +83,26 @@ export default function BackupSyncSettings({ enabled }: { enabled: boolean }) {
           backup mới, kể cả khi đóng trình duyệt. Máy cần bật, đã đăng nhập
           Windows và có mạng. Không lưu mật khẩu quản trị trong công cụ.
         </Typography.Paragraph>
+        {/* Instructions, not progress: every step stays equally readable. */}
         <Steps
           size="small"
           orientation="vertical"
           items={[
             {
               title: "Tạo mã đồng bộ",
+              status: "process",
               content:
                 "Nhập lại mật khẩu admin trên website. Mã chỉ cho phép đọc/tải backup và có hạn một năm.",
             },
             {
               title: "Tải và chạy bộ cài Windows",
+              status: "process",
               content:
                 "Tải file bên dưới, bấm chuột phải vào file và chọn Run with PowerShell (Windows 11: chọn Show more options trước). Cửa sổ cài đặt hiện ra để dán mã đồng bộ và chọn thư mục lưu.",
             },
             {
               title: "Để Windows tải tự động",
+              status: "process",
               content:
                 "Không cần nhập lại mật khẩu mỗi giờ. Có thể thu hồi mã tại đây để ngừng quyền tải của máy đó.",
             },
